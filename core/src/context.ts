@@ -14,6 +14,7 @@ export interface Ctx {
   apiUrl: string;
   /** Set by the job runner; lets the scheduler and API start and stop jobs without import cycles. */
   runner?: {
+    enqueue(agent: string, trigger: string, opts?: { detail?: string; hop?: number; sessionId?: string | null; force?: boolean }): unknown;
     pump(): void;
     stop(jobId: string, status: string, reason?: string): void;
     continueJob(jobId: string): void;
