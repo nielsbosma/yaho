@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { newId, now } from '../db/index.ts';
 import { adapters, killTree } from '../harness/claudeCode.ts';
@@ -20,6 +21,22 @@ interface Running {
   baseCost: number;
   liteKey?: string;
   poll?: NodeJS.Timeout;
+}
+
+/**
+ * `yaho` first, then the inherited PATH without duplicates or missing folders. Windows PATHs grow past cmd.exe's
+ * 8191-character limit, after which cmd sees a truncated PATH and nothing on it resolves.
+ */
+export function jobPath(bin: string, inherited: string): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const dir of [bin, ...inherited.split(delimiter)]) {
+    const key = process.platform === 'win32' ? dir.replace(/[\\/]+$/, '').toLowerCase() : dir;
+    if (!dir || seen.has(key) || (dir !== bin && !existsSync(dir))) continue;
+    seen.add(key);
+    out.push(dir);
+  }
+  return out.join(delimiter);
 }
 
 const ENDED = ['finished', 'sleeping', 'failed', 'budget_exhausted', 'stopped'];
@@ -167,7 +184,7 @@ export class JobRunner {
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !skip.test(k)) env[k] = v;
     const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
     Object.assign(env, secrets.env, {
-      [pathKey]: `${ctx.paths.bin}${process.platform === 'win32' ? ';' : ':'}${env[pathKey] ?? ''}`,
+      [pathKey]: jobPath(ctx.paths.bin, env[pathKey] ?? ''),
       YAHO_API_URL: ctx.apiUrl,
       YAHO_JOB_TOKEN: token,
       YAHO_AGENT: agent.name,
@@ -231,7 +248,8 @@ export class JobRunner {
           const budget = /budget/i.test(e.error ?? '');
           r.ending = { status: budget ? 'budget_exhausted' : 'failed', reason: e.error };
         }
-        addJobEvent(ctx, r.job, 'result', e);
+        // A harness we killed on purpose reports a failure; that is not news.
+        if (!(r.ending && !e.ok)) addJobEvent(ctx, r.job, 'result', e);
         return;
       default:
         addJobEvent(ctx, r.job, e.kind, e);
@@ -276,8 +294,10 @@ export class JobRunner {
     }
     if (r.ending) return;
     r.ending = { status, reason, ...extra };
-    // Let the CLI call that asked for this get its response before the tree dies.
-    setTimeout(() => r.proc?.kill(), 750);
+    // finish and sleep come from the agent itself: let the harness wrap up and report its cost, but not for long.
+    // A stop from the human (or a budget) is immediate, after the calling request has had its response.
+    const grace = status === 'finished' || status === 'sleeping' ? 30_000 : 750;
+    setTimeout(() => r.proc?.kill(), grace);
   }
 
   private finalize(r: Running, end: { status: string; reason?: string; summary?: string; resumeAt?: string }): void {

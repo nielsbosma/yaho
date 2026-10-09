@@ -111,7 +111,9 @@ export const claudeCode: HarnessAdapter = {
         });
       }
     });
-    createInterface({ input: child.stderr }).on('line', (text) => text.trim() && onEvent({ kind: 'stderr', text }));
+    // Claude Code warns that a proxy key overrides the claude.ai login; for YAHO that is the point.
+    const noise = /claude\.ai connectors are disabled/;
+    createInterface({ input: child.stderr }).on('line', (text) => text.trim() && !noise.test(text) && onEvent({ kind: 'stderr', text }));
 
     const done = new Promise<number | null>((resolve) => {
       child.on('error', (err) => {
