@@ -52,7 +52,7 @@ export class Scheduler {
 
   /** A message for an agent with an inbox trigger starts a job, within the agent's loop guardrails. */
   onMessage(m: Message): void {
-    if (!m.to.startsWith('agent:') || m.read) return;
+    if (!m.to.startsWith('agent:') || m.read || m.wake === false) return;
     const name = m.to.slice(6);
     if (!agentExists(this.ctx, name)) return;
     const agent = getAgent(this.ctx, name);

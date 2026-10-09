@@ -51,6 +51,9 @@ export interface Message {
   steps?: Array<{ open: string } | { copy: string }>;
   reply_to: string | null;
   read: boolean;
+  /** false when the message was delivered with a job already started for it. */
+  wake?: boolean;
+  artifacts?: string[];
   hop: number;
   job: string | null;
   created: string;
@@ -413,6 +416,8 @@ function messageFromRow(r: Row): Message {
     body: r.body as string,
     ...(payload.choices ? { choices: payload.choices as string[] } : {}),
     ...(payload.steps ? { steps: payload.steps as Message['steps'] } : {}),
+    ...(payload.no_wake ? { wake: false } : {}),
+    ...(payload.artifacts ? { artifacts: payload.artifacts as string[] } : {}),
     reply_to: (r.reply_to as string) ?? null,
     read: !!r.read,
     hop: r.hop as number,
@@ -467,6 +472,10 @@ export interface SendInput {
   reply_to?: string | null;
   job?: string | null;
   hop?: number;
+  /** false: deliver without starting an inbox job (the caller starts the job itself). */
+  wake?: boolean;
+  /** Artifact ids to show with the message. */
+  artifacts?: string[];
 }
 
 /** Store a message and fan it out: UI event, human notification, or an inbox trigger for the receiving agent. */
@@ -493,7 +502,12 @@ export function sendMessage(ctx: Ctx, m: SendInput): Message {
       type,
       m.title ?? '',
       m.body ?? '',
-      JSON.stringify({ choices: m.choices, steps: m.steps }),
+      JSON.stringify({
+        choices: m.choices,
+        steps: m.steps,
+        ...(m.wake === false ? { no_wake: true } : {}),
+        ...(m.artifacts?.length ? { artifacts: m.artifacts } : {}),
+      }),
       m.reply_to ?? null,
       hop,
       m.job ?? null,

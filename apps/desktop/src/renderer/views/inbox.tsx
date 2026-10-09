@@ -1,6 +1,7 @@
 import { plainText } from '../lib/plainText.ts';
 import { Resizer, usePanelWidth } from '../components/Resizer.tsx';
-import { Inbox, PenLine } from 'lucide-react';
+import { Inbox, Mail, MailOpen, PenLine, Trash2 } from 'lucide-react';
+import { useContextMenu } from '../components/ContextMenu.tsx';
 import { useState } from 'react';
 import { MessageCard, who } from '../components/MessageCard.tsx';
 import { Button } from '../components/ui/button.tsx';
@@ -19,6 +20,7 @@ export function InboxView({ route }: ViewProps) {
   const inbox = useApi<Message[]>(`/api/messages?to=human${filter === 'unread' ? '&unread=1' : ''}`, onMessage);
   const [compose, setCompose] = useState(false);
   const selected = route[1];
+  const menu = useContextMenu();
   const [listWidth, setListWidth] = usePanelWidth('inbox-list', 380, 260, 720);
   const unread = inbox.data?.filter((m) => !m.read).length ?? 0;
 
@@ -53,6 +55,24 @@ export function InboxView({ route }: ViewProps) {
             <a
               key={m.id}
               href={href('inbox', m.id)}
+              onContextMenu={(e) =>
+                menu.open(e, [
+                  {
+                    label: m.read ? 'Mark Unread' : 'Mark Read',
+                    icon: m.read ? <MailOpen /> : <Mail />,
+                    onSelect: () => void api(`/api/messages/${m.id}/read`, { body: { read: !m.read } }),
+                  },
+                  {
+                    label: 'Delete',
+                    icon: <Trash2 />,
+                    danger: true,
+                    onSelect: async () => {
+                      await api(`/api/messages/${m.id}`, { method: 'DELETE' });
+                      if (selected === m.id) go('inbox');
+                    },
+                  },
+                ])
+              }
               className={cn('block border-b border-line px-5 py-3 transition-colors hover:bg-hover/50', selected === m.id && 'bg-hover')}
             >
               <div className="flex items-center gap-2 text-xs">
@@ -82,6 +102,7 @@ export function InboxView({ route }: ViewProps) {
         )}
       </div>
       <Compose open={compose} onClose={() => setCompose(false)} />
+      {menu.element}
     </div>
   );
 }

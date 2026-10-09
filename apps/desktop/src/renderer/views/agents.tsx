@@ -126,6 +126,7 @@ export const triggerLabel = (t: TriggerSpec) => ('cron' in t ? `cron ${t.cron}` 
 function AgentDetail({ name, tab }: { name: string; tab: string }) {
   const agent = useApi<Agent>(`/api/agents/${encodeURIComponent(name)}`, agentChanged(name));
   const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
   const a = agent.data;
   if (agent.error) return <Empty title="Agent not found">{agent.error}</Empty>;
   if (!a) return null;
@@ -162,16 +163,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
                   onChange={(v) => void act(() => api(`/api/agents/${a.name}`, { method: 'PATCH', body: { enabled: v } }))}
                 />
               </label>
-              <Button
-                variant="primary"
-                disabled={!a.enabled}
-                onClick={() =>
-                  void act(async () => {
-                    const job = await api<Job>(`/api/agents/${a.name}/run`, { method: 'POST' });
-                    go('jobs', job.id);
-                  })
-                }
-              >
+              <Button variant="primary" disabled={!a.enabled} onClick={() => setRunning(true)}>
                 <Play /> Run Now
               </Button>
             </>
@@ -197,6 +189,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
         {tab === 'workspace' && <WorkspaceBrowser agent={a.name} />}
         {tab === 'artifacts' && <AgentArtifacts agent={a.name} />}
       </div>
+      <RunDialog agent={a} open={running} onClose={() => setRunning(false)} />
     </>
   );
 }
@@ -615,5 +608,61 @@ function Examples() {
         Examples install disabled, with any projects and resources they need. Fill in the resource keys, then enable.
       </p>
     </Section>
+  );
+}
+
+/** Run Now, with optional instructions for this run. Agents without a schedule usually need them. */
+function RunDialog({ agent, open, onClose }: { agent: Agent; open: boolean; onClose: () => void }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const onDemand = !agent.triggers.some((t) => 'cron' in t);
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const job = await api<Job>(`/api/agents/${agent.name}/run`, { body: { message: text } });
+      setText('');
+      onClose();
+      go('jobs', job.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={`Run ${agent.name}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={busy} onClick={() => void run()} title="Run (Ctrl+Enter)">
+            <Play /> Run
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-2">
+        <ErrorNote>{error}</ErrorNote>
+        <Field
+          label="What should it do this time?"
+          hint="Sent to the agent's inbox as instructions for this run. Leave empty to just run its briefing."
+        >
+          <Textarea
+            autoFocus
+            className="min-h-32"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void run();
+            }}
+            placeholder={onDemand ? 'e.g. Make a 1200x630 social card for the 3.0 launch' : 'Optional'}
+          />
+        </Field>
+      </div>
+    </Dialog>
   );
 }

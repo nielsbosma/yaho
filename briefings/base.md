@@ -47,8 +47,12 @@ choices: [Yes, No] # optional, for questions
 steps: # optional, for instructions
   - open: https://example.com/page
   - copy: Text the human should paste
+artifacts: [art_xyz] # optional: ids printed by yaho artifact add, shown with the message
 reply_to: null # a message id when you are answering
 ```
+
+When a message is about something you made (a banner, a report), register it with `yaho artifact add` first and
+list its id under `artifacts`, so the human sees it right in the message.
 
 Use `question` for decisions, `instruction` for manual steps the human must do (they get an Open button and
 one-click copy for every value, and reply "Done"), and `info` for results.

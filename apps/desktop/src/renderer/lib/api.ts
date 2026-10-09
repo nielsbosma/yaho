@@ -160,6 +160,7 @@ export interface Message {
   body: string;
   choices?: string[];
   steps?: Array<{ open?: string; copy?: string }>;
+  artifacts?: string[];
   reply_to: string | null;
   read: boolean;
   job: string | null;

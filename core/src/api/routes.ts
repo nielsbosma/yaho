@@ -117,7 +117,23 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return s.saveAgent(ctx, { ...patch, name: req.params.name! });
   });
   r.on('DELETE', '/api/agents/:name', (req) => s.deleteAgent(ctx, req.params.name!));
-  r.on('POST', '/api/agents/:name/run', (req) => runner(ctx).enqueue(req.params.name!, 'manual', { force: true }));
+  /** Run Now, optionally with instructions for this run: delivered to the agent's inbox, and the run starts at once. */
+  r.on('POST', '/api/agents/:name/run', async (req) => {
+    const name = req.params.name!;
+    const message = (await req.body<{ message?: string }>()).message?.trim();
+    if (!s.getAgent(ctx, name).enabled) throw new HttpError(409, `agent ${name} is disabled`);
+    // The message first, so it is in the inbox the job's prompt lists; wake: false keeps it from starting a second job.
+    if (message)
+      s.sendMessage(ctx, {
+        from: 'human',
+        to: `agent:${name}`,
+        type: 'info',
+        title: 'Instructions for this run',
+        body: message,
+        wake: false,
+      });
+    return runner(ctx).enqueue(name, 'manual', { force: true, detail: message ? 'with instructions' : undefined });
+  });
   r.on('GET', '/api/agents/:name/briefings', (req) => s.briefingHistory(ctx, req.params.name!));
   r.on('POST', '/api/agents/:name/briefings/:id/revert', (req) => {
     const row = ctx.db
@@ -199,6 +215,15 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   );
   r.on('GET', '/api/messages/:id', (req) => s.getMessage(ctx, req.params.id!));
   r.on('GET', '/api/messages/:id/thread', (req) => s.thread(ctx, req.params.id!));
+  /** What a message shows: the artifacts it attached, or else what its job made. */
+  r.on('GET', '/api/messages/:id/artifacts', (req) => {
+    const m = s.getMessage(ctx, req.params.id!);
+    if (m.artifacts?.length) {
+      const ids = m.artifacts;
+      return s.listArtifacts(ctx).filter((a) => ids.includes(a.id as string));
+    }
+    return m.job ? s.listArtifacts(ctx, { job: m.job }) : [];
+  });
   r.on('POST', '/api/messages', async (req) => {
     const m = await req.body<s.SendInput>();
     const msg = s.sendMessage(ctx, { ...m, from: 'human' });

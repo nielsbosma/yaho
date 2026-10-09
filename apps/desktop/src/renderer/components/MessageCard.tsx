@@ -1,7 +1,8 @@
 import { Markdown } from './Markdown.tsx';
 import { Bot, Check, Copy, Trash2, CornerDownRight, ExternalLink, HelpCircle, Info, ListChecks, Send, User } from 'lucide-react';
 import { useState } from 'react';
-import type { Message } from '../lib/api.ts';
+import { useApi, type Artifact, type Message } from '../lib/api.ts';
+import { ArtifactGrid } from '../views/artifacts.tsx';
 import { platform } from '../lib/platform.ts';
 import { href } from '../lib/router.ts';
 import { Button } from './ui/button.tsx';
@@ -96,6 +97,8 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
         {m.title && <h3 className="font-serif text-[19px] leading-snug text-ink">{m.title}</h3>}
         {m.body && <Markdown className={cn('text-[14.5px] text-ink/90', compact && 'line-clamp-3')}>{m.body}</Markdown>}
 
+        {!compact && (m.job || m.artifacts?.length) ? <MessageArtifacts id={m.id} /> : null}
+
         {!compact && m.steps?.length ? (
           <ol className="space-y-2">
             {m.steps.map((s, i) => (
@@ -181,5 +184,19 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
         )}
       </div>
     </Card>
+  );
+}
+
+/** What the message attached, or what its job made: thumbnails that open in the artifact viewer. */
+function MessageArtifacts({ id }: { id: string }) {
+  const arts = useApi<Artifact[]>(`/api/messages/${id}/artifacts`, (e) => e.type === 'changed' && e.entity === 'artifacts');
+  if (!arts.data?.length) return null;
+  return (
+    <div className="space-y-1.5">
+      <div className="text-xs text-muted">
+        {arts.data.length} artifact{arts.data.length === 1 ? '' : 's'}
+      </div>
+      <ArtifactGrid artifacts={arts.data} />
+    </div>
   );
 }

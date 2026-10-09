@@ -49,6 +49,14 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     const m = await req.body<s.SendInput>();
     if (!m.to) throw new HttpError(400, 'to is required: human or agent:<name>');
     const job = s.getJob(ctx, w.job);
+    if (m.artifacts !== undefined) {
+      if (!Array.isArray(m.artifacts)) throw new HttpError(400, 'artifacts must be a list of artifact ids');
+      for (const id of m.artifacts) {
+        const a = ctx.db.prepare('SELECT agent FROM artifacts WHERE id = ?').get(String(id)) as { agent: string } | undefined;
+        if (!a) throw new HttpError(400, `no artifact ${id} (use the id that yaho artifact add printed)`);
+        if (a.agent !== w.agent) throw new HttpError(403, `artifact ${id} is not yours`);
+      }
+    }
     const msg = s.sendMessage(ctx, { ...m, from: `agent:${w.agent}`, job: w.job, hop: m.to === 'human' ? 0 : job.hop + 1 });
     return { id: msg.id, to: msg.to, type: msg.type };
   });

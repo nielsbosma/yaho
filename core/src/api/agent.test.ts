@@ -99,6 +99,9 @@ describe('yaho CLI inside a job', () => {
     const arts = await api<Array<{ file_path: string; job: string }>>('/api/artifacts?project=widget');
     expect(arts[0]).toMatchObject({ file_path: 'report.txt', job: job.id });
     expect(readFileSync(join(dir, 'projects', 'widget', 'artifacts', 'report.txt'), 'utf8')).toBe('made by alpha');
+    // The message the job sent shows what the job made.
+    const shown = await api<Array<{ file_path: string }>>(`/api/messages/${human[0]!.id}/artifacts`);
+    expect(shown.map((a) => a.file_path)).toEqual(['report.txt']);
 
     expect((await api<{ briefing: string }>('/api/agents/alpha')).briefing).toBe('v2: learned something');
     expect((await api<unknown[]>('/api/agents/alpha/briefings')).length).toBe(2);

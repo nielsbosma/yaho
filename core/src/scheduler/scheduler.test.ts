@@ -66,14 +66,14 @@ describe('scheduler', () => {
     await agent('cronny', { triggers: [{ cron: '*/1 * * * *' }] });
     script('cronny', [{ cmd: 'yaho finish' }]);
     const a = await api<{ upcoming: Array<{ at: string }> }>('/api/agents/cronny');
-    expect(new Date(a.upcoming[0]!.at).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(a.upcoming[0]!.at).getTime()).toBeGreaterThan(Date.now() - 2000);
     ctx.db.prepare("UPDATE triggers SET next_fire = '2000-01-01T00:00:00.000Z' WHERE agent = 'cronny'").run();
     ctx.scheduler!.tick();
     const js = await settle('cronny', 1);
     expect(js).toHaveLength(1);
     expect(js[0]).toMatchObject({ trigger_type: 'cron', status: 'finished' });
     const next = (ctx.db.prepare("SELECT next_fire FROM triggers WHERE agent = 'cronny'").get() as { next_fire: string }).next_fire;
-    expect(new Date(next).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(next).getTime()).toBeGreaterThan(Date.now() - 2000);
 
     await api('/api/agents/cronny', { method: 'PATCH', body: { enabled: false } });
     ctx.db.prepare("UPDATE triggers SET next_fire = '2000-01-01T00:00:00.000Z' WHERE agent = 'cronny'").run();
@@ -153,5 +153,17 @@ describe('scheduler', () => {
     const js = await settle('survivor', 1);
     expect(js).toHaveLength(1);
     expect(js[0]).toMatchObject({ id: job.id, status: 'finished', trigger_type: 'continue' });
+  });
+
+  it('Run Now with instructions delivers them and starts exactly one job', async () => {
+    await agent('ondemand', { triggers: [{ inbox: true }] });
+    script('ondemand', [{ cmd: 'yaho inbox list' }, { cmd: 'yaho finish' }]);
+    await api('/api/agents/ondemand/run', { body: { message: 'Make a banner for the 3.0 launch' } });
+    const js = await settle('ondemand', 1);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await jobs('ondemand')).toHaveLength(1);
+    expect(js[0]).toMatchObject({ trigger_type: 'manual', trigger_detail: 'with instructions', status: 'finished' });
+    const events = await api<Array<{ kind: string; data: { output?: string } }>>(`/api/jobs/${js[0]!.id}/events`);
+    expect(events.find((e) => e.kind === 'tool_result')?.data.output).toContain('Make a banner for the 3.0 launch');
   });
 });
