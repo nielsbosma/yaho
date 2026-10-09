@@ -35,14 +35,15 @@ export function InboxView({ route }: ViewProps) {
             <PenLine /> New
           </Button>
         </div>
-        <div className="flex gap-1 px-4 py-2 text-xs">
+        <div className="flex gap-1 px-5 py-2 text-xs">
+          {/* The chips carry their own padding; pull them back so their text lines up with the heading. */}
           {(['all', 'unread'] as const).map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => setFilter(f)}
               className={cn(
-                'cursor-pointer rounded-md px-2 py-1 capitalize',
+                'cursor-pointer rounded-md px-2 py-1 capitalize first:-ml-2',
                 filter === f ? 'bg-hover font-medium' : 'text-muted hover:text-ink',
               )}
             >
@@ -73,18 +74,22 @@ export function InboxView({ route }: ViewProps) {
                   },
                 ])
               }
-              className={cn('block border-b border-line px-5 py-3 transition-colors hover:bg-hover/50', selected === m.id && 'bg-hover')}
+              className={cn(
+                'relative block border-b border-line px-5 py-3 transition-colors hover:bg-hover/50',
+                selected === m.id && 'bg-hover',
+              )}
             >
               <div className="flex items-center gap-2 text-xs">
-                {!m.read ? <span className="size-2 shrink-0 rounded-full bg-accent" /> : <span className="size-2 shrink-0" />}
+                {/* Unread dot in the left margin, so every line starts at the same edge as the heading. */}
+                {!m.read && <span className="absolute top-[18px] left-2 size-2 rounded-full bg-accent" aria-label="Unread" />}
                 <span className={cn('truncate', !m.read ? 'font-semibold text-ink' : 'text-muted')}>{who(m.from)}</span>
                 <span className="text-muted">· {m.type}</span>
                 <span className="ml-auto shrink-0 text-muted">{ago(m.created)}</span>
               </div>
-              <div className={cn('mt-1 truncate pl-4 text-sm', !m.read ? 'font-medium' : 'text-ink/80')}>
+              <div className={cn('mt-1 truncate text-sm', !m.read ? 'font-medium' : 'text-ink/80')}>
                 {m.title || plainText(m.body).slice(0, 80)}
               </div>
-              <div className="mt-0.5 truncate pl-4 text-xs text-muted">{plainText(m.body).slice(0, 160)}</div>
+              <div className="mt-0.5 truncate text-xs text-muted">{plainText(m.body).slice(0, 160)}</div>
             </a>
           ))}
           {inbox.data?.length === 0 && (
