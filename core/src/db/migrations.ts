@@ -141,4 +141,7 @@ export const migrations: string[] = [
   `,
   // 2: the harness pid, so a restarted core can kill an orphaned harness.
   `ALTER TABLE jobs ADD COLUMN pid INTEGER;`,
+  // 3: resources of other kinds (Composio connections) besides plain keys.
+  `ALTER TABLE resources ADD COLUMN kind TEXT NOT NULL DEFAULT 'keys';
+   ALTER TABLE resources ADD COLUMN config TEXT NOT NULL DEFAULT '{}';`,
 ];

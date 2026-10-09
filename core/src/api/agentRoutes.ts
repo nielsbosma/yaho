@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Ctx } from '../context.ts';
+import { Composio } from '../secrets/composio.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
@@ -138,6 +139,24 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     let values: Record<string, string> = {};
     if (dop.configured && res.keys.some((k) => !k.secret)) values = await dop.runtimeValues(name).catch(() => ({}));
     return res.keys.map((k) => ({ name: k.name, secret: k.secret, ...(k.secret ? {} : { value: values[k.name] ?? null }), env: k.name }));
+  });
+
+  // ---- Composio resources: the core makes the call, so the Composio key never reaches the agent ----
+  const composioResource = (agent: string, name: string) => {
+    allowed(agent, name);
+    const res = s.getResource(ctx, name);
+    if (res.kind !== 'composio' || !res.config?.connected_account_id || !res.config.toolkit)
+      throw new HttpError(400, `${name} is not a Composio resource; its keys are in your environment`);
+    return res;
+  };
+  on('GET', '/resources/:resource/tools', async (req, w) => {
+    const res = composioResource(w.agent, req.params.resource!);
+    return new Composio(ctx).tools(res.config!.toolkit!, { search: req.query.get('search') ?? undefined, limit: 50 });
+  });
+  on('POST', '/resources/:resource/tools/:tool', async (req, w) => {
+    const res = composioResource(w.agent, req.params.resource!);
+    const args = await req.body<Record<string, unknown>>();
+    return new Composio(ctx).execute(req.params.tool!, res.config!.connected_account_id!, args);
   });
 
   // ---- budget and ending the job ----

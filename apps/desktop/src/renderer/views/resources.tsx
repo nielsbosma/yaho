@@ -1,7 +1,8 @@
 import { Markdown } from '../components/Markdown.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
 import { MultiPicker } from '../components/MultiPicker.tsx';
-import { KeyRound, Lock, Plus, Trash2, Unlock } from 'lucide-react';
+import { AppLogo, ComposioExplorer, ComposioTools } from './composio.tsx';
+import { Blocks, KeyRound, Lock, Plus, Trash2, Unlock } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
@@ -16,6 +17,7 @@ const changed = (e: { type: string; entity?: string }) => e.type === 'changed' &
 
 export function ResourcesView({ route }: ViewProps) {
   if (route[1] === 'new') return <ResourceEditor />;
+  if (route[1] === 'composio') return <ComposioExplorer />;
   if (route[1]) return <ResourceDetail name={route[1]} />;
   return <ResourceList />;
 }
@@ -31,6 +33,9 @@ function ResourceList() {
         actions={
           <>
             <LayoutSwitch value={layout} onChange={setLayout} />
+            <Button onClick={() => go('resources', 'composio')}>
+              <Blocks /> From Composio
+            </Button>
             <Button variant="primary" onClick={() => go('resources', 'new')}>
               <Plus /> New Resource
             </Button>
@@ -48,11 +53,17 @@ function ResourceList() {
               { label: 'Briefing', cell: (r) => <span className="line-clamp-1 text-muted">{r.briefing || '—'}</span> },
               {
                 label: 'Keys',
-                cell: (r) => (
-                  <span className="text-muted">
-                    {r.keys.length} ({r.keys.filter((k) => k.has_value).length} set)
-                  </span>
-                ),
+                cell: (r) =>
+                  r.kind === 'composio' ? (
+                    <span className="flex items-center gap-1.5 text-muted">
+                      <AppLogo src={r.config?.logo} name={r.config?.toolkit_name ?? r.name} className="size-5 rounded p-0.5" />
+                      Composio
+                    </span>
+                  ) : (
+                    <span className="text-muted">
+                      {r.keys.length} ({r.keys.filter((k) => k.has_value).length} set)
+                    </span>
+                  ),
               },
               {
                 label: 'Agents',
@@ -188,7 +199,11 @@ function ResourceDetail({ name }: { name: string }) {
       <PageHeader
         crumbs={[{ label: 'Resources', to: href('resources') }]}
         title={r.name}
-        sub="Values are stored in Dopbase and injected into the agent's environment at job start."
+        sub={
+          r.kind === 'composio'
+            ? `${r.config?.toolkit_name ?? r.config?.toolkit} through Composio. Agents use it with yaho tools / yaho tool; YAHO makes the calls.`
+            : "Values are stored in Dopbase and injected into the agent's environment at job start."
+        }
         actions={
           <>
             <Button onClick={() => setEditing(!editing)}>{editing ? 'Cancel' : 'Edit'}</Button>
@@ -209,30 +224,41 @@ function ResourceDetail({ name }: { name: string }) {
                 {r.briefing ? <Markdown>{r.briefing}</Markdown> : <span className="text-muted">Empty</span>}
               </Card>
             </Section>
-            <Section title="Keys">
-              <Card className="divide-y divide-line">
-                {r.keys.map((k) => (
-                  <div key={k.name} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                    {k.secret ? <Lock className="size-4 text-warn" /> : <Unlock className="size-4 text-muted" />}
-                    <code>{k.name}</code>
-                    <Badge tone={k.secret ? 'warn' : 'neutral'}>{k.secret ? 'secret' : 'visible to agents'}</Badge>
-                    <span className={cn('ml-auto text-xs', k.has_value ? 'text-ok' : 'text-muted')}>
-                      {k.has_value ? 'value set' : 'no value'}
-                    </span>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setValue('');
-                        setSetting(k.name);
-                      }}
-                    >
-                      Set Value
-                    </Button>
-                  </div>
-                ))}
-                {!r.keys.length && <div className="p-4 text-sm text-muted">No keys. Edit the resource to add some.</div>}
-              </Card>
-            </Section>
+            {r.kind === 'composio' ? (
+              <>
+                <Section title="Connection">
+                  <ComposioConnection resource={r} />
+                </Section>
+                <Section title="Tools">
+                  <ComposioTools toolkit={r.config?.toolkit ?? ''} />
+                </Section>
+              </>
+            ) : (
+              <Section title="Keys">
+                <Card className="divide-y divide-line">
+                  {r.keys.map((k) => (
+                    <div key={k.name} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                      {k.secret ? <Lock className="size-4 text-warn" /> : <Unlock className="size-4 text-muted" />}
+                      <code>{k.name}</code>
+                      <Badge tone={k.secret ? 'warn' : 'neutral'}>{k.secret ? 'secret' : 'visible to agents'}</Badge>
+                      <span className={cn('ml-auto text-xs', k.has_value ? 'text-ok' : 'text-muted')}>
+                        {k.has_value ? 'value set' : 'no value'}
+                      </span>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setValue('');
+                          setSetting(k.name);
+                        }}
+                      >
+                        Set Value
+                      </Button>
+                    </div>
+                  ))}
+                  {!r.keys.length && <div className="p-4 text-sm text-muted">No keys. Edit the resource to add some.</div>}
+                </Card>
+              </Section>
+            )}
           </>
         )}
         <Section title="Agents With Access">
@@ -303,5 +329,27 @@ function ResourceDetail({ name }: { name: string }) {
         <p className="text-sm text-muted">Agents lose access. The values stay in Dopbase until you remove them there.</p>
       </Dialog>
     </>
+  );
+}
+
+/** The Composio connected account behind a resource, with its live status. */
+function ComposioConnection({ resource }: { resource: Resource }) {
+  const id = resource.config?.connected_account_id ?? '';
+  const conn = useApi<{ status: string; created_at: string }>(id ? `/api/composio/connections/${id}` : null);
+  return (
+    <Card className="flex items-center gap-3 p-4 text-sm">
+      <AppLogo src={resource.config?.logo} name={resource.config?.toolkit_name ?? resource.name} />
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">{resource.config?.toolkit_name ?? resource.config?.toolkit}</div>
+        <div className="text-xs text-muted">
+          <code>{id}</code>
+        </div>
+      </div>
+      {conn.error ? (
+        <span className="text-xs text-danger">{conn.error}</span>
+      ) : conn.data ? (
+        <Badge tone={conn.data.status === 'ACTIVE' ? 'ok' : 'danger'}>{conn.data.status.toLowerCase()}</Badge>
+      ) : null}
+    </Card>
   );
 }

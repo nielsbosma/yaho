@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { Router } from './api/http.ts';
 import { agentRoutes } from './api/agentRoutes.ts';
+import { composioRoutes } from './api/composioRoutes.ts';
 import { fontRoutes } from './api/fonts.ts';
 import { exampleRoutes, humanRoutes } from './api/routes.ts';
 import { startServer } from './api/server.ts';
@@ -40,6 +41,7 @@ export async function serve(
   agentRoutes(ctx, router);
   exampleRoutes(ctx, router);
   fontRoutes(router);
+  composioRoutes(ctx, router);
   writeShims(ctx);
 
   const host = opts.host ?? settings.server.host;

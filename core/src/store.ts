@@ -38,6 +38,9 @@ export interface Resource {
   name: string;
   briefing: string;
   keys: ResourceKey[];
+  /** keys: values in Dopbase, injected as env vars. composio: a Composio connected account, used through yaho tool. */
+  kind?: 'keys' | 'composio';
+  config?: { toolkit?: string; toolkit_name?: string; logo?: string; connected_account_id?: string };
 }
 
 export interface Message {
@@ -346,11 +349,13 @@ export function listResources(ctx: Ctx) {
 }
 
 export function getResource(ctx: Ctx, name: string): Resource & { agents: string[] } {
-  const r = ctx.db.prepare('SELECT name, briefing FROM resources WHERE name = ?').get(name) as Row | undefined;
+  const r = ctx.db.prepare('SELECT name, briefing, kind, config FROM resources WHERE name = ?').get(name) as Row | undefined;
   if (!r) throw new HttpError(404, `resource ${name} not found`);
   return {
     name,
     briefing: r.briefing as string,
+    kind: (r.kind as Resource['kind']) ?? 'keys',
+    config: json(r.config as string, {}),
     keys: (ctx.db.prepare('SELECT name, secret, has_value FROM resource_keys WHERE resource = ? ORDER BY name').all(name) as Row[]).map(
       (k) => ({
         name: k.name as string,
@@ -370,10 +375,17 @@ export function saveResource(ctx: Ctx, input: Partial<Resource> & { name: string
   const prev = ctx.db.prepare('SELECT * FROM resources WHERE name = ?').get(input.name) as Row | undefined;
   ctx.db
     .prepare(
-      `INSERT INTO resources (name, briefing, created, updated) VALUES (?,?,?,?)
-       ON CONFLICT(name) DO UPDATE SET briefing=excluded.briefing, updated=excluded.updated`,
+      `INSERT INTO resources (name, briefing, kind, config, created, updated) VALUES (?,?,?,?,?,?)
+       ON CONFLICT(name) DO UPDATE SET briefing=excluded.briefing, kind=excluded.kind, config=excluded.config, updated=excluded.updated`,
     )
-    .run(input.name, input.briefing ?? (prev?.briefing as string) ?? '', ts, ts);
+    .run(
+      input.name,
+      input.briefing ?? (prev?.briefing as string) ?? '',
+      input.kind ?? (prev?.kind as string) ?? 'keys',
+      JSON.stringify(input.config ?? json(prev?.config as string, {})),
+      ts,
+      ts,
+    );
   if (input.keys) {
     const keep = new Set(input.keys.map((k) => k.name));
     for (const k of input.keys) {

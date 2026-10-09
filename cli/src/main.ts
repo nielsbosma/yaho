@@ -20,6 +20,8 @@ const HELP = `yaho - talk to the YAHO orchestrator from inside a job
   yaho briefing show
   yaho briefing update < briefing.md
   yaho resource keys <resource>
+  yaho tools <resource> [--search words]   tools of a Composio resource
+  yaho tool <resource> <TOOL_SLUG> < args.yaml   run one (arguments as YAML)
   yaho budget
   yaho sleep <duration>                 e.g. 30m, 2h, 1d; ends this job now
   yaho finish [--summary "..."]         ends this job now
@@ -78,6 +80,7 @@ async function main(argv: string[]): Promise<void> {
       out: { type: 'string' },
       kind: { type: 'string' },
       summary: { type: 'string' },
+      search: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -140,6 +143,24 @@ async function main(argv: string[]): Promise<void> {
     case 'resource':
       if (sub === 'keys') return out(await call('GET', `/resources/${encodeURIComponent(need(a1, 'resource name'))}/keys`));
       break;
+    case 'tools': {
+      const q = f.search ? `?search=${encodeURIComponent(f.search)}` : '';
+      const tools = (await call('GET', `/resources/${encodeURIComponent(need(sub, 'resource name'))}/tools${q}`)) as Array<
+        Record<string, unknown>
+      >;
+      return out(tools.map((t) => ({ slug: t.slug, description: t.description, input: t.input_parameters })));
+    }
+    case 'tool': {
+      const stdin = readStdin();
+      const args = stdin.trim() ? YAML.parse(stdin) : {};
+      return out(
+        await call(
+          'POST',
+          `/resources/${encodeURIComponent(need(sub, 'resource name'))}/tools/${encodeURIComponent(need(a1, 'tool slug'))}`,
+          args ?? {},
+        ),
+      );
+    }
     case 'budget':
       return out(await call('GET', '/budget'));
     case 'sleep':

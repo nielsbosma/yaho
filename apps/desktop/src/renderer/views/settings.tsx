@@ -13,6 +13,7 @@ interface Settings {
   litellm: { url: string; api_key?: string; master_key?: string };
   dopbase: { mode: 'bundled' | 'external'; url: string; token?: string; local_port?: number; environment: string; project_prefix: string };
   global_spend_cap_usd: number;
+  composio?: { api_key?: string; user_id?: string };
   defaults: { harness: string; models: string[]; budget_usd: number; max_parallel: number; guardrails: Record<string, number | undefined> };
 }
 
@@ -192,6 +193,33 @@ export function SettingsView() {
                       });
                       if (!r.ok) throw new Error(r.error ?? 'failed');
                       return `connected${r.health?.version ? ` (Dopbase ${r.health.version})` : ''}`;
+                    }}
+                  />
+                </div>
+              </Card>
+            </Section>
+            <Section title="Apps (Composio)">
+              <Card className="grid gap-4 p-4 md:grid-cols-2">
+                <Field label="Composio API key" hint="From composio.dev → Settings. Agents never see it: YAHO makes their calls.">
+                  <Input
+                    type="password"
+                    value={s.composio?.api_key ?? ''}
+                    onChange={(e) => upd((d) => void (d.composio = { ...d.composio, api_key: e.target.value || undefined }))}
+                  />
+                </Field>
+                <Field label="User id" hint="Whose connections YAHO uses in your Composio project.">
+                  <Input
+                    value={s.composio?.user_id ?? 'yaho'}
+                    onChange={(e) => upd((d) => void (d.composio = { ...d.composio, user_id: e.target.value || undefined }))}
+                  />
+                </Field>
+                <div className="md:col-span-2">
+                  <Check
+                    label="Test Composio"
+                    run={async () => {
+                      await save();
+                      const r = await api<Array<{ toolkit: string }>>('/api/composio/connections');
+                      return `connected · ${r.length} connection${r.length === 1 ? '' : 's'}`;
                     }}
                   />
                 </div>

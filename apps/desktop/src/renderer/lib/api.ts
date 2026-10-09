@@ -179,6 +179,8 @@ export interface Resource {
   briefing: string;
   keys: Array<{ name: string; secret: boolean; has_value?: boolean }>;
   agents: string[];
+  kind?: 'keys' | 'composio';
+  config?: { toolkit?: string; toolkit_name?: string; logo?: string; connected_account_id?: string };
 }
 
 export interface Artifact {

@@ -109,9 +109,11 @@ export async function envForAgent(ctx: Ctx, resources: string[]): Promise<{ env:
   const dop = new Dopbase(ctx);
   const env: Record<string, string> = {};
   const warnings: string[] = [];
-  if (!resources.length) return { env, warnings };
+  if (!resources.some((r) => getResource(ctx, r).kind !== 'composio')) return { env, warnings };
   if (!dop.configured) return { env, warnings: ['Dopbase is not configured; no resource keys were injected'] };
   for (const r of resources) {
+    // Composio resources have no values to inject: agents use them through yaho tool.
+    if (getResource(ctx, r).kind === 'composio') continue;
     try {
       Object.assign(env, await dop.runtimeValues(r));
     } catch (e) {

@@ -32,6 +32,8 @@ you stop existing until the next one. Everything you want to remember must be wr
 | `yaho artifact add <project> <file> --kind <kind>`          | Register something you made in a project                            |
 | `yaho briefing show` / `yaho briefing update < briefing.md` | Read or rewrite your own briefing for future runs                   |
 | `yaho resource keys <resource>`                             | Key names (and non-secret values) of a resource you may use         |
+| `yaho tools <resource> [--search words]`                    | Tools of a Composio resource, with their input schemas              |
+| `yaho tool <resource> <TOOL_SLUG> < args.yaml`              | Run one of them; YAHO calls the app for you                         |
 | `yaho budget`                                               | Budget, spend so far, and what this job has cost                    |
 | `yaho sleep <duration>`                                     | End now; resume this same conversation after e.g. `30m`, `2h`, `1d` |
 | `yaho finish [--summary "..."]`                             | End this job successfully                                           |

@@ -47,7 +47,9 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
     for (const name of agent.resources) {
       const r = getResource(ctx, name);
       parts.push(
-        `### ${r.name}\n${r.briefing.trim()}\n\nKeys: ${r.keys.map((k) => `\`${k.name}\`${k.secret ? ' (secret)' : ''}`).join(', ') || 'none'}`,
+        r.kind === 'composio'
+          ? `### ${r.name} (Composio: ${r.config?.toolkit_name ?? r.config?.toolkit})\n${r.briefing.trim()}`
+          : `### ${r.name}\n${r.briefing.trim()}\n\nKeys: ${r.keys.map((k) => `\`${k.name}\`${k.secret ? ' (secret)' : ''}`).join(', ') || 'none'}`,
       );
     }
   }
