@@ -1,3 +1,4 @@
+import { WorkspaceBrowser } from '../components/WorkspaceBrowser.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
 import { Bot, History, Play, Plus, Trash2, Wallet } from 'lucide-react';
@@ -8,18 +9,7 @@ import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
 import { ago, Badge, Card, Empty, ErrorNote, money, PageHeader, Section, StatusBadge, Tabs } from '../components/ui/display.tsx';
 import { Field, Input, ListInput, Switch, Textarea } from '../components/ui/form.tsx';
-import {
-  api,
-  url,
-  useApi,
-  type Agent,
-  type Artifact,
-  type FileEntry,
-  type Job,
-  type Project,
-  type Resource,
-  type TriggerSpec,
-} from '../lib/api.ts';
+import { api, useApi, type Agent, type Artifact, type Job, type Project, type Resource, type TriggerSpec } from '../lib/api.ts';
 import { go, href } from '../lib/router.ts';
 import type { ViewProps } from './index.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
@@ -204,7 +194,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
         {tab === 'overview' && <AgentOverview agent={a} onError={setError} />}
         {tab === 'edit' && <AgentEditor existing={a} />}
         {tab === 'briefings' && <BriefingHistory agent={a} />}
-        {tab === 'workspace' && <Workspace agent={a.name} />}
+        {tab === 'workspace' && <WorkspaceBrowser agent={a.name} />}
         {tab === 'artifacts' && <AgentArtifacts agent={a.name} />}
       </div>
     </>
@@ -580,34 +570,6 @@ function BriefingHistory({ agent }: { agent: Agent }) {
         </Card>
       ))}
     </div>
-  );
-}
-
-// ---------- workspace ----------
-
-function Workspace({ agent }: { agent: string }) {
-  const files = useApi<FileEntry[]>(`/api/agents/${agent}/workspace`, (e) => e.type === 'job');
-  const real = files.data?.filter((f) => !f.dir) ?? [];
-  return (
-    <Card className="divide-y divide-line">
-      {real.map((f) => (
-        <a
-          key={f.path}
-          className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-hover/50"
-          href={url(`/api/agents/${agent}/workspace/file`, { path: f.path })}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <code className="truncate">{f.path}</code>
-          <span className="ml-auto shrink-0 text-xs text-muted">
-            {(f.size / 1024).toFixed(1)} KB · {ago(f.modified)}
-          </span>
-        </a>
-      ))}
-      {files.data && !real.length && (
-        <div className="p-4 text-sm text-muted">Empty. The agent's scripts, memory files and agent.db appear here.</div>
-      )}
-    </Card>
   );
 }
 

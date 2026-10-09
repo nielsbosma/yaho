@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -129,6 +130,51 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('GET', '/api/agents/:name/workspace/file', (req) =>
     sendFile(req.res, safeJoin(ctx.paths.agent(req.params.name!), req.query.get('path') ?? ''), req.query.get('download') ?? undefined),
   );
+  r.on('DELETE', '/api/agents/:name/workspace/file', (req) => {
+    const name = req.params.name!;
+    const rel = req.query.get('path') ?? '';
+    if (!rel) throw new HttpError(400, 'path is required');
+    // The agent may have the file open, or be about to read it: only while it is idle.
+    if (s.agentStats(ctx, name).running) throw new HttpError(409, `${name} is running; stop it or wait for the job to end`);
+    const file = safeJoin(ctx.paths.agent(name), rel);
+    if (!existsSync(file) || statSync(file).isDirectory()) throw new HttpError(404, 'file not found');
+    rmSync(file, { force: true });
+    for (const side of ['-wal', '-shm', '-journal']) if (/\.(db|sqlite3?)$/i.test(file)) rmSync(file + side, { force: true });
+    ctx.bus.emitEvent({ type: 'changed', entity: 'workspace', name });
+    return { deleted: rel };
+  });
+  /** A read-only look into a SQLite database in the workspace: its tables, or one table's rows. */
+  r.on('GET', '/api/agents/:name/workspace/sqlite', (req) => {
+    const file = safeJoin(ctx.paths.agent(req.params.name!), req.query.get('path') ?? '');
+    if (!existsSync(file)) throw new HttpError(404, 'file not found');
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      const table = req.query.get('table');
+      if (!table) {
+        const tables = db
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+          .all() as Array<{ name: string }>;
+        return tables.map((t) => ({
+          name: t.name,
+          rows: Number((db.prepare(`SELECT COUNT(*) n FROM "${t.name.replaceAll('"', '""')}"`).get() as { n: number }).n),
+          columns: (db.prepare(`PRAGMA table_info("${t.name.replaceAll('"', '""')}")`).all() as Array<{ name: string; type: string }>).map(
+            (c) => ({ name: c.name, type: c.type }),
+          ),
+        }));
+      }
+      const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+      if (!exists) throw new HttpError(404, `no table ${table}`);
+      const limit = Math.min(500, Number(req.query.get('limit') ?? 200));
+      const offset = Math.max(0, Number(req.query.get('offset') ?? 0));
+      const rows = db.prepare(`SELECT * FROM "${table.replaceAll('"', '""')}" LIMIT ? OFFSET ?`).all(limit, offset);
+      // Blobs do not survive JSON; describe them instead.
+      return rows.map((r) =>
+        Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v instanceof Uint8Array ? `<${v.length} bytes>` : v])),
+      );
+    } finally {
+      db.close();
+    }
+  });
 
   // ---- jobs ----
   r.on('GET', '/api/jobs', (req) =>
