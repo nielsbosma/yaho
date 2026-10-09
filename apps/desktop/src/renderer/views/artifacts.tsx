@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, File, FileText, FolderOpen, Images, Presentation, Trash2 } from 'lucide-react';
+import { Copy, ExternalLink, File, FileText, FolderOpen, Images, MoreHorizontal, Presentation, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useContextMenu } from '../components/ContextMenu.tsx';
 import { Button } from '../components/ui/button.tsx';
@@ -200,6 +200,19 @@ export function ArtifactsView() {
   for (const a of all) counts.set(fileTypeOf(a.file_path), (counts.get(fileTypeOf(a.file_path)) ?? 0) + 1);
   const kinds = [...new Set(all.map((a) => a.kind))].sort();
   const shown = all.filter((a) => (!type || fileTypeOf(a.file_path) === type) && (!kind || a.kind === kind));
+  const more = useContextMenu();
+  const [confirmAll, setConfirmAll] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const filtered = !!(project || agent || job || type || kind);
+  const deleteShown = async () => {
+    setBusy(true);
+    try {
+      await api('/api/artifacts/delete', { body: { ids: shown.map((a) => a.id) } });
+      setConfirmAll(false);
+    } finally {
+      setBusy(false);
+    }
+  };
   const chips: Array<[FileType | '', string, number]> = [
     ['', 'All', all.length],
     ...TYPES.map(([id, label]) => [id, label, counts.get(id) ?? 0] as [FileType, string, number]),
@@ -212,6 +225,42 @@ export function ArtifactsView() {
         sub="Everything agents have made, stored in their projects."
         actions={
           <>
+            <Button
+              size="icon"
+              variant="ghost"
+              title="More"
+              disabled={!shown.length}
+              onClick={(e) =>
+                more.open(e, [
+                  {
+                    label: filtered ? `Delete These ${shown.length}` : `Delete All (${shown.length})`,
+                    icon: <Trash2 />,
+                    danger: true,
+                    onSelect: () => setConfirmAll(true),
+                  },
+                ])
+              }
+            >
+              <MoreHorizontal />
+            </Button>
+            {more.element}
+            <Dialog
+              open={confirmAll}
+              onClose={() => setConfirmAll(false)}
+              title={filtered ? `Delete these ${shown.length} artifacts?` : `Delete all ${shown.length} artifacts?`}
+              footer={
+                <>
+                  <Button onClick={() => setConfirmAll(false)}>Cancel</Button>
+                  <Button variant="danger" disabled={busy} onClick={() => void deleteShown()}>
+                    Delete {shown.length}
+                  </Button>
+                </>
+              }
+            >
+              <p className="text-sm text-muted">
+                {filtered ? 'Only the artifacts the current filters show. ' : ''}Their files are removed from the projects for good.
+              </p>
+            </Dialog>
             <Select className="w-44" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
               <option value="">All Projects</option>
               {projects.data?.map((p) => (

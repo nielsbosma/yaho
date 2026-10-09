@@ -156,6 +156,43 @@ function tools(ctx: Ctx): Record<string, Tool> {
         return { deleted: a.name };
       },
     },
+    list_artifacts: {
+      description: 'List artifacts (files agents made), optionally for one project, agent or job.',
+      parameters: obj({ project: str('project name'), agent: str('agent name'), job: str('job id') }),
+      run: (a) =>
+        s.listArtifacts(ctx, {
+          project: a.project ? String(a.project) : undefined,
+          agent: a.agent ? String(a.agent) : undefined,
+          job: a.job ? String(a.job) : undefined,
+        }),
+    },
+    delete_artifacts: {
+      description:
+        'Delete artifacts and their files: pass ids, or a project/agent filter (or all: true for every artifact). Destructive: only after the human has confirmed in this chat, saying how many.',
+      parameters: obj(
+        {
+          ids: { type: 'array', items: { type: 'string' } },
+          project: str('only this project'),
+          agent: str('only this agent'),
+          all: { type: 'boolean', description: 'every artifact' },
+          confirmed: { type: 'boolean' },
+        },
+        ['confirmed'],
+      ),
+      run: (a, out) => {
+        if (a.confirmed !== true) throw new HttpError(400, 'ask the human to confirm first');
+        const ids = Array.isArray(a.ids)
+          ? (a.ids as string[])
+          : a.all === true || a.project || a.agent
+            ? s
+                .listArtifacts(ctx, { project: a.project ? String(a.project) : undefined, agent: a.agent ? String(a.agent) : undefined })
+                .map((x) => String(x.id))
+            : [];
+        if (!ids.length) throw new HttpError(400, 'say which artifacts: ids, a project, an agent, or all: true');
+        out.navigate = ['artifacts'];
+        return { deleted: s.deleteArtifacts(ctx, ids) };
+      },
+    },
     list_inbox: {
       description: "List the human's inbox (messages from agents), unread first.",
       parameters: obj({ unread_only: { type: 'boolean' } }),

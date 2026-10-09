@@ -288,6 +288,12 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const file = safeJoin(join(ctx.paths.project(a.project), 'artifacts'), a.file_path);
     sendFile(req.res, file, req.query.get('download') ? basename(a.file_path) : undefined);
   });
+  /** Delete many artifacts at once (the gallery's Delete All), by id. */
+  r.on('POST', '/api/artifacts/delete', async (req) => {
+    const { ids } = await req.body<{ ids?: string[] }>();
+    if (!Array.isArray(ids)) throw new HttpError(400, 'ids is required');
+    return { deleted: s.deleteArtifacts(ctx, ids) };
+  });
   r.on('DELETE', '/api/artifacts/:id', (req) => {
     const a = ctx.db.prepare('SELECT * FROM artifacts WHERE id = ?').get(req.params.id!) as
       | { project: string; file_path: string }

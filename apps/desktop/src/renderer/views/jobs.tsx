@@ -64,6 +64,8 @@ export function JobList({ agent }: { agent: string }) {
 
 function JobTable({ jobs, showAgent }: { jobs: Job[]; showAgent?: boolean }) {
   if (!jobs.length) return null;
+  // The Stop column only exists while something here can be stopped.
+  const stoppable = jobs.some((j) => j.status === 'running' || j.status === 'queued');
   return (
     <Card className="overflow-hidden">
       <table className="w-full text-sm">
@@ -75,7 +77,7 @@ function JobTable({ jobs, showAgent }: { jobs: Job[]; showAgent?: boolean }) {
             <th className="px-4 py-2 font-medium">Status</th>
             <th className="px-4 py-2 font-medium">Runtime</th>
             <th className="px-4 py-2 text-right font-medium">Cost</th>
-            <th className="w-10" />
+            {stoppable && <th className="w-10" />}
           </tr>
         </thead>
         <tbody>
@@ -105,13 +107,15 @@ function JobTable({ jobs, showAgent }: { jobs: Job[]; showAgent?: boolean }) {
               </td>
               <td className="px-4 py-2 text-muted tabular-nums">{duration(j.started, j.status === 'running' ? null : j.ended)}</td>
               <td className="px-4 py-2 text-right tabular-nums">{money(j.cost_usd)}</td>
-              <td className="px-2 py-2">
-                {(j.status === 'running' || j.status === 'queued') && (
-                  <Button size="icon" variant="ghost" title="Stop" onClick={() => void api(`/api/jobs/${j.id}/stop`, { method: 'POST' })}>
-                    <CircleStop />
-                  </Button>
-                )}
-              </td>
+              {stoppable && (
+                <td className="px-2 py-2">
+                  {(j.status === 'running' || j.status === 'queued') && (
+                    <Button size="icon" variant="ghost" title="Stop" onClick={() => void api(`/api/jobs/${j.id}/stop`, { method: 'POST' })}>
+                      <CircleStop />
+                    </Button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

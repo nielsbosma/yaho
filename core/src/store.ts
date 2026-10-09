@@ -1,4 +1,5 @@
 import { mkdirSync, rmSync, renameSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { Cron } from 'croner';
 import type { Ctx } from './context.ts';
 import type { Guardrails } from './config.ts';
@@ -636,4 +637,21 @@ export function addArtifact(ctx: Ctx, a: { project: string; agent: string; job: 
     .run(id, a.project, a.agent, a.job, a.kind, a.file_path, now());
   ctx.bus.emitEvent({ type: 'changed', entity: 'artifacts', name: id });
   return ctx.db.prepare('SELECT * FROM artifacts WHERE id = ?').get(id) as Row;
+}
+
+/** Delete artifacts and their files. Returns how many existed. */
+export function deleteArtifacts(ctx: Ctx, ids: string[]): number {
+  let n = 0;
+  for (const id of ids) {
+    const a = ctx.db.prepare('SELECT project, file_path FROM artifacts WHERE id = ?').get(id) as Row | undefined;
+    if (!a) continue;
+    const dir = join(ctx.paths.project(a.project as string), 'artifacts');
+    const file = join(dir, a.file_path as string);
+    // Only files inside the project's artifacts folder.
+    if (file.startsWith(dir)) rmSync(file, { force: true });
+    ctx.db.prepare('DELETE FROM artifacts WHERE id = ?').run(id);
+    n++;
+  }
+  if (n) ctx.bus.emitEvent({ type: 'changed', entity: 'artifacts' });
+  return n;
 }
