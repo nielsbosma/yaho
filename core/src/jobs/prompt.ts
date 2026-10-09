@@ -38,7 +38,7 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
       const dir = join(ctx.paths.project(name), 'files');
       const files = existsSync(dir) ? readdirSync(dir) : [];
       parts.push(
-        `### ${p.title} (\`${p.name}\`)\n${p.briefing.trim()}\n\nFiles: ${files.length ? files.map((f) => `\`${f}\``).join(', ') : 'none'}`,
+        `### ${p.title} (\`${p.name}\`)\n${p.briefing.trim()}\n\nContext files (read them with yaho project files): ${files.length ? files.map((f) => `\`${f}\``).join(', ') : 'none'}`,
       );
     }
   }

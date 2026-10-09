@@ -1,63 +1,63 @@
 @import 'tailwindcss';
 
-/* Cool paper, a blue accent, serif headings. */
+/* Clean greys with a hint of green, a green accent, serif headings. */
 :root {
-  --c-bg: #f7f9fc;
-  --c-sidebar: #eef2f8;
+  --c-bg: #f8f9f8;
+  --c-sidebar: #f1f3f1;
   --c-panel: #ffffff;
-  --c-ink: #1b2334;
-  --c-muted: #64708a;
-  --c-line: #e0e6ef;
-  --c-line-strong: #cbd4e2;
-  --c-hover: #e6ebf4;
-  --c-accent: #2f6fde;
-  --c-accent-hover: #2459bd;
-  --c-ok: #3a7d55;
+  --c-ink: #1c211e;
+  --c-muted: #6b736e;
+  --c-line: #e3e7e4;
+  --c-line-strong: #d0d6d2;
+  --c-hover: #e9ede9;
+  --c-accent: #2f7a5b;
+  --c-accent-hover: #25644a;
+  --c-ok: #3d8a4f;
   --c-warn: #a86b12;
   --c-danger: #c0453a;
-  --c-info: #0e8aa3;
-  --c-code: #eef2f8;
+  --c-info: #56707e;
+  --c-code: #f1f3f1;
   color-scheme: light;
 }
 
 /* Dark: an explicit choice (data-theme on <html>), or the system's when the person chose "system". */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --c-bg: #161b25;
-    --c-sidebar: #11151d;
-    --c-panel: #1d2330;
-    --c-ink: #e5e9f1;
-    --c-muted: #96a0b6;
-    --c-line: #2a3242;
-    --c-line-strong: #384255;
-    --c-hover: #242b39;
-    --c-accent: #5b8ff0;
-    --c-accent-hover: #7aa5f4;
+    --c-bg: #171a18;
+    --c-sidebar: #121412;
+    --c-panel: #1e221f;
+    --c-ink: #e6e9e7;
+    --c-muted: #9aa39d;
+    --c-line: #2b302d;
+    --c-line-strong: #3a403c;
+    --c-hover: #252a26;
+    --c-accent: #5fbf8f;
+    --c-accent-hover: #7dd0a5;
     --c-ok: #6cbf8b;
     --c-warn: #e0a84a;
     --c-danger: #e57368;
-    --c-info: #4fc3d9;
-    --c-code: #11151d;
+    --c-info: #93aebb;
+    --c-code: #121412;
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --c-bg: #161b25;
-  --c-sidebar: #11151d;
-  --c-panel: #1d2330;
-  --c-ink: #e5e9f1;
-  --c-muted: #96a0b6;
-  --c-line: #2a3242;
-  --c-line-strong: #384255;
-  --c-hover: #242b39;
-  --c-accent: #5b8ff0;
-  --c-accent-hover: #7aa5f4;
+  --c-bg: #171a18;
+  --c-sidebar: #121412;
+  --c-panel: #1e221f;
+  --c-ink: #e6e9e7;
+  --c-muted: #9aa39d;
+  --c-line: #2b302d;
+  --c-line-strong: #3a403c;
+  --c-hover: #252a26;
+  --c-accent: #5fbf8f;
+  --c-accent-hover: #7dd0a5;
   --c-ok: #6cbf8b;
   --c-warn: #e0a84a;
   --c-danger: #e57368;
-  --c-info: #4fc3d9;
-  --c-code: #11151d;
+  --c-info: #93aebb;
+  --c-code: #121412;
   color-scheme: dark;
 }
 

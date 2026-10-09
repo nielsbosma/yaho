@@ -211,7 +211,7 @@ function ProjectDetail({ name }: { name: string }) {
         )}
 
         <Section
-          title="Files"
+          title="Context Files"
           actions={
             <Button size="sm" onClick={() => input.current?.click()}>
               <Upload /> Add Files
@@ -262,7 +262,9 @@ function ProjectDetail({ name }: { name: string }) {
                 </div>
               ))}
             {!files.data?.some((f) => !f.dir) && (
-              <div className="p-6 text-center text-sm text-muted">Drop files here to attach them to the project.</div>
+              <div className="p-6 text-center text-sm text-muted">
+                Drop files here to give agents working on this project more context: brand guides, specs, data.
+              </div>
             )}
           </Card>
         </Section>

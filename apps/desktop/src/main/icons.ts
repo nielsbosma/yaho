@@ -4,7 +4,7 @@ import { nativeImage, type NativeImage } from 'electron';
  * Icons drawn in code, so the app needs no image assets: a blue disc for the tray and window, with a red dot when
  * the human has unread messages, plus the small red overlay Windows shows on the taskbar button.
  */
-const ACCENT = [0xde, 0x6f, 0x2f]; // BGR of #2f6fde, the accent blue
+const ACCENT = [0x5b, 0x7a, 0x2f]; // BGR of #2f7a5b, the accent green
 const RED = [0x3a, 0x45, 0xd9];
 const WHITE = [0xff, 0xff, 0xff];
 

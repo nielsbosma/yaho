@@ -147,7 +147,11 @@ describe('yaho CLI inside a job', () => {
     const dir2 = join(dir, 'projects', 'widget', 'artifacts');
     for (const f of ['a.txt', 'b.txt']) {
       writeFileSync(join(dir2, f), f);
-      ctx.db.prepare("INSERT INTO artifacts (id, project, agent, job, kind, file_path, created) VALUES (?, 'widget', 'alpha', NULL, 'file', ?, '2026-01-01')").run(`art_${f}`, f);
+      ctx.db
+        .prepare(
+          "INSERT INTO artifacts (id, project, agent, job, kind, file_path, created) VALUES (?, 'widget', 'alpha', NULL, 'file', ?, '2026-01-01')",
+        )
+        .run(`art_${f}`, f);
     }
     expect(await api('/api/artifacts/delete', { body: { ids: ['art_a.txt', 'art_b.txt', 'art_missing'] } })).toEqual({ deleted: 2 });
     expect(existsSync(join(dir2, 'a.txt'))).toBe(false);
