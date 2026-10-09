@@ -1,3 +1,4 @@
+import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
 import { FileText, FolderKanban, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
@@ -20,18 +21,46 @@ export function ProjectsView({ route }: ViewProps) {
 
 function ProjectList() {
   const projects = useApi<Project[]>('/api/projects', changed);
+  const [layout, setLayout] = useLayout('projects');
   return (
     <>
       <PageHeader
         title="Projects"
         sub="What agents work on: a product, a campaign, a portfolio. Each holds a briefing, files and artifacts."
         actions={
-          <Button variant="primary" onClick={() => go('projects', 'new')}>
-            <Plus /> New Project
-          </Button>
+          <>
+            <LayoutSwitch value={layout} onChange={setLayout} />
+            <Button variant="primary" onClick={() => go('projects', 'new')}>
+              <Plus /> New Project
+            </Button>
+          </>
         }
       />
-      <div className="grid gap-3 p-8 md:grid-cols-2">
+      {layout === 'table' && !!projects.data?.length && (
+        <div className="p-8">
+          <DataTable
+            rows={projects.data}
+            rowKey={(p) => p.name}
+            to={(p) => ['projects', p.name]}
+            columns={[
+              { label: 'Project', cell: (p) => <span className="font-medium">{p.title}</span> },
+              { label: 'Name', cell: (p) => <code className="text-xs text-muted">{p.name}</code> },
+              { label: 'Briefing', cell: (p) => <span className="line-clamp-1 text-muted">{p.briefing || '—'}</span> },
+              {
+                label: 'Agents',
+                cell: (p) => (
+                  <span className="flex flex-wrap gap-1">
+                    {p.agents.map((a) => (
+                      <Badge key={a}>{a}</Badge>
+                    ))}
+                  </span>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
+      <div className={cn('grid gap-3 p-8 md:grid-cols-2', layout === 'table' && 'hidden')}>
         {projects.data?.map((p) => (
           <a key={p.name} href={href('projects', p.name)}>
             <Card className="p-4 transition-colors hover:border-line-strong">

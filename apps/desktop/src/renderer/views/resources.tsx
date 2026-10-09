@@ -1,3 +1,4 @@
+import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
 import { KeyRound, Lock, Plus, Trash2, Unlock } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
@@ -19,18 +20,53 @@ export function ResourcesView({ route }: ViewProps) {
 
 function ResourceList() {
   const list = useApi<Resource[]>('/api/resources', changed);
+  const [layout, setLayout] = useLayout('resources');
   return (
     <>
       <PageHeader
         title="Resources"
         sub="APIs, CLIs and accounts agents may use. Key values live in Dopbase; agents only ever see the names."
         actions={
-          <Button variant="primary" onClick={() => go('resources', 'new')}>
-            <Plus /> New Resource
-          </Button>
+          <>
+            <LayoutSwitch value={layout} onChange={setLayout} />
+            <Button variant="primary" onClick={() => go('resources', 'new')}>
+              <Plus /> New Resource
+            </Button>
+          </>
         }
       />
-      <div className="grid gap-3 p-8 md:grid-cols-2">
+      {layout === 'table' && !!list.data?.length && (
+        <div className="p-8">
+          <DataTable
+            rows={list.data}
+            rowKey={(r) => r.name}
+            to={(r) => ['resources', r.name]}
+            columns={[
+              { label: 'Resource', cell: (r) => <span className="font-medium">{r.name}</span> },
+              { label: 'Briefing', cell: (r) => <span className="line-clamp-1 text-muted">{r.briefing || '—'}</span> },
+              {
+                label: 'Keys',
+                cell: (r) => (
+                  <span className="text-muted">
+                    {r.keys.length} ({r.keys.filter((k) => k.has_value).length} set)
+                  </span>
+                ),
+              },
+              {
+                label: 'Agents',
+                cell: (r) => (
+                  <span className="flex flex-wrap gap-1">
+                    {r.agents.map((a) => (
+                      <Badge key={a}>{a}</Badge>
+                    ))}
+                  </span>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
+      <div className={cn('grid gap-3 p-8 md:grid-cols-2', layout === 'table' && 'hidden')}>
         {list.data?.map((r) => (
           <a key={r.name} href={href('resources', r.name)}>
             <Card className="p-4 transition-colors hover:border-line-strong">
