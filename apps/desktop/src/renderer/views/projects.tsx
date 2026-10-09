@@ -1,5 +1,7 @@
 import { Markdown } from '../components/Markdown.tsx';
-import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
+import { useConfirmDelete } from '../components/ConfirmDelete.tsx';
+import { useContextMenu } from '../components/ContextMenu.tsx';
+import { DataTable, LayoutSwitch, openDeleteMenu, useLayout } from '../components/ListLayout.tsx';
 import { FileText, FolderKanban, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
@@ -23,6 +25,17 @@ export function ProjectsView({ route }: ViewProps) {
 
 function ProjectList() {
   const projects = useApi<Project[]>('/api/projects', changed);
+  const del = useConfirmDelete(
+    'Project',
+    (name) => api(`/api/projects/${name}`, { method: 'DELETE' }),
+    "The project's context files and artifacts are deleted from disk. Agents lose access to it.",
+  );
+  const cardMenu = useContextMenu();
+  const rowMenu = (name: string) =>
+    openDeleteMenu(
+      () => go('projects', name),
+      () => del.ask(name),
+    );
   const [layout, setLayout] = useLayout('projects');
   return (
     <>
@@ -42,6 +55,7 @@ function ProjectList() {
         <div className="p-8">
           <DataTable
             rows={projects.data}
+            menu={(p) => rowMenu(p.name)}
             rowKey={(p) => p.name}
             to={(p) => ['projects', p.name]}
             columns={[
@@ -62,9 +76,11 @@ function ProjectList() {
           />
         </div>
       )}
+      {del.dialog}
+      {cardMenu.element}
       <div className={cn('grid gap-3 p-8 md:grid-cols-2', layout === 'table' && 'hidden')}>
         {projects.data?.map((p) => (
-          <a key={p.name} href={href('projects', p.name)}>
+          <a key={p.name} href={href('projects', p.name)} onContextMenu={(e) => cardMenu.open(e, rowMenu(p.name))}>
             <Card className="p-4 transition-colors hover:border-line-strong">
               <div className="flex items-center gap-2">
                 <FolderKanban className="size-4 text-muted" />

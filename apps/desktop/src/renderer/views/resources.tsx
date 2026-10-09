@@ -1,5 +1,7 @@
 import { Markdown } from '../components/Markdown.tsx';
-import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
+import { useConfirmDelete } from '../components/ConfirmDelete.tsx';
+import { useContextMenu } from '../components/ContextMenu.tsx';
+import { DataTable, LayoutSwitch, openDeleteMenu, useLayout } from '../components/ListLayout.tsx';
 import { MultiPicker } from '../components/MultiPicker.tsx';
 import { AppLogo, ComposioExplorer, ComposioTools } from './composio.tsx';
 import { Blocks, KeyRound, Lock, Plus, Trash2, Unlock } from 'lucide-react';
@@ -24,6 +26,17 @@ export function ResourcesView({ route }: ViewProps) {
 
 function ResourceList() {
   const list = useApi<Resource[]>('/api/resources', changed);
+  const del = useConfirmDelete(
+    'Resource',
+    (name) => api(`/api/resources/${name}`, { method: 'DELETE' }),
+    'Agents lose access. Values stay in Dopbase until you remove them there; a Composio connection stays in Composio.',
+  );
+  const cardMenu = useContextMenu();
+  const rowMenu = (name: string) =>
+    openDeleteMenu(
+      () => go('resources', name),
+      () => del.ask(name),
+    );
   const [layout, setLayout] = useLayout('resources');
   return (
     <>
@@ -46,6 +59,7 @@ function ResourceList() {
         <div className="p-8">
           <DataTable
             rows={list.data}
+            menu={(r) => rowMenu(r.name)}
             rowKey={(r) => r.name}
             to={(r) => ['resources', r.name]}
             columns={[
@@ -79,9 +93,11 @@ function ResourceList() {
           />
         </div>
       )}
+      {del.dialog}
+      {cardMenu.element}
       <div className={cn('grid gap-3 p-8 md:grid-cols-2', layout === 'table' && 'hidden')}>
         {list.data?.map((r) => (
-          <a key={r.name} href={href('resources', r.name)}>
+          <a key={r.name} href={href('resources', r.name)} onContextMenu={(e) => cardMenu.open(e, rowMenu(r.name))}>
             <Card className="p-4 transition-colors hover:border-line-strong">
               <div className="flex items-center gap-2">
                 <KeyRound className="size-4 text-muted" />

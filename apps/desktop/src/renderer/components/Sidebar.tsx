@@ -61,8 +61,8 @@ export function Sidebar({
   return (
     <aside className="relative flex shrink-0 flex-col border-r border-line bg-sidebar" style={{ width }}>
       <Resizer width={width} onChange={setWidth} side="right" initial={256} />
-      <div className="flex h-14 items-center gap-2 px-4">
-        <Wordmark className="h-6 text-ink" />
+      <div className="flex h-16 items-center gap-2 px-4">
+        <Wordmark className="h-[41px] text-ink" />
         {state?.version && <span className="text-[11px] text-muted tabular-nums">v{state.version}</span>}
         <span
           title={connected ? 'Connected to the core' : 'Reconnecting to the core…'}

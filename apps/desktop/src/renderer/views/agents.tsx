@@ -1,6 +1,8 @@
 import { WorkspaceBrowser } from '../components/WorkspaceBrowser.tsx';
 import { Markdown } from '../components/Markdown.tsx';
-import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
+import { useConfirmDelete } from '../components/ConfirmDelete.tsx';
+import { useContextMenu } from '../components/ContextMenu.tsx';
+import { DataTable, LayoutSwitch, openDeleteMenu, useLayout } from '../components/ListLayout.tsx';
 import { Bot, History, LibraryBig, Play, Plus, Trash2, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import YAML from 'yaml';
@@ -28,6 +30,17 @@ export function AgentsView({ route }: ViewProps) {
 
 function AgentList() {
   const agents = useApi<Agent[]>('/api/agents', agentChanged());
+  const del = useConfirmDelete(
+    'Agent',
+    (name) => api(`/api/agents/${name}`, { method: 'DELETE' }),
+    "Running jobs are stopped, and the agent's jobs, sessions and briefing history are removed. Its workspace folder stays on disk.",
+  );
+  const cardMenu = useContextMenu();
+  const rowMenu = (name: string) =>
+    openDeleteMenu(
+      () => go('agents', name),
+      () => del.ask(name),
+    );
   const [layout, setLayout] = useLayout('agents');
   return (
     <>
@@ -47,6 +60,7 @@ function AgentList() {
         <div className="p-8">
           <DataTable
             rows={agents.data}
+            menu={(a) => rowMenu(a.name)}
             rowKey={(a) => a.name}
             to={(a) => ['agents', a.name]}
             columns={[
@@ -90,9 +104,11 @@ function AgentList() {
           />
         </div>
       )}
+      {del.dialog}
+      {cardMenu.element}
       <div className={cn('grid gap-3 p-8 md:grid-cols-2', layout === 'table' && 'hidden')}>
         {agents.data?.map((a) => (
-          <a key={a.name} href={href('agents', a.name)}>
+          <a key={a.name} href={href('agents', a.name)} onContextMenu={(e) => cardMenu.open(e, rowMenu(a.name))}>
             <Card className="p-4 transition-colors hover:border-line-strong">
               <div className="flex items-center gap-2">
                 <Bot className={cn('size-4', a.running ? 'text-info' : 'text-muted')} />

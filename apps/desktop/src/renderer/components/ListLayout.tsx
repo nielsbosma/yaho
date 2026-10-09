@@ -1,6 +1,7 @@
-import { LayoutGrid, List } from 'lucide-react';
+import { ExternalLink, LayoutGrid, List, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { go } from '../lib/router.ts';
+import { useContextMenu, type MenuItem } from './ContextMenu.tsx';
 import { cn } from './ui/cn.ts';
 import { Card } from './ui/display.tsx';
 
@@ -66,14 +67,19 @@ export function DataTable<T>({
   columns,
   rowKey,
   to,
+  menu,
 }: {
   rows: T[];
   columns: Column<T>[];
   rowKey: (r: T) => string;
   to: (r: T) => string[];
+  /** Items for the row's right-click menu. */
+  menu?: (r: T) => MenuItem[];
 }) {
+  const context = useContextMenu();
   return (
     <Card className="overflow-hidden">
+      {context.element}
       <table className="w-full text-sm">
         <thead className="text-left text-xs text-muted">
           <tr className="border-b border-line">
@@ -89,6 +95,7 @@ export function DataTable<T>({
             <tr
               key={rowKey(r)}
               onClick={() => go(...to(r))}
+              onContextMenu={menu ? (e) => context.open(e, menu(r)) : undefined}
               className="cursor-pointer border-b border-line last:border-0 hover:bg-hover/50"
             >
               {columns.map((c) => (
@@ -103,3 +110,9 @@ export function DataTable<T>({
     </Card>
   );
 }
+
+/** The usual row menu: open it, or delete it (after a confirmation). */
+export const openDeleteMenu = (open: () => void, remove: () => void): MenuItem[] => [
+  { label: 'Open', icon: <ExternalLink />, onSelect: open },
+  { label: 'Delete', icon: <Trash2 />, danger: true, onSelect: remove },
+];
