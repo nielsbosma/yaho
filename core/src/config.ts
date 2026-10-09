@@ -12,10 +12,10 @@ export interface Settings {
     url: string;
     /** Key the harness uses for model calls when no master key is set. */
     api_key?: string;
-    /** With a master key YAHO mints one virtual key per job, capped at the agent's remaining budget. */
+    /** With a master key Yaho mints one virtual key per job, capped at the agent's remaining budget. */
     master_key?: string;
   };
-  /** bundled: YAHO runs its own Dopbase on local_port. external: an existing server at url, with token. */
+  /** bundled: Yaho runs its own Dopbase on local_port. external: an existing server at url, with token. */
   dopbase: { mode: 'bundled' | 'external'; url: string; token?: string; local_port?: number; environment: string; project_prefix: string };
   global_spend_cap_usd: number;
   /** Composio: one API key for the whole app; resources point at its connected accounts. */

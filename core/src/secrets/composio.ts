@@ -2,7 +2,7 @@ import type { Ctx } from '../context.ts';
 import { HttpError } from '../store.ts';
 
 /**
- * Composio (https://composio.dev): hosted connections to hundreds of apps, with Composio-managed OAuth. YAHO keeps
+ * Composio (https://composio.dev): hosted connections to hundreds of apps, with Composio-managed OAuth. Yaho keeps
  * one Composio API key in Settings; every call goes through the core, so agents never see that key.
  * API: v3.1, `x-api-key` header, cursor pagination ({ items, next_cursor }).
  */

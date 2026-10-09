@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import type { Req, Router } from './http.ts';
 
 /**
- * YAHO looks like Claude Desktop by using its typefaces, Anthropic Sans and Anthropic Serif. They are Anthropic's,
- * so YAHO never ships them: when the Claude desktop app is installed on this machine, the fonts are read out of its
+ * Yaho looks like Claude Desktop by using its typefaces, Anthropic Sans and Anthropic Serif. They are Anthropic's,
+ * so Yaho never ships them: when the Claude desktop app is installed on this machine, the fonts are read out of its
  * app.asar at run time. Without it, the CSS is empty and the UI falls back to system fonts.
  */
 

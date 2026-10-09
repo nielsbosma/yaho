@@ -6,9 +6,9 @@ import YAML from 'yaml';
 import type { Ctx } from '../context.ts';
 
 /**
- * The Dopbase that ships with YAHO: one local server per data directory, started and stopped by the core.
+ * The Dopbase that ships with Yaho: one local server per data directory, started and stopped by the core.
  * First start creates its root account non-interactively; the generated password stays next to Dopbase's own data
- * (the human manages values through YAHO, so nobody needs to type it). The core signs in over REST for a session.
+ * (the human manages values through Yaho, so nobody needs to type it). The core signs in over REST for a session.
  */
 export const LOCAL_EMAIL = 'yaho@localhost.localdomain';
 const exe = process.platform === 'win32' ? 'dopbase.exe' : 'dopbase';

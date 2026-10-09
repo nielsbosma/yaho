@@ -122,7 +122,7 @@ export function Assistant({ onClose }: { onClose: () => void }) {
         {!state.turns.length && (
           <div className="space-y-3">
             <p className="text-sm text-muted">
-              Ask for anything you can do in YAHO: create or change agents, projects and resources, run jobs, read your inbox, adjust
+              Ask for anything you can do in Yaho: create or change agents, projects and resources, run jobs, read your inbox, adjust
               settings.
             </p>
           </div>

@@ -122,7 +122,7 @@ export function SettingsView() {
                     onChange={(e) => upd((d) => void (d.litellm.api_key = e.target.value || undefined))}
                   />
                 </Field>
-                <Field label="Master key (optional)" hint="Lets YAHO mint a budget-capped key per job, so LiteLLM enforces budgets.">
+                <Field label="Master key (optional)" hint="Lets Yaho mint a budget-capped key per job, so LiteLLM enforces budgets.">
                   <Input
                     type="password"
                     value={s.litellm.master_key ?? ''}
@@ -158,7 +158,7 @@ export function SettingsView() {
                   </div>
                 </Field>
                 {s.dopbase.mode === 'bundled' ? (
-                  <Field label="Local port" hint="YAHO runs its own Dopbase on 127.0.0.1, with its data in the YAHO data directory.">
+                  <Field label="Local port" hint="Yaho runs its own Dopbase on 127.0.0.1, with its data in the Yaho data directory.">
                     <Input
                       type="number"
                       value={s.dopbase.local_port ?? 4702}
@@ -203,14 +203,14 @@ export function SettingsView() {
             <Section title="Apps (Composio)">
               <Card className="grid gap-4 p-4 md:grid-cols-2">
                 <ComposioKeyHelp />
-                <Field label="Composio API key" hint="Agents never see it: YAHO makes their calls.">
+                <Field label="Composio API key" hint="Agents never see it: Yaho makes their calls.">
                   <Input
                     type="password"
                     value={s.composio?.api_key ?? ''}
                     onChange={(e) => upd((d) => void (d.composio = { ...d.composio, api_key: e.target.value || undefined }))}
                   />
                 </Field>
-                <Field label="User id" hint="Whose connections YAHO uses in your Composio project.">
+                <Field label="User id" hint="Whose connections Yaho uses in your Composio project.">
                   <Input
                     value={s.composio?.user_id ?? 'yaho'}
                     onChange={(e) => upd((d) => void (d.composio = { ...d.composio, user_id: e.target.value || undefined }))}
@@ -266,7 +266,7 @@ export function SettingsView() {
             <Section title="Harnesses">
               <Card className="space-y-3 p-4">
                 {Object.entries(s.harnesses).map(([name, h]) => (
-                  <Field key={name} label={name} hint="The command YAHO runs for this harness.">
+                  <Field key={name} label={name} hint="The command Yaho runs for this harness.">
                     <Input value={h.command} onChange={(e) => upd((d) => void (d.harnesses[name]!.command = e.target.value))} />
                   </Field>
                 ))}
@@ -285,7 +285,7 @@ export function SettingsView() {
   );
 }
 
-/** How to create a Composio API key, and which permissions YAHO needs. */
+/** How to create a Composio API key, and which permissions Yaho needs. */
 function ComposioKeyHelp() {
   const rows: Array<[string, string, string]> = [
     ['Toolkits', 'Read', 'the All Apps list'],
@@ -309,7 +309,7 @@ function ComposioKeyHelp() {
           </button>{' '}
           (a free account is enough) and open your project.
         </li>
-        <li>Go to the project's Settings → API Keys and choose Create API key. Name it, for example, "YAHO".</li>
+        <li>Go to the project's Settings → API Keys and choose Create API key. Name it, for example, "Yaho".</li>
         <li>Tick these permissions. They can't be changed later, so check them before you create the key:</li>
       </ol>
       <table className="mt-2 ml-5 text-xs">

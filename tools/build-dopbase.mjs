@@ -1,7 +1,7 @@
-// Build the Dopbase server YAHO bundles, from source, into vendor/dopbase/.
+// Build the Dopbase server Yaho bundles, from source, into vendor/dopbase/.
 // Dopbase publishes Linux and macOS binaries only, so on Windows we compile it (needs Rust: cargo).
 //   node tools/build-dopbase.mjs [version]
-// YAHO uses Dopbase's REST API only; its admin web UI is replaced by a placeholder page.
+// Yaho uses Dopbase's REST API only; its admin web UI is replaced by a placeholder page.
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -21,7 +21,7 @@ if (!existsSync(join(src, 'app', 'Cargo.toml'))) {
 // The server embeds ../dist (its admin UI); a placeholder keeps the build self-contained.
 mkdirSync(join(src, 'dist'), { recursive: true });
 if (!existsSync(join(src, 'dist', 'index.html')))
-  writeFileSync(join(src, 'dist', 'index.html'), '<!doctype html><title>Dopbase</title><p>Dopbase bundled with YAHO (API only).</p>\n');
+  writeFileSync(join(src, 'dist', 'index.html'), '<!doctype html><title>Dopbase</title><p>Dopbase bundled with Yaho (API only).</p>\n');
 
 run('cargo', ['build', '--release', '--locked'], join(src, 'app'));
 

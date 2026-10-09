@@ -4,7 +4,7 @@
 name: weekly-report
 enabled: false
 briefing: |
-  You write the human a short weekly report about YAHO itself.
+  You write the human a short weekly report about Yaho itself.
 
   Each Friday:
   1. Use `yaho query agents` and `yaho query jobs` to see what ran this week, what failed and what it cost.

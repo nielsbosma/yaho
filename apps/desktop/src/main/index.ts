@@ -20,7 +20,7 @@ if (packaged) {
   process.env.YAHO_CLI_MAIN ??= join(root, 'cli/main.mjs');
   process.env.YAHO_WEB_ROOT ??= join(root, 'renderer');
 }
-/** Under `vp dev` closing the window ends the dev session; otherwise YAHO keeps running in the tray. */
+/** Under `vp dev` closing the window ends the dev session; otherwise Yaho keeps running in the tray. */
 const devSession = !!process.env.YAHO_RENDERER_URL;
 const startHidden = process.argv.includes('--hidden');
 
@@ -46,7 +46,7 @@ function createWindow(conn: CoreConnection): BrowserWindow {
     height: 820,
     minWidth: 860,
     minHeight: 560,
-    title: 'YAHO',
+    title: 'Yaho',
     icon: appIcon(64),
     show: !startHidden,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#161b25' : '#f7f9fc',
@@ -87,7 +87,7 @@ function show(route?: string): void {
 function applyBadge(): void {
   const { unread, running, queued } = state;
   tray?.setImage(appIcon(32, unread > 0));
-  tray?.setToolTip(`YAHO · ${unread} unread · ${running} running${queued ? ` · ${queued} queued` : ''}`);
+  tray?.setToolTip(`Yaho · ${unread} unread · ${running} running${queued ? ` · ${queued} queued` : ''}`);
   if (process.platform === 'win32') win?.setOverlayIcon(unread ? overlayBadge() : null, unread ? `${unread} unread` : '');
   else app.setBadgeCount(unread);
   buildTrayMenu();
@@ -98,7 +98,7 @@ function buildTrayMenu(): void {
   const login = app.getLoginItemSettings();
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Open YAHO', click: () => show() },
+      { label: 'Open Yaho', click: () => show() },
       { label: `Inbox${state.unread ? ` (${state.unread} unread)` : ''}`, click: () => show('inbox') },
       { label: `Running Jobs (${state.running})`, click: () => show('jobs') },
       { type: 'separator' },
@@ -109,7 +109,7 @@ function buildTrayMenu(): void {
         click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] }),
       },
       { type: 'separator' },
-      { label: 'Quit YAHO', click: () => quit() },
+      { label: 'Quit Yaho', click: () => quit() },
     ]),
   );
 }
@@ -149,7 +149,7 @@ async function followCore(): Promise<void> {
           if (!data) continue;
           const e = JSON.parse(data.slice(6)) as { type: string; title?: string; body?: string; message?: string };
           if (e.type === 'notify' && Notification.isSupported()) {
-            const n = new Notification({ title: e.title ?? 'YAHO', body: e.body ?? '', icon: appIcon(64) });
+            const n = new Notification({ title: e.title ?? 'Yaho', body: e.body ?? '', icon: appIcon(64) });
             n.on('click', () => show(e.message ? `inbox/${e.message}` : 'inbox'));
             n.show();
             notified++;
@@ -192,7 +192,7 @@ app.whenReady().then(async () => {
   try {
     core = await startCore(coreMain);
   } catch (e) {
-    dialog.showErrorBox('YAHO could not start', (e as Error).message);
+    dialog.showErrorBox('Yaho could not start', (e as Error).message);
     app.quit();
     return;
   }

@@ -9,7 +9,7 @@ import { openDb } from '../db/index.ts';
 import { saveResource } from '../store.ts';
 import { Dopbase, envForAgent } from './dopbase.ts';
 
-/** A minimal Dopbase speaking the v1 envelope for the endpoints YAHO uses. */
+/** A minimal Dopbase speaking the v1 envelope for the endpoints Yaho uses. */
 function mockDopbase(): { server: Server; url: () => string; envs: Map<string, Map<string, string>> } {
   const projects = new Set<string>();
   const envs = new Map<string, Map<string, string>>(); // env id -> key -> value

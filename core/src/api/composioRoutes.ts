@@ -10,7 +10,7 @@ export function composioBriefing(resource: string, toolkitName: string, descript
     `${toolkitName} through Composio${description ? `: ${description}` : '.'}`,
     '',
     `Find tools with \`yaho tools ${resource} [--search <words>]\` (each has a slug, a description and its input schema), then run one with`,
-    `\`yaho tool ${resource} <TOOL_SLUG> < args.yaml\` (the arguments as YAML). YAHO makes the call with the connected account; there are no keys to handle.`,
+    `\`yaho tool ${resource} <TOOL_SLUG> < args.yaml\` (the arguments as YAML). Yaho makes the call with the connected account; there are no keys to handle.`,
   ].join('\n');
 }
 
@@ -28,7 +28,7 @@ export function composioRoutes(ctx: Ctx, r: Router): void {
   );
   r.on('GET', '/api/composio/connections', async (req: Req) => {
     const conns = await c().connections({ toolkit: req.query.get('toolkit') ?? undefined });
-    // Which YAHO resources already use each connection.
+    // Which Yaho resources already use each connection.
     const used = new Map<string, string[]>();
     for (const res of s.listResources(ctx)) {
       const id = res.config?.connected_account_id;

@@ -243,7 +243,7 @@ function deepMerge(target: Record<string, unknown>, patch: Record<string, unknow
   }
 }
 
-const SYSTEM = `You are the assistant inside YAHO (Yet Another Harness Orchestrator), a desktop app where long-lived AI agents run
+const SYSTEM = `You are the assistant inside Yaho (Yet Another Harness Orchestrator), a desktop app where long-lived AI agents run
 on schedules, work on projects, use resources whose secret key values live in Dopbase, and talk to the human through an inbox.
 
 You can do anything the UI can, with your tools: create and edit agents, projects and resources, run and stop jobs, read

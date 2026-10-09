@@ -2,8 +2,8 @@ import type { Ctx } from '../context.ts';
 import { HttpError, getResource } from '../store.ts';
 
 /**
- * Dopbase REST client. One Dopbase project per YAHO resource (`<prefix><resource>`), one environment
- * (settings.dopbase.environment). YAHO's own database stores only key names and flags.
+ * Dopbase REST client. One Dopbase project per Yaho resource (`<prefix><resource>`), one environment
+ * (settings.dopbase.environment). Yaho's own database stores only key names and flags.
  */
 export class Dopbase {
   ctx: Ctx;

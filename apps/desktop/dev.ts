@@ -9,7 +9,7 @@ import type { Plugin } from 'vite-plus';
  * `vp dev` at the repo root: Vite serves the renderer with HMR, and this plugin runs the core (restarted on every
  * core change) and Electron (restarted on main/preload changes). Closing the window or Ctrl+C stops everything.
  *
- * Dev uses its own data dir and port so it can run next to an installed YAHO, which may well be the one running
+ * Dev uses its own data dir and port so it can run next to an installed Yaho, which may well be the one running
  * the agent that is editing this code.
  */
 export function yahoDev(repo: string): Plugin {
@@ -29,7 +29,7 @@ export function yahoDev(repo: string): Plugin {
     else p.kill('SIGTERM');
   };
 
-  // Its own Dopbase port too, so an installed YAHO (4700, 4702) and dev (4701, 4703) never collide.
+  // Its own Dopbase port too, so an installed Yaho (4700, 4702) and dev (4701, 4703) never collide.
   const env = { ...process.env, YAHO_DATA_DIR: dataDir, YAHO_PORT: corePort, YAHO_DOPBASE_PORT: process.env.YAHO_DOPBASE_PORT ?? '4703' };
 
   function startCore(): Promise<void> {

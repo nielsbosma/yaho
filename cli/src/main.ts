@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * yaho: the agent's side of YAHO. Speaks YAML: input on stdin or flags, output on stdout.
- * Needs YAHO_API_URL and YAHO_JOB_TOKEN, which YAHO puts in every job's environment.
+ * yaho: the agent's side of Yaho. Speaks YAML: input on stdin or flags, output on stdout.
+ * Needs YAHO_API_URL and YAHO_JOB_TOKEN, which Yaho puts in every job's environment.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { parseArgs } from 'node:util';
 import YAML from 'yaml';
 
-const HELP = `yaho - talk to the YAHO orchestrator from inside a job
+const HELP = `yaho - talk to the Yaho orchestrator from inside a job
 
   yaho inbox list [--all]               unread messages (or all)
   yaho inbox read <id>                  one message with its thread
@@ -33,7 +33,7 @@ const apiUrl = process.env.YAHO_API_URL;
 const token = process.env.YAHO_JOB_TOKEN;
 
 async function call(method: string, path: string, body?: unknown, raw?: Buffer | string, contentType?: string): Promise<unknown> {
-  if (!apiUrl || !token) throw new CliError('YAHO_API_URL and YAHO_JOB_TOKEN are not set: yaho only works inside a YAHO job');
+  if (!apiUrl || !token) throw new CliError('YAHO_API_URL and YAHO_JOB_TOKEN are not set: yaho only works inside a Yaho job');
   const res = await fetch(`${apiUrl}/api/agent${path}`, {
     method,
     headers: {

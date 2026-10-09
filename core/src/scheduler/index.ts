@@ -6,7 +6,7 @@ type Row = Record<string, unknown>;
 
 /**
  * Turns triggers into jobs. Cron and delay triggers are polled; inbox triggers react to new messages.
- * A cron slot missed while YAHO was off fires once at start, then the schedule continues from now.
+ * A cron slot missed while Yaho was off fires once at start, then the schedule continues from now.
  */
 export class Scheduler {
   ctx: Ctx;

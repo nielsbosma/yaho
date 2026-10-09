@@ -80,7 +80,7 @@ export function ComposioExplorer() {
         <PageHeader
           crumbs={[{ label: 'Resources', to: href('resources') }]}
           title="Add From Composio"
-          sub="Pick one of your connections, or connect a new app. Agents use it through YAHO; your Composio key never reaches them."
+          sub="Pick one of your connections, or connect a new app. Agents use it through Yaho; your Composio key never reaches them."
         />
         <Tabs
           value={tab}

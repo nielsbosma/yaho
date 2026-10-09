@@ -65,9 +65,9 @@ export async function startCore(coreMain: string): Promise<CoreConnection> {
   for (let i = 0; i < 150; i++) {
     const s = serverFile();
     if (s && s.pid === child.pid && (await healthy(s.url))) return { url: s.url, token: token(), child };
-    if (child.exitCode !== null) throw new Error(`the YAHO core exited with code ${child.exitCode}`);
+    if (child.exitCode !== null) throw new Error(`the Yaho core exited with code ${child.exitCode}`);
     await sleep(200);
   }
   child.kill();
-  throw new Error('the YAHO core did not start within 30 seconds');
+  throw new Error('the Yaho core did not start within 30 seconds');
 }

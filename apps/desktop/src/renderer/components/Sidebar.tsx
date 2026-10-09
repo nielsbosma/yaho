@@ -62,7 +62,7 @@ export function Sidebar({
       <Resizer width={width} onChange={setWidth} side="right" initial={256} />
       <div className="flex h-14 items-center gap-2 px-4">
         <div className="flex size-7 items-center justify-center rounded-lg bg-accent font-serif text-[15px] text-white">Y</div>
-        <span className="font-serif text-lg text-ink">YAHO</span>
+        <span className="font-serif text-lg text-ink">Yaho</span>
         {state?.version && <span className="text-[11px] text-muted tabular-nums">v{state.version}</span>}
         <span
           title={connected ? 'Connected to the core' : 'Reconnecting to the core…'}

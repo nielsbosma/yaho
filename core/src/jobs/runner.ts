@@ -62,7 +62,7 @@ export class JobRunner {
   recover(): void {
     for (const j of this.ctx.db.prepare("SELECT id, pid FROM jobs WHERE status = 'running'").all() as Row[]) {
       if (j.pid) killTree(Number(j.pid));
-      this.requeueInterrupted(j.id as string, 'the YAHO core stopped while the job was running');
+      this.requeueInterrupted(j.id as string, 'the Yaho core stopped while the job was running');
     }
   }
 
@@ -322,7 +322,7 @@ export class JobRunner {
     if (r.poll) clearInterval(r.poll);
     if (r.liteKey) void deleteLitellmKey(ctx.settings, r.liteKey).catch(() => undefined);
     ctx.db.prepare('DELETE FROM job_tokens WHERE job = ?').run(r.job);
-    if (this.shuttingDown) return this.requeueInterrupted(r.job, 'the YAHO core restarted');
+    if (this.shuttingDown) return this.requeueInterrupted(r.job, 'the Yaho core restarted');
     const job = getJob(ctx, r.job);
     if (end.summary && job.session_id)
       ctx.db.prepare('UPDATE sessions SET summary = ?, updated = ? WHERE id = ?').run(end.summary, now(), job.session_id);

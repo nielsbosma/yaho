@@ -1,5 +1,5 @@
 // Build a Windows installer: bundle every process, stage them side by side, run electron-builder.
-//   node tools/package.mjs            -> apps/desktop/release/YAHO Setup <version>.exe
+//   node tools/package.mjs            -> apps/desktop/release/Yaho Setup <version>.exe
 //   node tools/package.mjs --dir      -> unpacked app only (faster, for testing)
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -73,7 +73,7 @@ writeFileSync(
   JSON.stringify(
     {
       name: 'yaho',
-      productName: 'YAHO',
+      productName: 'Yaho',
       version,
       description: 'Yet Another Harness Orchestrator',
       author: 'Niels Bosma',
@@ -89,7 +89,7 @@ writeFileSync(
 console.log('\n== electron-builder');
 const config = {
   appId: 'com.nielsbosma.yaho',
-  productName: 'YAHO',
+  productName: 'Yaho',
   electronVersion,
   directories: { app: stage, output: join(desktop, 'release') },
   // Everything is bundled; never let electron-builder pull in a node_modules from the workspace.

@@ -1,4 +1,4 @@
-# YAHO — Yet Another Harness Orchestrator
+# Yaho — Yet Another Harness Orchestrator
 
 A local desktop app that runs long-lived, self-improving agents on a schedule, lets them work on projects with
 controlled access to real-world resources, and keeps a human in the loop through an inbox, without ever making an
@@ -55,15 +55,15 @@ vp dev
 
 `vp dev` starts the renderer with hot reload, the core (restarted on every core change; running jobs resume their
 session afterwards) and the Electron window. Dev data lives in `%APPDATA%\yaho-dev` on port 4701 (Dopbase on 4703), so it can run next
-to an installed YAHO, including one whose agent is working on this repository.
+to an installed Yaho, including one whose agent is working on this repository.
 
 Then open **Settings**:
 
 | Setting                       | What to enter                                                                                                                                                                                                                                                                                                                           |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| LiteLLM proxy URL and API key | Every model an agent may use must exist in the proxy. With a master key instead, YAHO mints one budget-capped key per job and shows cost live.                                                                                                                                                                                          |
-| Dopbase                       | **Bundled** (default): YAHO runs its own Dopbase on 127.0.0.1:4702, data in `<data dir>\dopbase`, set up automatically on first start. **External**: an existing Dopbase server and a token that can create projects and set secrets. Either way each resource becomes the Dopbase project `yaho-<resource>`, environment `production`. |
-| Composio (optional)           | An API key from composio.dev. Then **Resources → From Composio** lists your connections and every app you can connect; any connection becomes a resource agents use with `yaho tools` / `yaho tool`. YAHO makes those calls, so the key never reaches an agent.                                                                         |
+| LiteLLM proxy URL and API key | Every model an agent may use must exist in the proxy. With a master key instead, Yaho mints one budget-capped key per job and shows cost live.                                                                                                                                                                                          |
+| Dopbase                       | **Bundled** (default): Yaho runs its own Dopbase on 127.0.0.1:4702, data in `<data dir>\dopbase`, set up automatically on first start. **External**: an existing Dopbase server and a token that can create projects and set secrets. Either way each resource becomes the Dopbase project `yaho-<resource>`, environment `production`. |
+| Composio (optional)           | An API key from composio.dev. Then **Resources → From Composio** lists your connections and every app you can connect; any connection becomes a resource agents use with `yaho tools` / `yaho tool`. Yaho makes those calls, so the key never reaches an agent.                                                                         |
 | Global spend cap              | When total spend reaches it, no job starts and running jobs stop.                                                                                                                                                                                                                                                                       |
 
 Create an agent from **Agents → New agent**: fill in the form, paste a YAML definition, or install one of the
@@ -105,9 +105,9 @@ Each job gets `yaho` on its PATH and a short-lived job token that scopes what it
 
 ## Fonts
 
-YAHO uses Claude Desktop's typefaces, Anthropic Sans and Anthropic Serif. They belong to Anthropic and are not in
+Yaho uses Claude Desktop's typefaces, Anthropic Sans and Anthropic Serif. They belong to Anthropic and are not in
 this repository: when the Claude desktop app is installed, the core reads them from its `app.asar` at run time and
-serves them to the UI. Without it, YAHO falls back to system fonts.
+serves them to the UI. Without it, Yaho falls back to system fonts.
 
 ## Repository
 

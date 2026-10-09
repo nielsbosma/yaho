@@ -201,7 +201,7 @@ function ResourceDetail({ name }: { name: string }) {
         title={r.name}
         sub={
           r.kind === 'composio'
-            ? `${r.config?.toolkit_name ?? r.config?.toolkit} through Composio. Agents use it with yaho tools / yaho tool; YAHO makes the calls.`
+            ? `${r.config?.toolkit_name ?? r.config?.toolkit} through Composio. Agents use it with yaho tools / yaho tool; Yaho makes the calls.`
             : "Values are stored in Dopbase and injected into the agent's environment at job start."
         }
         actions={
@@ -303,7 +303,7 @@ function ResourceDetail({ name }: { name: string }) {
           </>
         }
       >
-        <Field label="Value" hint="Sent straight to Dopbase. YAHO does not store it and cannot show it again.">
+        <Field label="Value" hint="Sent straight to Dopbase. Yaho does not store it and cannot show it again.">
           <Input type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
         </Field>
       </Dialog>

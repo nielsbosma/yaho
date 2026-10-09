@@ -65,7 +65,7 @@ export const claudeCode: HarnessAdapter = {
       run.systemPrompt,
     ];
     if (run.resumeSessionId) args.push('--resume', run.resumeSessionId);
-    // Claude Code stops itself once its own spend estimate reaches this; YAHO passes what the agent has left.
+    // Claude Code stops itself once its own spend estimate reaches this; Yaho passes what the agent has left.
     if (run.maxBudgetUsd !== undefined) args.push('--max-budget-usd', run.maxBudgetUsd.toFixed(4));
     const command = resolveCommand(run.command, run.env);
     const child = spawn(command, args, {
@@ -129,7 +129,7 @@ export const claudeCode: HarnessAdapter = {
         });
       }
     });
-    // Claude Code warns that a proxy key overrides the claude.ai login; for YAHO that is the point.
+    // Claude Code warns that a proxy key overrides the claude.ai login; for Yaho that is the point.
     const noise = /claude\.ai connectors are disabled/;
     createInterface({ input: child.stderr }).on('line', (text) => text.trim() && !noise.test(text) && onEvent({ kind: 'stderr', text }));
 
