@@ -150,50 +150,53 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
 
   return (
     <>
-      <PageHeader
-        title={
-          <span className="flex items-center gap-3">
-            {a.name}
-            {!a.enabled && <Badge>disabled</Badge>}
-          </span>
-        }
-        sub={`${a.harness} · ${a.models.join(', ') || 'no models'} · ${a.triggers.map(triggerLabel).join(' · ') || 'manual only'}`}
-        actions={
-          <>
-            <label className="mr-2 flex items-center gap-2 text-sm text-muted">
-              Enabled
-              <Switch
-                checked={a.enabled}
-                label="Enabled"
-                onChange={(v) => void act(() => api(`/api/agents/${a.name}`, { method: 'PATCH', body: { enabled: v } }))}
-              />
-            </label>
-            <Button
-              variant="primary"
-              disabled={!a.enabled}
-              onClick={() =>
-                void act(async () => {
-                  const job = await api<Job>(`/api/agents/${a.name}/run`, { method: 'POST' });
-                  go('jobs', job.id);
-                })
-              }
-            >
-              <Play /> Run Now
-            </Button>
-          </>
-        }
-      />
-      <Tabs
-        value={tab}
-        onChange={(t) => go('agents', a.name, t)}
-        tabs={[
-          { id: 'overview', label: 'Overview' },
-          { id: 'edit', label: 'Definition' },
-          { id: 'briefings', label: 'Briefing History' },
-          { id: 'workspace', label: 'Workspace' },
-          { id: 'artifacts', label: 'Artifacts' },
-        ]}
-      />
+      {/* Header and tabs stay put while the content scrolls. */}
+      <div className="sticky top-0 z-20 bg-bg">
+        <PageHeader
+          title={
+            <span className="flex items-center gap-3">
+              {a.name}
+              {!a.enabled && <Badge>disabled</Badge>}
+            </span>
+          }
+          sub={`${a.harness} · ${a.models.join(', ') || 'no models'} · ${a.triggers.map(triggerLabel).join(' · ') || 'manual only'}`}
+          actions={
+            <>
+              <label className="mr-2 flex items-center gap-2 text-sm text-muted">
+                Enabled
+                <Switch
+                  checked={a.enabled}
+                  label="Enabled"
+                  onChange={(v) => void act(() => api(`/api/agents/${a.name}`, { method: 'PATCH', body: { enabled: v } }))}
+                />
+              </label>
+              <Button
+                variant="primary"
+                disabled={!a.enabled}
+                onClick={() =>
+                  void act(async () => {
+                    const job = await api<Job>(`/api/agents/${a.name}/run`, { method: 'POST' });
+                    go('jobs', job.id);
+                  })
+                }
+              >
+                <Play /> Run Now
+              </Button>
+            </>
+          }
+        />
+        <Tabs
+          value={tab}
+          onChange={(t) => go('agents', a.name, t)}
+          tabs={[
+            { id: 'overview', label: 'Overview' },
+            { id: 'edit', label: 'Definition' },
+            { id: 'briefings', label: 'Briefing History' },
+            { id: 'workspace', label: 'Workspace' },
+            { id: 'artifacts', label: 'Artifacts' },
+          ]}
+        />
+      </div>
       <div className="space-y-6 p-8">
         <ErrorNote>{error}</ErrorNote>
         {tab === 'overview' && <AgentOverview agent={a} onError={setError} />}

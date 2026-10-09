@@ -67,7 +67,7 @@ export function Empty({ icon, title, children }: { icon?: ReactNode; title: stri
 
 export function PageHeader({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-8 pt-7 pb-5">
+    <div className="sticky top-0 z-20 flex flex-wrap items-start justify-between gap-3 border-b border-line bg-bg px-8 pt-7 pb-5">
       <div className="min-w-0">
         <h1 className="truncate font-serif text-[26px] leading-tight text-ink">{title}</h1>
         {sub && <div className="mt-1 text-sm text-muted">{sub}</div>}
