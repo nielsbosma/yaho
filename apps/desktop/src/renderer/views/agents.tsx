@@ -1,3 +1,4 @@
+import { Markdown } from '../components/Markdown.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
 import { Bot, History, Play, Plus, Trash2, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -153,6 +154,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
       {/* Header and tabs stay put while the content scrolls. */}
       <div className="sticky top-0 z-20 bg-bg">
         <PageHeader
+          crumbs={[{ label: 'Agents', to: href('agents') }]}
           title={
             <span className="flex items-center gap-3">
               {a.name}
@@ -259,7 +261,9 @@ function AgentOverview({ agent: a, onError }: { agent: Agent; onError: (e: strin
         </Card>
       </div>
       <Section title="Briefing">
-        <Card className="prose-yaho max-h-72 overflow-auto p-4 text-sm">{a.briefing || <span className="text-muted">Empty</span>}</Card>
+        <Card className="max-h-72 overflow-auto p-4 text-sm">
+          {a.briefing ? <Markdown>{a.briefing}</Markdown> : <span className="text-muted">Empty</span>}
+        </Card>
       </Section>
       <Section title="Jobs">
         <JobList agent={a.name} />
@@ -491,7 +495,11 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
   if (existing) return body;
   return (
     <>
-      <PageHeader title="New Agent" sub="Fill in the form, switch to YAML and paste a definition, or start from an example." />
+      <PageHeader
+        crumbs={[{ label: 'Agents', to: href('agents') }]}
+        title="New Agent"
+        sub="Fill in the form, switch to YAML and paste a definition, or start from an example."
+      />
       <div className="space-y-8 p-8">
         <Examples />
         {body}
@@ -568,7 +576,7 @@ function BriefingHistory({ agent }: { agent: Agent }) {
               </Button>
             )}
           </div>
-          {open === h.id && <div className="prose-yaho mt-3 border-t border-line pt-3 text-sm">{h.briefing}</div>}
+          {open === h.id && <Markdown className="mt-3 border-t border-line pt-3 text-sm">{h.briefing}</Markdown>}
         </Card>
       ))}
     </div>

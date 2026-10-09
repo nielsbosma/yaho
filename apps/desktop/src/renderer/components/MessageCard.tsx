@@ -1,3 +1,4 @@
+import { Markdown } from './Markdown.tsx';
 import { Bot, Check, Copy, Trash2, CornerDownRight, ExternalLink, HelpCircle, Info, ListChecks, Send, User } from 'lucide-react';
 import { useState } from 'react';
 import type { Message } from '../lib/api.ts';
@@ -93,7 +94,7 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
       </div>
       <div className="space-y-3 px-4 pt-1.5 pb-4">
         {m.title && <h3 className="font-serif text-[19px] leading-snug text-ink">{m.title}</h3>}
-        {m.body && <div className={cn('prose-yaho text-[14.5px] text-ink/90', compact && 'line-clamp-3')}>{m.body}</div>}
+        {m.body && <Markdown className={cn('text-[14.5px] text-ink/90', compact && 'line-clamp-3')}>{m.body}</Markdown>}
 
         {!compact && m.steps?.length ? (
           <ol className="space-y-2">

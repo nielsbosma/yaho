@@ -1,3 +1,4 @@
+import { Markdown } from './Markdown.tsx';
 import { Resizer, usePanelWidth } from './Resizer.tsx';
 import { ArrowUp, Check, ChevronRight, SquarePen, Sparkles, X, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -157,7 +158,7 @@ export function Assistant({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
               ) : null}
-              {t.text && <div className="prose-yaho text-sm">{t.text}</div>}
+              {t.text && <Markdown className="text-sm">{t.text}</Markdown>}
             </div>
           ),
         )}

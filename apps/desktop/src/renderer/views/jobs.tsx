@@ -1,3 +1,5 @@
+import { Markdown } from '../components/Markdown.tsx';
+import { Resizer, usePanelWidth } from '../components/Resizer.tsx';
 import { ChevronRight, CircleStop, FileText, Play, RotateCcw, Terminal, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
@@ -171,6 +173,7 @@ function JobDetail({ id }: { id: string }) {
   const j = job.data;
   useTick(j?.status === 'running');
   const files = useMemo(() => filesTouched(events), [events]);
+  const [sideWidth, setSideWidth] = usePanelWidth('job-side', 280, 200, 520);
   if (job.error) return <Empty title="Job not found">{job.error}</Empty>;
   if (!j) return null;
 
@@ -188,6 +191,10 @@ function JobDetail({ id }: { id: string }) {
   return (
     <>
       <PageHeader
+        crumbs={[
+          { label: 'Running Jobs', to: href('jobs') },
+          { label: j.agent, to: href('agents', j.agent) },
+        ]}
         title={
           <span className="flex items-center gap-3">
             <a href={href('agents', j.agent)} className="hover:text-accent">
@@ -220,8 +227,8 @@ function JobDetail({ id }: { id: string }) {
           </>
         }
       />
-      <div className="grid gap-6 p-8 xl:grid-cols-[minmax(0,1fr)_260px]">
-        <div className="min-w-0 space-y-2">
+      <div className="@container flex items-start">
+        <div className="min-w-0 flex-1 space-y-2 p-8">
           <ErrorNote>{error}</ErrorNote>
           {(j.status === 'failed' || j.status === 'budget_exhausted') && j.reason && (
             <div
@@ -254,7 +261,12 @@ function JobDetail({ id }: { id: string }) {
           )}
           <div ref={bottom} />
         </div>
-        <aside className="space-y-6">
+        {/* Stays beside the log at any width, pinned under the sticky header while the log scrolls. */}
+        <aside
+          className="sticky top-[118px] hidden max-h-[calc(100vh-118px)] shrink-0 space-y-6 self-start overflow-y-auto border-l border-line p-6 @[42rem]:block"
+          style={{ width: sideWidth }}
+        >
+          <Resizer width={sideWidth} onChange={setSideWidth} side="left" initial={280} />
           <Section title="Files Touched">
             {files.length ? (
               <ul className="space-y-1 text-xs">
@@ -304,7 +316,7 @@ function EventRow({ e }: { e: JobEvent }) {
   const d = e.data;
   switch (e.kind) {
     case 'text':
-      return <div className="prose-yaho rounded-xl px-1 py-1.5 text-[14.5px]">{String(d.text ?? '')}</div>;
+      return <Markdown className="px-1 py-1.5 text-[14.5px]">{String(d.text ?? '')}</Markdown>;
     case 'tool_use': {
       const input = (d.input ?? {}) as Record<string, unknown>;
       return (
@@ -359,7 +371,7 @@ function EventRow({ e }: { e: JobEvent }) {
       return d.summary ? (
         <Card className="border-ok/30 p-3 text-sm">
           <div className="mb-1 text-xs font-medium text-ok">Result</div>
-          <div className="prose-yaho">{String(d.summary)}</div>
+          <Markdown>{String(d.summary)}</Markdown>
         </Card>
       ) : null;
     case 'stderr':

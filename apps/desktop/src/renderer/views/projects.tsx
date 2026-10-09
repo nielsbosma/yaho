@@ -1,3 +1,4 @@
+import { Markdown } from '../components/Markdown.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
 import { FileText, FolderKanban, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -138,7 +139,7 @@ function ProjectForm({ existing, onDone }: { existing?: Project; onDone?: () => 
   if (existing) return form;
   return (
     <>
-      <PageHeader title="New Project" />
+      <PageHeader crumbs={[{ label: 'Projects', to: href('projects') }]} title="New Project" />
       <div className="p-8">{form}</div>
     </>
   );
@@ -185,6 +186,7 @@ function ProjectDetail({ name }: { name: string }) {
   return (
     <>
       <PageHeader
+        crumbs={[{ label: 'Projects', to: href('projects') }]}
         title={p.title}
         sub={<code>{p.name}</code>}
         actions={
@@ -202,7 +204,9 @@ function ProjectDetail({ name }: { name: string }) {
           <ProjectForm existing={p} onDone={() => setEditing(false)} />
         ) : (
           <Section title="Briefing">
-            <Card className="prose-yaho p-4 text-sm">{p.briefing || <span className="text-muted">Empty</span>}</Card>
+            <Card className="p-4 text-sm">
+              {p.briefing ? <Markdown>{p.briefing}</Markdown> : <span className="text-muted">Empty</span>}
+            </Card>
           </Section>
         )}
 

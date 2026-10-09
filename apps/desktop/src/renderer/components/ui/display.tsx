@@ -65,10 +65,25 @@ export function Empty({ icon, title, children }: { icon?: ReactNode; title: stri
   );
 }
 
-export function PageHeader({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
+/** A way back: links to the pages above this one, shown over the title. */
+export type Crumb = { label: string; to: string };
+
+export function PageHeader({ title, sub, actions, crumbs }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode; crumbs?: Crumb[] }) {
   return (
     <div className="sticky top-0 z-20 flex flex-wrap items-start justify-between gap-3 border-b border-line bg-bg px-8 pt-7 pb-5">
       <div className="min-w-0">
+        {crumbs?.length ? (
+          <nav aria-label="Breadcrumb" className="-mt-3 mb-1.5 flex items-center gap-1 text-xs text-muted">
+            {crumbs.map((c) => (
+              <span key={c.to} className="flex items-center gap-1">
+                <a href={c.to} className="hover:text-accent">
+                  {c.label}
+                </a>
+                <span aria-hidden>›</span>
+              </span>
+            ))}
+          </nav>
+        ) : null}
         <h1 className="truncate font-serif text-[26px] leading-tight text-ink">{title}</h1>
         {sub && <div className="mt-1 text-sm text-muted">{sub}</div>}
       </div>

@@ -1,3 +1,4 @@
+import { Markdown } from '../components/Markdown.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
 import { MultiPicker } from '../components/MultiPicker.tsx';
 import { KeyRound, Lock, Plus, Trash2, Unlock } from 'lucide-react';
@@ -156,7 +157,7 @@ function ResourceEditor({ existing, onDone }: { existing?: Resource; onDone?: ()
   if (existing) return form;
   return (
     <>
-      <PageHeader title="New Resource" />
+      <PageHeader crumbs={[{ label: 'Resources', to: href('resources') }]} title="New Resource" />
       <div className="p-8">{form}</div>
     </>
   );
@@ -185,6 +186,7 @@ function ResourceDetail({ name }: { name: string }) {
   return (
     <>
       <PageHeader
+        crumbs={[{ label: 'Resources', to: href('resources') }]}
         title={r.name}
         sub="Values are stored in Dopbase and injected into the agent's environment at job start."
         actions={
@@ -203,7 +205,9 @@ function ResourceDetail({ name }: { name: string }) {
         ) : (
           <>
             <Section title="Briefing">
-              <Card className="prose-yaho p-4 text-sm">{r.briefing || <span className="text-muted">Empty</span>}</Card>
+              <Card className="p-4 text-sm">
+                {r.briefing ? <Markdown>{r.briefing}</Markdown> : <span className="text-muted">Empty</span>}
+              </Card>
             </Section>
             <Section title="Keys">
               <Card className="divide-y divide-line">
