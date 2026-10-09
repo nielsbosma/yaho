@@ -90,7 +90,7 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
         <span className="ml-auto">{ago(m.created)}</span>
         {m.job && (
           <a href={href('jobs', m.job)} className="hover:text-accent" title="Open the job that sent this">
-            job
+            Job
           </a>
         )}
         {m.job && (
@@ -100,7 +100,7 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
             className="cursor-pointer hover:text-accent"
             title="Ask the agent about this in Chat with Yaho"
           >
-            follow up
+            Follow Up
           </button>
         )}
       </div>
