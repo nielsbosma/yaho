@@ -1,3 +1,4 @@
+import { describeCron } from '../components/SchedulePicker.tsx';
 import { Bot, Check, Clock, Code2, FolderKanban, Inbox, KeyRound, LibraryBig, Lock, Search, Wallet } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Markdown } from '../components/Markdown.tsx';
@@ -178,7 +179,7 @@ function ExampleDetail({ ex }: { ex: Example }) {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Fact icon={<Clock />} label="Runs">
-          {ex.triggers.map((t) => (t.cron ? `cron ${t.cron}` : 'on inbox messages')).join(' · ') || 'manually'}
+          {ex.triggers.map((t) => (t.cron ? describeCron(t.cron) : 'on inbox messages')).join(' · ') || 'manually'}
         </Fact>
         <Fact icon={<Bot />} label="Models">
           {ex.models.join(', ') || 'defaults'}

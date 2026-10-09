@@ -1,3 +1,4 @@
+import { describeCron, SchedulePicker } from '../components/SchedulePicker.tsx';
 import { WorkspaceBrowser } from '../components/WorkspaceBrowser.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { useConfirmDelete } from '../components/ConfirmDelete.tsx';
@@ -10,7 +11,7 @@ import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
 import { ago, Badge, Card, Empty, ErrorNote, money, PageHeader, Section, StatusBadge, Tabs } from '../components/ui/display.tsx';
-import { Field, Input, ListInput, Switch, Textarea } from '../components/ui/form.tsx';
+import { Field, Input, Switch, Textarea } from '../components/ui/form.tsx';
 import { api, useApi, type Agent, type Artifact, type Job, type Project, type Resource, type TriggerSpec } from '../lib/api.ts';
 import { go, href } from '../lib/router.ts';
 import type { ViewProps } from './index.tsx';
@@ -137,7 +138,7 @@ function AgentList() {
   );
 }
 
-export const triggerLabel = (t: TriggerSpec) => ('cron' in t ? `cron ${t.cron}` : 'inbox');
+export const triggerLabel = (t: TriggerSpec) => ('cron' in t ? describeCron(t.cron) : 'on inbox messages');
 
 function AgentDetail({ name, tab }: { name: string; tab: string }) {
   const agent = useApi<Agent>(`/api/agents/${encodeURIComponent(name)}`, agentChanged(name));
@@ -424,10 +425,10 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
           <Field label="Max parallel jobs">
             <Input type="number" min="1" value={draft.max_parallel} onChange={(e) => set('max_parallel', Number(e.target.value))} />
           </Field>
-          <Field label="Cron triggers" hint='Comma-separated, e.g. "0 7 * * *".'>
-            <ListInput value={crons} onChange={(v) => setTriggers(v, inbox)} placeholder="0 7 * * *" />
+          <Field label="Schedule" className="md:col-span-2" group>
+            <SchedulePicker value={crons} onChange={(v) => setTriggers(v, inbox)} />
           </Field>
-          <Field label="Inbox trigger" hint="A new message starts a job.">
+          <Field label="Inbox trigger" hint="A new message starts a job." className="md:col-span-2">
             <div className="flex h-9 items-center">
               <Switch checked={inbox} onChange={(v) => setTriggers(crons, v)} label="Inbox trigger" />
             </div>
