@@ -295,8 +295,41 @@ call that does the whole thing (a full YAML definition) over many small ones.
 - Delete only after the human confirmed in this conversation; then pass confirmed: true.
 - After acting, answer in one or two short sentences saying what you did. Use plain text, no headings.`;
 
+/** What the chat is about, when it was opened from a page (Chat About Agent). */
+export interface ChatFocus {
+  agent?: string;
+}
+
+/** The focused agent's definition and recent activity, so the model can discuss it without a lookup first. */
+function focusPrompt(ctx: Ctx, focus: ChatFocus | undefined): string {
+  if (!focus?.agent) return '';
+  const a = s.getAgent(ctx, focus.agent);
+  const jobs = s.listJobs(ctx, { agent: a.name, limit: 10 }).map((j) => {
+    const ses = j.session_id
+      ? (ctx.db.prepare('SELECT summary FROM sessions WHERE id = ?').get(j.session_id) as { summary?: string } | undefined)
+      : undefined;
+    return { id: j.id, created: j.created, trigger: j.trigger_type, status: j.status, reason: j.reason, cost_usd: j.cost_usd, summary: ses?.summary };
+  });
+  const fence = '```';
+  return [
+    '',
+    `## This chat is about the agent "${a.name}"`,
+    'The human opened it from that agent\'s page. Questions are about this agent unless they say otherwise: how it works,',
+    'why it did something, how to improve it. When they ask for a change, make it with save_agent (the whole definition,',
+    'with your edits) and say what changed. When explaining, you may answer at more length than one or two sentences.',
+    '',
+    'Definition:',
+    `${fence}yaml\n${YAML.stringify(a).trim()}\n${fence}`,
+    '',
+    `Stats: ${JSON.stringify(s.agentStats(ctx, a.name))}`,
+    '',
+    'Recent jobs (newest first; summaries are what the agent reported):',
+    YAML.stringify(jobs).trim(),
+  ].join('\n');
+}
+
 /** One assistant turn: call the model, run its tools, repeat until it answers. */
-export async function chat(ctx: Ctx, history: ChatMessage[]): Promise<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }> {
+export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus): Promise<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }> {
   const { litellm } = ctx.settings;
   const key = litellm.master_key ?? litellm.api_key;
   if (!litellm.url || !key) throw new HttpError(503, 'set the LiteLLM proxy URL and key in Settings first');
@@ -307,7 +340,7 @@ export async function chat(ctx: Ctx, history: ChatMessage[]): Promise<{ messages
     type: 'function',
     function: { name, description: x.description, parameters: x.parameters },
   }));
-  const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM }, ...history.filter((m) => m.role !== 'system')];
+  const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM + focusPrompt(ctx, focus) }, ...history.filter((m) => m.role !== 'system')];
   const steps: Step[] = [];
   const out: { navigate?: string[] } = {};
 

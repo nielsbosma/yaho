@@ -31,14 +31,26 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  // What the chat is about: a job to continue, or an agent to discuss (at most one).
   const [chatJob, setChatJob] = useState<string | null>(null);
+  const [chatAgent, setChatAgent] = useState<string | null>(null);
   useEffect(() => {
     const onJob = (e: Event) => {
+      setChatAgent(null);
       setChatJob((e as CustomEvent<string>).detail);
       toggleAssistant(true);
     };
+    const onAgent = (e: Event) => {
+      setChatJob(null);
+      setChatAgent((e as CustomEvent<string>).detail);
+      toggleAssistant(true);
+    };
     window.addEventListener('yaho:chat-job', onJob);
-    return () => window.removeEventListener('yaho:chat-job', onJob);
+    window.addEventListener('yaho:chat-agent', onAgent);
+    return () => {
+      window.removeEventListener('yaho:chat-job', onJob);
+      window.removeEventListener('yaho:chat-agent', onAgent);
+    };
   });
   const state = useApi<AppState>('/api/state', (e) => e.type === 'message' || e.type === 'job');
 
@@ -74,10 +86,13 @@ export function App() {
       {assistant && (
         <Assistant
           job={chatJob}
+          agent={chatAgent}
           onLeaveJob={() => setChatJob(null)}
+          onLeaveAgent={() => setChatAgent(null)}
           onClose={() => {
             toggleAssistant(false);
             setChatJob(null);
+            setChatAgent(null);
           }}
         />
       )}

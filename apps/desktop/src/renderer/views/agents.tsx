@@ -4,7 +4,8 @@ import { Markdown } from '../components/Markdown.tsx';
 import { useContextMenu, type MenuItem } from '../components/ContextMenu.tsx';
 import { RunDialog, useAgentMenu } from '../components/AgentMenu.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
-import { Bot, ExternalLink, History, LibraryBig, Play, Plus, Trash2, Wallet } from 'lucide-react';
+import { Bot, ExternalLink, History, LibraryBig, Play, Plus, Sparkles, Trash2, Wallet } from 'lucide-react';
+import { chatAboutAgent } from '../lib/chat.ts';
 import { useEffect, useState } from 'react';
 import YAML from 'yaml';
 import { Button } from '../components/ui/button.tsx';
@@ -172,6 +173,9 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
                   onChange={(v) => void act(() => api(`/api/agents/${a.name}`, { method: 'PATCH', body: { enabled: v } }))}
                 />
               </label>
+              <Button onClick={() => chatAboutAgent(a.name)} title="Ask about this agent, or have Yaho change it">
+                <Sparkles /> Chat About Agent
+              </Button>
               <Button variant="primary" disabled={!a.enabled} onClick={() => setRunning(true)}>
                 <Play /> Run Now
               </Button>

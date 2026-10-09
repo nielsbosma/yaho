@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
 import type { Ctx } from '../context.ts';
-import { chat, type ChatMessage } from '../assistant/index.ts';
+import { chat, type ChatFocus, type ChatMessage } from '../assistant/index.ts';
 import { litellmModels } from '../jobs/litellm.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
 import * as s from '../store.ts';
@@ -95,9 +95,9 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
 
   // ---- assistant ----
   r.on('POST', '/api/assistant', async (req) => {
-    const { messages } = await req.body<{ messages?: ChatMessage[] }>();
+    const { messages, focus } = await req.body<{ messages?: ChatMessage[]; focus?: ChatFocus }>();
     if (!Array.isArray(messages) || !messages.length) throw new HttpError(400, 'messages is required');
-    return chat(ctx, messages);
+    return chat(ctx, messages, focus);
   });
 
   // ---- agents ----
