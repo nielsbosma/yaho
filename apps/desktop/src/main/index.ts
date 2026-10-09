@@ -6,7 +6,20 @@ import { appIcon, overlayBadge } from './icons.ts';
 
 const here = import.meta.dirname;
 const desktopRoot = join(here, '../..');
-const coreMain = process.env.YAHO_CORE_MAIN ?? join(desktopRoot, '../../core/src/main.ts');
+/**
+ * Two layouts: the repo (TypeScript run directly) and a packaged app, where tools/package.mjs puts bundled
+ * main/, preload/, core/, cli/, renderer/, briefings/ and examples/ side by side.
+ */
+const packaged = existsSync(join(here, '../core/main.mjs'));
+const root = join(here, '..');
+const coreMain = process.env.YAHO_CORE_MAIN ?? (packaged ? join(root, 'core/main.mjs') : join(desktopRoot, '../../core/src/main.ts'));
+const preload = packaged ? join(root, 'preload/index.cjs') : join(here, '../preload/index.cts');
+const rendererIndex = packaged ? join(root, 'renderer/index.html') : join(desktopRoot, 'dist/renderer/index.html');
+if (packaged) {
+  // The core finds briefings/ and examples/ next to itself; it needs telling where the CLI and the web UI are.
+  process.env.YAHO_CLI_MAIN ??= join(root, 'cli/main.mjs');
+  process.env.YAHO_WEB_ROOT ??= join(root, 'renderer');
+}
 /** Under `vp dev` closing the window ends the dev session; otherwise YAHO keeps running in the tray. */
 const devSession = !!process.env.YAHO_RENDERER_URL;
 const startHidden = process.argv.includes('--hidden');
@@ -39,7 +52,7 @@ function createWindow(conn: CoreConnection): BrowserWindow {
     backgroundColor: '#faf9f5',
     autoHideMenuBar: true,
     webPreferences: {
-      preload: join(here, '../preload/index.cts'),
+      preload,
       sandbox: false,
       contextIsolation: true,
       additionalArguments: [`--yaho-api=${conn.url}`, `--yaho-token=${conn.token}`],
@@ -57,7 +70,7 @@ function createWindow(conn: CoreConnection): BrowserWindow {
   });
   const devUrl = process.env.YAHO_RENDERER_URL;
   if (devUrl) void w.loadURL(devUrl);
-  else void w.loadFile(join(desktopRoot, 'dist/renderer/index.html'));
+  else void w.loadFile(rendererIndex);
   w.webContents.once('did-finish-load', () => applyBadge());
   return w;
 }

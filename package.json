@@ -7,7 +7,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "node node_modules/typescript/bin/tsc -p .",
-    "ready": "vp check && node node_modules/typescript/bin/tsc -p . && vp test run"
+    "ready": "vp check && node node_modules/typescript/bin/tsc -p . && vp test run",
+    "package": "node tools/package.mjs",
+    "package:dir": "node tools/package.mjs --dir"
   },
   "devDependencies": {
     "@types/node": "catalog:",

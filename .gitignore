@@ -34,3 +34,7 @@ dist-ssr
 
 # Plans (local only)
 .plan/
+
+# Packaging output
+apps/desktop/build/
+apps/desktop/release/

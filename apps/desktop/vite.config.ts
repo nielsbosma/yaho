@@ -12,4 +12,6 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: { port: 4710, strictPort: true },
+  // tools/package.mjs bundles the Electron main process and preload from here; Electron itself is provided at run time.
+  pack: { deps: { neverBundle: ['electron'] } },
 });
