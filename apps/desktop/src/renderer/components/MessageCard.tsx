@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useApi, type Artifact, type Message } from '../lib/api.ts';
 import { ArtifactGrid } from '../views/artifacts.tsx';
 import { platform } from '../lib/platform.ts';
+import { chatAboutJob } from '../lib/chat.ts';
 import { href } from '../lib/router.ts';
 import { Button } from './ui/button.tsx';
 import { cn } from './ui/cn.ts';
@@ -91,6 +92,16 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
           <a href={href('jobs', m.job)} className="hover:text-accent" title="Open the job that sent this">
             job
           </a>
+        )}
+        {m.job && (
+          <button
+            type="button"
+            onClick={() => chatAboutJob(m.job!)}
+            className="cursor-pointer hover:text-accent"
+            title="Ask the agent about this in Chat with Yaho"
+          >
+            follow up
+          </button>
         )}
       </div>
       <div className="space-y-3 px-4 pt-1.5 pb-4">

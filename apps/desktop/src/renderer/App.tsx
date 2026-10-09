@@ -50,6 +50,15 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  const [chatJob, setChatJob] = useState<string | null>(null);
+  useEffect(() => {
+    const onJob = (e: Event) => {
+      setChatJob((e as CustomEvent<string>).detail);
+      toggleAssistant(true);
+    };
+    window.addEventListener('yaho:chat-job', onJob);
+    return () => window.removeEventListener('yaho:chat-job', onJob);
+  });
   const state = useApi<AppState>('/api/state', (e) => e.type === 'message' || e.type === 'job');
 
   useEffect(
@@ -81,7 +90,16 @@ export function App() {
       <main className="min-w-0 flex-1 overflow-y-auto">
         <View route={route} />
       </main>
-      {assistant && <Assistant onClose={() => toggleAssistant(false)} />}
+      {assistant && (
+        <Assistant
+          job={chatJob}
+          onLeaveJob={() => setChatJob(null)}
+          onClose={() => {
+            toggleAssistant(false);
+            setChatJob(null);
+          }}
+        />
+      )}
     </div>
   );
 }

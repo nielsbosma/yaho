@@ -1,3 +1,4 @@
+import { JobChat } from './JobChat.tsx';
 import { Markdown } from './Markdown.tsx';
 import { Resizer, usePanelWidth } from './Resizer.tsx';
 import { ArrowUp, Check, ChevronRight, SquarePen, Sparkles, X, XCircle } from 'lucide-react';
@@ -56,7 +57,7 @@ function StepRow({ step }: { step: Step }) {
   );
 }
 
-export function Assistant({ onClose }: { onClose: () => void }) {
+export function Assistant({ onClose, job, onLeaveJob }: { onClose: () => void; job: string | null; onLeaveJob: () => void }) {
   const [state, setState] = useState(empty);
   const [width, setWidth] = usePanelWidth('assistant', 400, 320, 760);
   const [text, setText] = useState('');
@@ -109,7 +110,10 @@ export function Assistant({ onClose }: { onClose: () => void }) {
         <Sparkles className="size-4 text-accent" />
         <span className="font-serif text-lg">Chat with Yaho</span>
         <div className="ml-auto flex gap-1">
-          <Button size="icon" variant="ghost" title="New Chat" onClick={reset}>
+          <Button size="icon" variant="ghost" title="New Chat" onClick={() => {
+            reset();
+            onLeaveJob();
+          }}>
             <SquarePen />
           </Button>
           <Button size="icon" variant="ghost" title="Close (Ctrl+J)" onClick={onClose}>
@@ -118,6 +122,10 @@ export function Assistant({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
+      {job ? (
+        <JobChat job={job} onLeave={onLeaveJob} />
+      ) : (
+        <>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {!state.turns.length && (
           <div className="space-y-3">
@@ -176,6 +184,8 @@ export function Assistant({ onClose }: { onClose: () => void }) {
         </div>
         <p className="mt-1.5 px-1 text-[11px] text-muted">Never paste secret values here; set them on the resource page.</p>
       </div>
+        </>
+      )}
     </aside>
   );
 }

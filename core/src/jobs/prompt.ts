@@ -26,10 +26,13 @@ export function systemPrompt(agent: Agent): string {
 /** The user turn: why this job started, then context (projects, resources, inbox, session summary). */
 export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: string | null, resumed: boolean): string {
   const parts: string[] = [];
+  // A follow-up's detail is the human's message: it gets its own section below.
+  const followup = job.trigger_type === 'followup';
+  const detail = !followup && job.trigger_detail ? ` (${job.trigger_detail})` : '';
   parts.push(
     resumed
-      ? `# Job ${job.id} (resumed)\nYou are resuming your previous conversation. Trigger: ${job.trigger_type}${job.trigger_detail ? ` (${job.trigger_detail})` : ''}.`
-      : `# Job ${job.id}\nTrigger: ${job.trigger_type}${job.trigger_detail ? ` (${job.trigger_detail})` : ''}. Time: ${new Date().toISOString()}.`,
+      ? `# Job ${job.id} (resumed)\nYou are resuming your previous conversation. Trigger: ${job.trigger_type}${detail}.`
+      : `# Job ${job.id}\nTrigger: ${job.trigger_type}${detail}. Time: ${new Date().toISOString()}.`,
   );
   if (agent.projects.length) {
     parts.push('## Your projects');
@@ -60,6 +63,10 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
       : '## Inbox\nNo unread messages.',
   );
   if (sessionSummary && !resumed) parts.push(`## Where you left off last time\n${sessionSummary}`);
-  parts.push('Do your work, then end with `yaho finish --summary "..."` or `yaho sleep <duration>`.');
+  if (followup)
+    parts.push(
+      `## Follow-up from the human\n${job.trigger_detail ?? ''}\n\nThey are chatting with you about your work in this session. Answer in your reply text (Markdown): it is shown to them directly, so do not also send it with \`yaho send\`. If they ask for changes, make them. Then end with \`yaho finish --summary "..."\`.`,
+    );
+  else parts.push('Do your work, then end with `yaho finish --summary "..."` or `yaho sleep <duration>`.');
   return parts.join('\n\n');
 }

@@ -1,11 +1,12 @@
 import { Markdown } from '../components/Markdown.tsx';
 import { Resizer, usePanelWidth } from '../components/Resizer.tsx';
-import { ChevronRight, CircleStop, FileText, Play, RotateCcw, Terminal, Wrench } from 'lucide-react';
+import { ChevronRight, CircleStop, FileText, MessageSquare, Play, RotateCcw, Terminal, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { ago, Badge, Card, duration, Empty, ErrorNote, money, PageHeader, Section, StatusBadge } from '../components/ui/display.tsx';
 import { api, onLive, useApi, type Artifact, type Job, type JobEvent } from '../lib/api.ts';
+import { chatAboutJob } from '../lib/chat.ts';
 import { href } from '../lib/router.ts';
 import { ArtifactGrid } from './artifacts.tsx';
 import type { ViewProps } from './index.tsx';
@@ -221,6 +222,11 @@ function JobDetail({ id }: { id: string }) {
             {live && (
               <Button onClick={() => void act(`/api/jobs/${j.id}/stop`)}>
                 <CircleStop /> Stop
+              </Button>
+            )}
+            {!live && j.session_id && (
+              <Button variant={canContinue ? 'secondary' : 'primary'} onClick={() => chatAboutJob(j.id)} title="Ask the agent follow-up questions">
+                <MessageSquare /> Continue in Chat
               </Button>
             )}
             {canContinue && (

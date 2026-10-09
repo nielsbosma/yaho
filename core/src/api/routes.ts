@@ -210,6 +210,32 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('GET', '/api/jobs/:id/events', (req) => s.jobEvents(ctx, req.params.id!, Number(req.query.get('after') ?? 0)));
   r.on('POST', '/api/jobs/:id/stop', (req) => runner(ctx).stop(req.params.id!, 'stopped', 'stopped by the human'));
   r.on('POST', '/api/jobs/:id/continue', (req) => runner(ctx).continueJob(req.params.id!));
+  /** A follow-up from the human: a new job that resumes this job's session with their message. */
+  r.on('POST', '/api/jobs/:id/followup', async (req) => {
+    const job = s.getJob(ctx, req.params.id!);
+    const { message } = await req.body<{ message?: string }>();
+    if (!message?.trim()) throw new HttpError(400, 'message is required');
+    if (!job.session_id) throw new HttpError(409, 'this job has no session to continue');
+    const busy = ctx.db
+      .prepare("SELECT id FROM jobs WHERE session_id = ? AND status IN ('queued','running') LIMIT 1")
+      .get(job.session_id) as { id: string } | undefined;
+    if (busy) throw new HttpError(409, `${busy.id} is still working in this session`);
+    return runner(ctx).enqueue(job.agent, 'followup', { detail: message.trim(), sessionId: job.session_id, force: true });
+  });
+  /** Every job in this job's session, oldest first, with what the agent said in each. */
+  r.on('GET', '/api/jobs/:id/thread', (req) => {
+    const job = s.getJob(ctx, req.params.id!);
+    const jobs = job.session_id
+      ? (ctx.db.prepare('SELECT * FROM jobs WHERE session_id = ? ORDER BY created').all(job.session_id) as unknown as s.Job[])
+      : [job];
+    return jobs.map((j) => ({
+      ...j,
+      texts: s
+        .jobEvents(ctx, j.id)
+        .filter((e) => (e as { kind?: string }).kind === 'text')
+        .map((e) => String((e.data as { text?: string } | null)?.text ?? '')),
+    }));
+  });
 
   // ---- messages ----
   r.on('GET', '/api/messages', (req) =>

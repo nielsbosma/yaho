@@ -122,6 +122,23 @@ describe('scheduler', () => {
     expect(events.some((e) => e.kind === 'text' && e.data.text?.startsWith('resumed fake-'))).toBe(true);
   });
 
+  it('a follow-up resumes the job session and shows up in its thread', async () => {
+    await agent('chatty');
+    script('chatty', [{ cmd: 'yaho finish --summary done' }]);
+    script('chatty', [{ cmd: 'yaho finish --summary answered' }], 'steps-resume.json');
+    const first = await api<Job>('/api/agents/chatty/run', { method: 'POST' });
+    await settle('chatty', 1);
+    const follow = await api<Job>(`/api/jobs/${first.id}/followup`, { body: { message: 'Why that title?' } });
+    await expect(api(`/api/jobs/${first.id}/followup`, { body: { message: 'again' } })).rejects.toThrow(/still working/);
+    await settle('chatty', 2);
+    const thread = await api<Array<Job & { texts: string[] }>>(`/api/jobs/${first.id}/thread`);
+    expect(thread.map((j) => j.id)).toEqual([first.id, follow.id]);
+    expect(thread[1]).toMatchObject({ trigger_type: 'followup', trigger_detail: 'Why that title?', status: 'finished' });
+    expect(thread[1]!.texts[0]).toMatch(/^resumed fake-/);
+    const prompt = (await api<Array<{ kind: string; data: { user?: string } }>>(`/api/jobs/${follow.id}/events`)).find((e) => e.kind === 'prompt');
+    expect(prompt?.data.user).toContain('## Follow-up from the human\nWhy that title?');
+  });
+
   it('stops agent ping-pong at the hop limit and tells the human', async () => {
     await agent('ping', { triggers: [{ inbox: true }], guardrails: { hop_limit: 2 } });
     await agent('pong', { triggers: [{ inbox: true }], guardrails: { hop_limit: 2 } });
