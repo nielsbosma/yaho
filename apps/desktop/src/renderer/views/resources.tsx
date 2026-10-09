@@ -9,9 +9,10 @@ import { useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
-import { Badge, Card, Empty, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
+import { AgentChips, Badge, Card, Empty, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
 import { Field, Input, Switch, Textarea } from '../components/ui/form.tsx';
 import { api, useApi, type Agent, type Resource } from '../lib/api.ts';
+import { plainText } from '../lib/plainText.ts';
 import { go, href } from '../lib/router.ts';
 import type { ViewProps } from './index.tsx';
 
@@ -63,8 +64,8 @@ function ResourceList() {
             rowKey={(r) => r.name}
             to={(r) => ['resources', r.name]}
             columns={[
-              { label: 'Resource', cell: (r) => <span className="font-medium">{r.name}</span> },
-              { label: 'Briefing', cell: (r) => <span className="line-clamp-1 text-muted">{r.briefing || '—'}</span> },
+              { label: 'Resource', className: 'whitespace-nowrap', cell: (r) => <span className="font-medium">{r.name}</span> },
+              { label: 'Briefing', className: 'w-full max-w-0', cell: (r) => <span className="block truncate text-muted">{plainText(r.briefing) || '—'}</span> },
               {
                 label: 'Keys',
                 cell: (r) =>
@@ -82,11 +83,7 @@ function ResourceList() {
               {
                 label: 'Agents',
                 cell: (r) => (
-                  <span className="flex flex-wrap gap-1">
-                    {r.agents.map((a) => (
-                      <Badge key={a}>{a}</Badge>
-                    ))}
-                  </span>
+                  <AgentChips agents={r.agents} />
                 ),
               },
             ]}
@@ -104,7 +101,7 @@ function ResourceList() {
                 <span className="font-medium">{r.name}</span>
                 <span className="ml-auto text-xs text-muted">{r.keys.length} keys</span>
               </div>
-              <p className="mt-2 line-clamp-2 text-sm text-muted">{r.briefing || 'No briefing yet.'}</p>
+              <p className="mt-2 line-clamp-2 text-sm text-muted">{plainText(r.briefing) || 'No briefing yet.'}</p>
               <div className="mt-3 flex flex-wrap gap-1">
                 {r.agents.map((a) => (
                   <Badge key={a}>{a}</Badge>

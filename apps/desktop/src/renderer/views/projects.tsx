@@ -8,9 +8,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
-import { ago, Badge, Card, Empty, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
+import { ago, AgentChips, Badge, Card, Empty, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
 import { Field, Input, Textarea } from '../components/ui/form.tsx';
 import { api, url, useApi, type Agent, type Artifact, type FileEntry, type Project } from '../lib/api.ts';
+import { plainText } from '../lib/plainText.ts';
 import { go, href } from '../lib/router.ts';
 import { MultiPicker } from '../components/MultiPicker.tsx';
 import { ArtifactGrid } from './artifacts.tsx';
@@ -60,17 +61,13 @@ function ProjectList() {
             rowKey={(p) => p.name}
             to={(p) => ['projects', p.name]}
             columns={[
-              { label: 'Project', cell: (p) => <span className="font-medium">{p.title}</span> },
-              { label: 'Name', cell: (p) => <code className="text-xs text-muted">{p.name}</code> },
-              { label: 'Briefing', cell: (p) => <span className="line-clamp-1 text-muted">{p.briefing || '—'}</span> },
+              { label: 'Project', className: 'whitespace-nowrap', cell: (p) => <span className="font-medium">{p.title}</span> },
+              { label: 'Name', className: 'whitespace-nowrap', cell: (p) => <code className="text-xs text-muted">{p.name}</code> },
+              { label: 'Briefing', className: 'w-full max-w-0', cell: (p) => <span className="block truncate text-muted">{plainText(p.briefing) || '—'}</span> },
               {
                 label: 'Agents',
                 cell: (p) => (
-                  <span className="flex flex-wrap gap-1">
-                    {p.agents.map((a) => (
-                      <Badge key={a}>{a}</Badge>
-                    ))}
-                  </span>
+                  <AgentChips agents={p.agents} />
                 ),
               },
             ]}
@@ -88,7 +85,7 @@ function ProjectList() {
                 <span className="font-medium">{p.title}</span>
                 <code className="text-xs text-muted">{p.name}</code>
               </div>
-              <p className="mt-2 line-clamp-2 text-sm text-muted">{p.briefing || 'No briefing yet.'}</p>
+              <p className="mt-2 line-clamp-2 text-sm text-muted">{plainText(p.briefing) || 'No briefing yet.'}</p>
               <div className="mt-3 flex flex-wrap gap-1">
                 {p.agents.map((a) => (
                   <Badge key={a}>{a}</Badge>

@@ -78,7 +78,7 @@ export function DataTable<T>({
 }) {
   const context = useContextMenu();
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-x-auto">
       {context.element}
       <table className="w-full text-sm">
         <thead className="text-left text-xs text-muted">

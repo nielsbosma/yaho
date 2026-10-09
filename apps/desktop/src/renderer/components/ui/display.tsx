@@ -22,6 +22,21 @@ export function Badge({ tone = 'neutral', className, children }: { tone?: keyof 
   );
 }
 
+/** Agent names as chips on one line: the first few, then "+N" with the rest on hover. Names never break mid-word. */
+export function AgentChips({ agents, max = 2 }: { agents: string[]; max?: number }) {
+  if (!agents.length) return <span className="text-muted">—</span>;
+  const shown = agents.slice(0, max);
+  const rest = agents.length - shown.length;
+  return (
+    <span className="flex items-center gap-1 whitespace-nowrap" title={agents.join(', ')}>
+      {shown.map((a) => (
+        <Badge key={a}>{a}</Badge>
+      ))}
+      {rest > 0 && <span className="text-[11px] text-muted">+{rest}</span>}
+    </span>
+  );
+}
+
 const statusTone: Record<string, keyof typeof tones> = {
   running: 'info',
   queued: 'neutral',
