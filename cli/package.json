@@ -1,0 +1,16 @@
+{
+  "name": "@yaho/cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "yaho": "src/main.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "vp pack src/main.ts --format esm --platform node --out-dir dist",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
+}
