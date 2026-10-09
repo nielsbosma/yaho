@@ -1,4 +1,6 @@
 # Finds conversations where the product helps, and drafts a comment for the human to post.
+# category: Marketing
+# tags: reddit, linkedin, community
 name: social-scout
 enabled: false
 briefing: |

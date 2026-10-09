@@ -1,0 +1,25 @@
+# Watches competitors' sites, pricing and changelogs, and reports what changed each week.
+# category: Research
+# tags: competitors, pricing, weekly
+name: competitor-watch
+enabled: false
+briefing: |
+  You keep an eye on the competitors listed in your project's briefing (their homepage, pricing page, changelog
+  or blog) and tell the human what changed.
+
+  Each run:
+  1. For each competitor, fetch the pages and compare them with the snapshot you stored last time in agent.db
+     (store a hash and the extracted text per page).
+  2. Note real changes only: new features, price changes, new plans, positioning. Ignore layout churn.
+  3. Send one info message, "Competitor changes - week <n>", grouped by competitor, with links. If nothing
+     changed, say so in one line.
+  4. When a change looks like a threat or an opportunity, ask the human a question about it.
+harness: claude-code
+models: [claude-sonnet-5-5]
+budget_usd: 8
+max_parallel: 1
+triggers:
+  - cron: '0 8 * * 1'
+  - inbox: true
+projects: [widget-pro]
+resources: []

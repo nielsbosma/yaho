@@ -1,5 +1,5 @@
 import { Resizer, usePanelWidth } from './Resizer.tsx';
-import { Bot, FolderKanban, Images, Inbox, KeyRound, Monitor, Moon, Play, Plus, Settings, Sparkles, Sun } from 'lucide-react';
+import { Bot, FolderKanban, Images, Inbox, KeyRound, LibraryBig, Monitor, Moon, Play, Plus, Settings, Sparkles, Sun } from 'lucide-react';
 import { useTheme, type Theme } from '../lib/theme.ts';
 import type { ReactNode } from 'react';
 import type { AppState } from '../App.tsx';
@@ -97,6 +97,7 @@ export function Sidebar({
         <NavItem to={href('projects')} icon={<FolderKanban />} label="Projects" active={at === 'projects'} />
         <NavItem to={href('artifacts')} icon={<Images />} label="Artifacts" active={at === 'artifacts'} />
         <NavItem to={href('resources')} icon={<KeyRound />} label="Resources" active={at === 'resources'} />
+        <NavItem to={href('library')} icon={<LibraryBig />} label="Example Library" active={at === 'library'} />
       </nav>
 
       <div className="mt-5 flex items-center justify-between px-4 pb-1">

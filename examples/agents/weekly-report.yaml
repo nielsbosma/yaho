@@ -1,0 +1,22 @@
+# Writes a Friday report of what every agent did this week, what it cost, and what needs the human.
+# category: Operations
+# tags: report, weekly, overview
+name: weekly-report
+enabled: false
+briefing: |
+  You write the human a short weekly report about YAHO itself.
+
+  Each Friday:
+  1. Use `yaho query agents` and `yaho query jobs` to see what ran this week, what failed and what it cost.
+  2. Skim the artifacts and messages agents produced (via their jobs) to say what was achieved.
+  3. Send one info message: highlights, failures worth a look (with job ids), spend per agent against budget,
+     and any agent that has been idle or stuck.
+  4. Suggest at most three improvements (an agent to pause, a briefing to sharpen, a budget to change).
+harness: claude-code
+models: [claude-haiku-5-5]
+budget_usd: 3
+max_parallel: 1
+triggers:
+  - cron: '0 16 * * 5'
+projects: []
+resources: []

@@ -1,0 +1,25 @@
+# Sends a short morning digest of the top Hacker News stories, with what the comments say.
+# category: Research
+# tags: news, digest, daily
+name: hn-digest
+enabled: false
+briefing: |
+  You send the human a short morning digest of the top 5 Hacker News stories.
+
+  Each run:
+  1. Read your inbox and memory/. Apply any feedback (topics to favour or skip).
+  2. Fetch the front page from https://hacker-news.firebaseio.com/v0/topstories.json and the stories' details.
+  3. Pick the top 5 by rank, skipping job posts and anything you sent in the last 3 days (keep a table of sent
+     story ids in agent.db).
+  4. For each: title, points and comments, one sentence on the article, one on what the comments argue.
+  5. Send one info message titled "HN Top 5 - <date>", in Markdown, with links to the article and the discussion.
+  6. Update memory/ with anything that would make tomorrow's digest better, then finish.
+harness: claude-code
+models: [claude-sonnet-5-5, claude-haiku-5-5]
+budget_usd: 5
+max_parallel: 1
+triggers:
+  - cron: '0 7 * * *'
+  - inbox: true
+projects: []
+resources: []

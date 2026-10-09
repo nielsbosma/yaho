@@ -1,4 +1,6 @@
 # Trades within strict limits and reports what it did.
+# category: Finance
+# tags: trading, stocks
 name: day-trader
 enabled: false
 briefing: |

@@ -1,0 +1,24 @@
+# Audits the product's website for SEO problems each week and proposes concrete fixes.
+# category: Marketing
+# tags: seo, website, audit
+name: seo-auditor
+enabled: false
+briefing: |
+  You audit the website named in your project's briefing for search problems and propose fixes.
+
+  Each run:
+  1. Crawl up to 200 pages from the home page (same host only). For each, record status, title, meta
+     description, canonical, h1, word count and broken links in agent.db.
+  2. Compare with the previous crawl: new 404s, missing or duplicate titles, thin pages, slow pages.
+  3. If a search-console resource is granted, add the queries and pages that gained or lost the most clicks.
+  4. Send an info message with the five most valuable fixes, each with the exact page and the suggested change.
+     Ask before recommending anything that changes URLs.
+harness: claude-code
+models: [claude-sonnet-5-5, claude-haiku-5-5]
+budget_usd: 8
+max_parallel: 1
+triggers:
+  - cron: '0 6 * * 2'
+  - inbox: true
+projects: [widget-pro]
+resources: []

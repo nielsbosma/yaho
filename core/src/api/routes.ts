@@ -348,6 +348,32 @@ const readExample = (kind: string, name: string) => {
   return { text, data: YAML.parse(text) as Record<string, unknown> };
 };
 
+/**
+ * Example metadata lives in the YAML's leading comments, so the definition stays a plain agent:
+ *   # One-line summary.
+ *   # category: Marketing
+ *   # tags: ads, experiments
+ */
+function exampleMeta(text: string): { summary: string; category: string; tags: string[] } {
+  const head = text
+    .split(/\r?\n/)
+    .filter((l) => l.startsWith('#'))
+    .map((l) => l.replace(/^#\s?/, ''));
+  const field = (k: string) =>
+    head
+      .find((l) => l.toLowerCase().startsWith(`${k}:`))
+      ?.slice(k.length + 1)
+      .trim();
+  return {
+    summary: head.find((l) => !/^(category|tags):/i.test(l)) ?? '',
+    category: field('category') ?? 'Other',
+    tags: (field('tags') ?? '')
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean),
+  };
+}
+
 /** The example agents under examples/: listed with their YAML, installed with the projects and resources they use. */
 export function exampleRoutes(ctx: Ctx, r: Router): void {
   r.on('GET', '/api/examples', () => {
@@ -357,18 +383,42 @@ export function exampleRoutes(ctx: Ctx, r: Router): void {
       .filter((f) => f.endsWith('.yaml'))
       .map((f) => {
         const ex = readExample('agents', f.slice(0, -5))!;
+        const meta = exampleMeta(ex.text);
+        const agent = ex.data as unknown as s.Agent;
+        const has = (table: string, n: string) => !!ctx.db.prepare(`SELECT 1 FROM ${table} WHERE name = ?`).get(n);
         return {
-          name: ex.data.name,
-          about: String(ex.text.split('\n')[0] ?? '').replace(/^#\s*/, ''),
+          name: agent.name,
+          about: meta.summary,
+          category: meta.category,
+          tags: meta.tags,
           yaml: ex.text,
-          installed: s.agentExists(ctx, String(ex.data.name)),
+          briefing: agent.briefing ?? '',
+          models: agent.models ?? [],
+          budget_usd: agent.budget_usd,
+          triggers: agent.triggers ?? [],
+          projects: (agent.projects ?? []).map((p) => ({ name: p, exists: has('projects', p) })),
+          resources: (agent.resources ?? []).map((r) => ({
+            name: r,
+            exists: has('resources', r),
+            keys: ((readExample('resources', r)?.data as { keys?: Array<{ name: string; secret?: boolean }> } | undefined)?.keys ?? []).map(
+              (k) => ({
+                name: k.name,
+                secret: k.secret !== false,
+              }),
+            ),
+          })),
+          installed: s.agentExists(ctx, agent.name),
         };
-      });
+      })
+      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
   });
-  r.on('POST', '/api/examples/:name/install', (req) => {
+  r.on('POST', '/api/examples/:name/install', async (req) => {
     const ex = readExample('agents', req.params.name!);
     if (!ex) throw new HttpError(404, `no example ${req.params.name}`);
     const agent = ex.data as unknown as s.Agent;
+    // Install under another name to have the same example twice.
+    const as = (await req.body<{ name?: string }>()).name?.trim();
+    if (as) agent.name = as;
     if (s.agentExists(ctx, agent.name)) throw new HttpError(409, `agent ${agent.name} already exists`);
     const created: string[] = [];
     for (const p of agent.projects ?? []) {

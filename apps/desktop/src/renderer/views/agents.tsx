@@ -1,7 +1,7 @@
 import { WorkspaceBrowser } from '../components/WorkspaceBrowser.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
-import { Bot, History, Play, Plus, Trash2, Wallet } from 'lucide-react';
+import { Bot, History, LibraryBig, Play, Plus, Trash2, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import YAML from 'yaml';
 import { Button } from '../components/ui/button.tsx';
@@ -573,41 +573,21 @@ function AgentArtifacts({ agent }: { agent: string }) {
 }
 
 function Examples() {
-  const examples = useApi<Array<{ name: string; about: string; installed: boolean }>>('/api/examples', agentChanged());
-  const [error, setError] = useState<string | null>(null);
-  if (!examples.data?.length) return null;
+  const examples = useApi<Array<{ name: string }>>('/api/examples');
   return (
-    <Section title="Start From an Example">
-      <ErrorNote>{error}</ErrorNote>
-      <div className="grid max-w-3xl gap-3 md:grid-cols-3">
-        {examples.data.map((x) => (
-          <Card key={x.name} className="flex flex-col gap-2 p-3">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Bot className="size-4 text-muted" /> {x.name}
-            </div>
-            <p className="flex-1 text-xs text-muted">{x.about}</p>
-            <Button
-              size="sm"
-              disabled={x.installed}
-              onClick={async () => {
-                setError(null);
-                try {
-                  const r = await api<{ agent: Agent }>(`/api/examples/${x.name}/install`, { method: 'POST' });
-                  go('agents', r.agent.name);
-                } catch (e) {
-                  setError((e as Error).message);
-                }
-              }}
-            >
-              {x.installed ? 'Installed' : 'Use This'}
-            </Button>
-          </Card>
-        ))}
-      </div>
-      <p className="text-xs text-muted">
-        Examples install disabled, with any projects and resources they need. Fill in the resource keys, then enable.
-      </p>
-    </Section>
+    <a href={href('library')} className="block max-w-3xl">
+      <Card className="flex items-center gap-4 p-4 transition-colors hover:border-line-strong">
+        <LibraryBig className="size-6 shrink-0 text-accent" />
+        <div className="min-w-0">
+          <div className="font-medium">Start from an example</div>
+          <div className="text-sm text-muted">
+            Browse {examples.data?.length ?? 'the'} ready-made agents in the Example Library: what each does, what it needs, and its
+            briefing.
+          </div>
+        </div>
+        <span className="ml-auto shrink-0 text-sm text-accent">Open Library →</span>
+      </Card>
+    </a>
   );
 }
 

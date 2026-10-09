@@ -91,7 +91,11 @@ resources: []
 
   it('lists and installs the example agents with what they need', async () => {
     const list = await (await api('/api/examples')).json();
-    expect(list.map((x: { name: string }) => x.name).sort()).toEqual(['ads-optimiser', 'day-trader', 'social-scout']);
+    const names = list.map((x: { name: string }) => x.name);
+    expect(names).toEqual(expect.arrayContaining(['ads-optimiser', 'day-trader', 'social-scout', 'hn-digest', 'banner-designer']));
+    const trader = list.find((x: { name: string }) => x.name === 'day-trader');
+    expect(trader).toMatchObject({ category: 'Finance', resources: [{ name: 'stock-account', exists: false }] });
+    expect(trader.resources[0].keys.map((k: { name: string }) => k.name)).toContain('BROKER_SECRET');
     const res = await api('/api/examples/day-trader/install', { method: 'POST' });
     const out = await res.json();
     expect(out.created).toEqual(['project trading', 'resource stock-account']);

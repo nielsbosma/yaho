@@ -1,4 +1,6 @@
 # Runs Google Ads for a product and learns which ads sell.
+# category: Marketing
+# tags: google ads, experiments, sales
 name: ads-optimiser
 enabled: false # turn on once the google-ads and stripe-sales resources have values
 briefing: |
