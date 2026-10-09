@@ -22,6 +22,7 @@ import {
 import { go, href } from '../lib/router.ts';
 import type { ViewProps } from './index.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
+import { MultiPicker } from '../components/MultiPicker.tsx';
 import { ArtifactGrid } from './artifacts.tsx';
 import { JobList } from './jobs.tsx';
 
@@ -425,11 +426,23 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
               <Switch checked={inbox} onChange={(v) => setTriggers(crons, v)} label="Inbox trigger" />
             </div>
           </Field>
-          <Field label="Projects">
-            <Picker options={projects.data?.map((p) => p.name) ?? []} value={draft.projects} onChange={(v) => set('projects', v)} />
+          <Field label="Projects" group>
+            <MultiPicker
+              noun="Project"
+              emptyText="No projects"
+              options={projects.data?.map((p) => ({ value: p.name, label: p.title, hint: p.briefing.split('\n')[0] })) ?? []}
+              value={draft.projects}
+              onChange={(v) => set('projects', v)}
+            />
           </Field>
-          <Field label="Resources">
-            <Picker options={resources.data?.map((r) => r.name) ?? []} value={draft.resources} onChange={(v) => set('resources', v)} />
+          <Field label="Resources" group>
+            <MultiPicker
+              noun="Resource"
+              emptyText="No resources"
+              options={resources.data?.map((r) => ({ value: r.name, hint: r.briefing.split('\n')[0] })) ?? []}
+              value={draft.resources}
+              onChange={(v) => set('resources', v)}
+            />
           </Field>
           <Field label="Guardrails: agent-triggered jobs per hour">
             <Input
@@ -481,30 +494,6 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
         {body}
       </div>
     </>
-  );
-}
-
-function Picker({ options, value, onChange }: { options: string[]; value: string[]; onChange: (v: string[]) => void }) {
-  if (!options.length) return <div className="text-sm text-muted">None defined yet</div>;
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {options.map((o) => {
-        const on = value.includes(o);
-        return (
-          <button
-            key={o}
-            type="button"
-            onClick={() => onChange(on ? value.filter((v) => v !== o) : [...value, o])}
-            className={cn(
-              'cursor-pointer rounded-md border px-2 py-1 text-xs',
-              on ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:border-line-strong',
-            )}
-          >
-            {o}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 

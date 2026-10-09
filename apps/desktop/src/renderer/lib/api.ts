@@ -53,8 +53,15 @@ function connect() {
     listeners.forEach((l) => l(e));
   };
   source.onerror = () => {
-    // The core restarts in dev; EventSource reconnects by itself, we just tell the UI.
     listeners.forEach((l) => l({ type: 'connection', connected: false }));
+    // EventSource retries a dropped connection itself, but gives up for good after an error response (a proxy's 502
+    // while the core restarts). Then start a new one.
+    if (source?.readyState === EventSource.CLOSED) {
+      source = null;
+      setTimeout(() => {
+        if (!source && listeners.size) connect();
+      }, 2000);
+    }
   };
 }
 

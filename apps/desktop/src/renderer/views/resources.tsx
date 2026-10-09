@@ -1,4 +1,5 @@
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
+import { MultiPicker } from '../components/MultiPicker.tsx';
 import { KeyRound, Lock, Plus, Trash2, Unlock } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
@@ -231,24 +232,18 @@ function ResourceDetail({ name }: { name: string }) {
           </>
         )}
         <Section title="Agents With Access">
-          <div className="flex flex-wrap gap-1.5">
-            {agents.data?.map((a) => {
-              const on = a.resources.includes(name);
-              return (
-                <button
-                  key={a.name}
-                  type="button"
-                  onClick={() => void toggleAgent(a)}
-                  className={cn(
-                    'cursor-pointer rounded-md border px-2.5 py-1 text-sm',
-                    on ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:border-line-strong',
-                  )}
-                >
-                  {a.name}
-                </button>
-              );
-            })}
-          </div>
+          <MultiPicker
+            noun="Agent"
+            emptyText="No agents"
+            options={agents.data?.map((a) => ({ value: a.name, hint: a.briefing.split('\n')[0] })) ?? []}
+            value={agents.data?.filter((a) => a.resources.includes(name)).map((a) => a.name) ?? []}
+            onChange={(next) => {
+              for (const a of agents.data ?? []) {
+                const on = a.resources.includes(name);
+                if (on !== next.includes(a.name)) void toggleAgent(a);
+              }
+            }}
+          />
         </Section>
       </div>
       <Dialog

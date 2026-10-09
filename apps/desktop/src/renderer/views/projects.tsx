@@ -8,6 +8,7 @@ import { ago, Badge, Card, Empty, ErrorNote, PageHeader, Section } from '../comp
 import { Field, Input, Textarea } from '../components/ui/form.tsx';
 import { api, url, useApi, type Agent, type Artifact, type FileEntry, type Project } from '../lib/api.ts';
 import { go, href } from '../lib/router.ts';
+import { MultiPicker } from '../components/MultiPicker.tsx';
 import { ArtifactGrid } from './artifacts.tsx';
 import type { ViewProps } from './index.tsx';
 
@@ -263,24 +264,18 @@ function ProjectDetail({ name }: { name: string }) {
         </Section>
 
         <Section title="Agents">
-          <div className="flex flex-wrap gap-1.5">
-            {agents.data?.map((a) => {
-              const on = a.projects.includes(name);
-              return (
-                <button
-                  key={a.name}
-                  type="button"
-                  onClick={() => void toggleAgent(a)}
-                  className={cn(
-                    'cursor-pointer rounded-md border px-2.5 py-1 text-sm',
-                    on ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:border-line-strong',
-                  )}
-                >
-                  {a.name}
-                </button>
-              );
-            })}
-          </div>
+          <MultiPicker
+            noun="Agent"
+            emptyText="No agents"
+            options={agents.data?.map((a) => ({ value: a.name, hint: a.briefing.split('\n')[0] })) ?? []}
+            value={agents.data?.filter((a) => a.projects.includes(name)).map((a) => a.name) ?? []}
+            onChange={(next) => {
+              for (const a of agents.data ?? []) {
+                const on = a.projects.includes(name);
+                if (on !== next.includes(a.name)) void toggleAgent(a);
+              }
+            }}
+          />
         </Section>
 
         <Section title="Artifacts">
