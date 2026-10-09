@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import YAML from 'yaml';
 import { Button } from '../components/ui/button.tsx';
 import { Card, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
-import { Field, Input, Textarea } from '../components/ui/form.tsx';
+import { Field, Input, Switch, Textarea } from '../components/ui/form.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
 import { api, useApi } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
@@ -16,6 +16,7 @@ interface Settings {
   dopbase: { mode: 'bundled' | 'external'; url: string; token?: string; local_port?: number; environment: string; project_prefix: string };
   global_spend_cap_usd: number;
   composio?: { api_key?: string; user_id?: string };
+  ideas?: { enabled?: boolean; repo?: string };
   defaults: { harness: string; models: string[]; budget_usd: number; max_parallel: number; guardrails: Record<string, number | undefined> };
 }
 
@@ -236,6 +237,32 @@ export function SettingsView() {
                     min="0"
                     value={s.global_spend_cap_usd}
                     onChange={(e) => upd((d) => void (d.global_spend_cap_usd = Number(e.target.value)))}
+                  />
+                </Field>
+              </Card>
+            </Section>
+            <Section title="Ideas for Yaho">
+              <Card className="grid gap-4 p-4 md:grid-cols-2">
+                <label className="flex items-start gap-3 text-sm md:col-span-2">
+                  <Switch
+                    checked={s.ideas?.enabled !== false}
+                    label="Agents file ideas for Yaho"
+                    onChange={(v) => upd((d) => void (d.ideas = { ...d.ideas, enabled: v }))}
+                  />
+                  <span>
+                    Agents file ideas for Yaho itself as GitHub issues
+                    <span className="block text-xs text-muted">
+                      When something about Yaho holds an agent back, it suggests a feature with <code>yaho idea</code>. Filed with
+                      your <code>gh</code> login; without it, the idea comes to your inbox with a link instead. At most 3 per agent a
+                      day.
+                    </span>
+                  </span>
+                </label>
+                <Field label="Repository" hint="owner/name on GitHub.">
+                  <Input
+                    value={s.ideas?.repo ?? ''}
+                    placeholder="nielsbosma/yaho"
+                    onChange={(e) => upd((d) => void (d.ideas = { ...d.ideas, repo: e.target.value || undefined }))}
                   />
                 </Field>
               </Card>

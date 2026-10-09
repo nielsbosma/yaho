@@ -3,6 +3,7 @@ import { basename, join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { Composio } from '../secrets/composio.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
+import { fileIdea, type Idea } from '../ideas.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
 import type { Req, Router } from './http.ts';
@@ -175,6 +176,7 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     const until = ctx.runner!.sleep(w.job, parseDuration(String(duration ?? '')));
     return { sleeping_until: until, note: 'this process ends now; the same session resumes then' };
   });
+  on('POST', '/idea', async (req, w) => fileIdea(ctx, w, await req.body<Idea>()));
   on('POST', '/finish', async (req, w) => {
     const { summary } = await req.body<{ summary?: string }>();
     ctx.runner!.stop(w.job, 'finished', undefined, summary ? { summary } : {});

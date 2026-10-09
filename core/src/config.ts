@@ -20,6 +20,8 @@ export interface Settings {
   global_spend_cap_usd: number;
   /** Composio: one API key for the whole app; resources point at its connected accounts. */
   composio?: { api_key?: string; user_id?: string; url?: string };
+  /** Agents' ideas for Yaho itself, filed as GitHub issues with the gh CLI (yaho idea). */
+  ideas?: { enabled?: boolean; repo?: string };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   defaults: {

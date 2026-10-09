@@ -22,6 +22,7 @@ const HELP = `yaho - talk to the Yaho orchestrator from inside a job
   yaho resource keys <resource>
   yaho tools <resource> [--search words]   tools of a Composio resource
   yaho tool <resource> <TOOL_SLUG> < args.yaml   run one (arguments as YAML)
+  yaho idea --title "..." < idea.md     suggest a feature for Yaho itself (a GitHub issue)
   yaho budget
   yaho sleep <duration>                 e.g. 30m, 2h, 1d; ends this job now
   yaho finish [--summary "..."]         ends this job now
@@ -160,6 +161,10 @@ async function main(argv: string[]): Promise<void> {
           args ?? {},
         ),
       );
+    }
+    case 'idea': {
+      const body = readStdin().trim() || f.body;
+      return out(await call('POST', '/idea', { title: need(f.title, '--title "..."'), body: need(body, 'the idea as Markdown on stdin (or --body)') }));
     }
     case 'budget':
       return out(await call('GET', '/budget'));
