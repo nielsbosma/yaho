@@ -54,9 +54,45 @@ export function appIcon(size = 32, unread = false): NativeImage {
   });
 }
 
-export function overlayBadge(): NativeImage {
-  return draw(16, (x, y) => {
-    const d = Math.hypot(x - 8, y - 8);
-    return d <= 7.5 ? [RED, cover(d, 7)] : null;
+/** 3x5 pixel digits (and a plus) for the badge count; each row is 3 bits, left to right. */
+const GLYPHS: Record<string, number[]> = {
+  '0': [7, 5, 5, 5, 7],
+  '1': [2, 6, 2, 2, 7],
+  '2': [7, 1, 7, 4, 7],
+  '3': [7, 1, 7, 1, 7],
+  '4': [5, 5, 7, 1, 1],
+  '5': [7, 4, 7, 1, 7],
+  '6': [7, 4, 7, 5, 7],
+  '7': [7, 1, 1, 1, 1],
+  '8': [7, 5, 7, 5, 7],
+  '9': [7, 5, 7, 1, 7],
+  '+': [0, 2, 7, 2, 0],
+};
+const WHITE = [0xff, 0xff, 0xff];
+
+/**
+ * The taskbar overlay: a red disc with the unread count in white (9+ above nine). Drawn at 32 px for a 2x
+ * scale factor, so it stays sharp on high-DPI screens; Windows shows it at 16 px.
+ */
+export function overlayBadge(count = 0): NativeImage {
+  const size = 32;
+  const text = count > 9 ? '9+' : count > 0 ? String(count) : '';
+  const px = text.length > 1 ? 3 : 4; // one font pixel, in image pixels
+  const width = text.length * 3 * px + (text.length - 1) * px;
+  const left = Math.round((size - width) / 2);
+  const top = Math.round((size - 5 * px) / 2);
+  const ink = (x: number, y: number) => {
+    const col = Math.floor((x - left) / px);
+    const row = Math.floor((y - top) / px);
+    if (row < 0 || row > 4 || col < 0) return false;
+    const ch = text[Math.floor(col / 4)];
+    const bit = col % 4;
+    return !!ch && bit < 3 && ((GLYPHS[ch]![row]! >> (2 - bit)) & 1) === 1;
+  };
+  const img = draw(size, (x, y) => {
+    const d = Math.hypot(x - 16, y - 16);
+    if (d > 16) return null;
+    return [ink(x, y) ? WHITE : RED, cover(d, 15.5)];
   });
+  return nativeImage.createFromBuffer(img.toPNG(), { scaleFactor: 2 });
 }

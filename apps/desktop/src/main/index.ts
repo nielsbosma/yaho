@@ -88,7 +88,7 @@ function applyBadge(): void {
   const { unread, running, queued } = state;
   tray?.setImage(appIcon(32, unread > 0));
   tray?.setToolTip(`Yaho · ${unread} unread · ${running} running${queued ? ` · ${queued} queued` : ''}`);
-  if (process.platform === 'win32') win?.setOverlayIcon(unread ? overlayBadge() : null, unread ? `${unread} unread` : '');
+  if (process.platform === 'win32') win?.setOverlayIcon(unread ? overlayBadge(unread) : null, unread ? `${unread} unread` : '');
   else app.setBadgeCount(unread);
   buildTrayMenu();
 }

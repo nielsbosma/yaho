@@ -297,6 +297,28 @@ export function SettingsView() {
                     <Input value={h.command} onChange={(e) => upd((d) => void (d.harnesses[name]!.command = e.target.value))} />
                   </Field>
                 ))}
+                {s.harnesses['claude-code'] && (
+                  <label className="flex items-start gap-3 pt-1 text-sm">
+                    <Switch
+                      checked={!!s.harnesses['claude-code'].args?.includes('--chrome')}
+                      label="Agents can use Chrome"
+                      onChange={(v) =>
+                        upd((d) => {
+                          const h = d.harnesses['claude-code']!;
+                          const rest = (h.args ?? []).filter((a) => a !== '--chrome');
+                          h.args = v ? [...rest, '--chrome'] : rest;
+                        })
+                      }
+                    />
+                    <span>
+                      Agents can use Chrome
+                      <span className="block text-xs text-muted">
+                        Starts Claude Code with <code>--chrome</code>, so every agent gets the Claude in Chrome browser tools. Needs Chrome
+                        open with the Claude extension signed in. Agents act in your real browser, with your logins.
+                      </span>
+                    </span>
+                  </label>
+                )}
               </Card>
             </Section>
           </>
