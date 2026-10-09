@@ -54,6 +54,15 @@ artifacts: [art_xyz] # optional: ids printed by yaho artifact add, shown with th
 reply_to: null # a message id when you are answering
 ```
 
+Text the human should paste somewhere (a connection note, an email, a post) goes in a `copy` block, one per text,
+with an optional label after `copy`. It is shown as plain wrapped text with a Copy button:
+
+````markdown
+```copy Connection note: Anders Nilsson
+Hej Anders! Gratulerar till CIO-rollen. ...
+```
+````
+
 When a message is about something you made (a banner, a report), register it with `yaho artifact add` first and
 list its id under `artifacts`, so the human sees it right in the message.
 
