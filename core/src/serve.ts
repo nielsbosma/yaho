@@ -40,7 +40,7 @@ export async function serve(
   writeFileSync(p.server, YAML.stringify({ url: ctx.apiUrl, pid: process.pid, started: new Date().toISOString() }));
 
   const close = async () => {
-    runner.shutdown();
+    await runner.shutdown();
     rmSync(p.server, { force: true });
     server.closeAllConnections();
     await new Promise((r) => server.close(r));

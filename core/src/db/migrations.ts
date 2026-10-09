@@ -139,4 +139,6 @@ export const migrations: string[] = [
     created TEXT NOT NULL
   );
   `,
+  // 2: the harness pid, so a restarted core can kill an orphaned harness.
+  `ALTER TABLE jobs ADD COLUMN pid INTEGER;`,
 ];

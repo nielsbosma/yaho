@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { newId, now } from '../db/index.ts';
-import { adapters } from '../harness/claudeCode.ts';
+import { adapters, killTree } from '../harness/claudeCode.ts';
 import type { HarnessEvent, HarnessProcess } from '../harness/types.ts';
 import { envForAgent } from '../secrets/dopbase.ts';
 import type { Agent, Job } from '../store.ts';
@@ -28,21 +28,27 @@ export class JobRunner {
   ctx: Ctx;
   running = new Map<string, Running>();
   pumping = false;
+  shuttingDown = false;
 
   constructor(ctx: Ctx) {
     this.ctx = ctx;
     ctx.runner = this;
   }
 
-  /** Jobs left 'running' by a previous core process are orphans: their harness died with it. */
+  /**
+   * Jobs left 'running' by a core that died without shutting down. Their harness may still be alive (Windows does not
+   * kill children with the parent), so kill it, then queue the job to resume its session.
+   */
   recover(): void {
-    for (const j of this.ctx.db.prepare("SELECT id FROM jobs WHERE status = 'running'").all() as Row[]) {
-      updateJob(this.ctx, j.id as string, {
-        status: 'failed',
-        reason: 'YAHO core restarted while the job was running; continue it to resume',
-        ended: now(),
-      });
+    for (const j of this.ctx.db.prepare("SELECT id, pid FROM jobs WHERE status = 'running'").all() as Row[]) {
+      if (j.pid) killTree(Number(j.pid));
+      this.requeueInterrupted(j.id as string, 'the YAHO core stopped while the job was running');
     }
+  }
+
+  private requeueInterrupted(id: string, why: string): void {
+    updateJob(this.ctx, id, { status: 'queued', trigger_type: 'continue', trigger_detail: why, reason: null, ended: null, pid: null });
+    addJobEvent(this.ctx, id, 'status', { text: `Interrupted: ${why}. It resumes when the core is back.` });
   }
 
   /** Create a queued job. Returns null when the agent is disabled (its triggers are ignored). */
@@ -67,7 +73,7 @@ export class JobRunner {
 
   /** Start every queued job that has a free slot, budget, and is under the global cap. */
   pump(): void {
-    if (this.pumping) return;
+    if (this.pumping || this.shuttingDown) return;
     this.pumping = true;
     try {
       const queued = this.ctx.db.prepare("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created").all() as unknown as Job[];
@@ -196,6 +202,7 @@ export class JobRunner {
       },
       (e) => this.onEvent(r, ses.id, e),
     );
+    updateJob(ctx, job.id, { pid: r.proc.pid ?? null });
     if (r.liteKey) r.poll = setInterval(() => void this.pollCost(r), 10_000);
     const code = await r.proc.done;
     if (r.liteKey) await this.pollCost(r);
@@ -279,10 +286,11 @@ export class JobRunner {
     if (r.poll) clearInterval(r.poll);
     if (r.liteKey) void deleteLitellmKey(ctx.settings, r.liteKey).catch(() => undefined);
     ctx.db.prepare('DELETE FROM job_tokens WHERE job = ?').run(r.job);
+    if (this.shuttingDown) return this.requeueInterrupted(r.job, 'the YAHO core restarted');
     const job = getJob(ctx, r.job);
     if (end.summary && job.session_id)
       ctx.db.prepare('UPDATE sessions SET summary = ?, updated = ? WHERE id = ?').run(end.summary, now(), job.session_id);
-    updateJob(ctx, r.job, { status: end.status, reason: end.reason ?? null, ended: now(), resume_at: end.resumeAt ?? null });
+    updateJob(ctx, r.job, { status: end.status, reason: end.reason ?? null, ended: now(), resume_at: end.resumeAt ?? null, pid: null });
     addJobEvent(ctx, r.job, 'status', { text: `Job ${end.status}${end.reason ? `: ${end.reason}` : ''}` });
     if (end.status === 'failed') {
       ctx.bus.emitEvent({ type: 'notify', title: `${job.agent}: job failed`, body: end.reason ?? '' });
@@ -301,7 +309,7 @@ export class JobRunner {
         409,
         `raise ${agent.name}'s budget first (spent $${agentSpend(this.ctx, agent.name).toFixed(2)} of $${agent.budget_usd})`,
       );
-    updateJob(this.ctx, jobId, { status: 'queued', trigger_type: 'continue', reason: null, ended: null });
+    updateJob(this.ctx, jobId, { status: 'queued', trigger_type: 'continue', trigger_detail: job.reason, reason: null, ended: null });
     this.pump();
   }
 
@@ -316,10 +324,12 @@ export class JobRunner {
     return at;
   }
 
-  shutdown(): void {
-    for (const r of this.running.values()) {
-      r.ending = { status: 'stopped', reason: 'YAHO core shut down; continue it to resume' };
-      r.proc?.kill();
-    }
+  /** Stop every harness and queue its job to resume on the next start. */
+  async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    const all = [...this.running.values()];
+    for (const r of all) r.proc?.kill();
+    await Promise.race([Promise.all(all.map((r) => r.proc?.done)), new Promise((res) => setTimeout(res, 5000))]);
+    for (const r of [...this.running.values()]) this.finalize(r, { status: 'queued' });
   }
 }

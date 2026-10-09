@@ -68,6 +68,7 @@ export interface Job {
   cost_usd: number;
   resume_at: string | null;
   hop: number;
+  pid: number | null;
   created: string;
   started: string | null;
   ended: string | null;
