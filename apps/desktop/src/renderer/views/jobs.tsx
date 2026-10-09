@@ -22,6 +22,10 @@ function useTick(active: boolean) {
 
 export function JobsView({ route }: ViewProps) {
   if (route[1]) return <JobDetail id={route[1]} />;
+  return <ActiveJobs />;
+}
+
+function ActiveJobs() {
   const active = useApi<Job[]>('/api/jobs?active=1', jobChanged);
   const recent = useApi<Job[]>('/api/jobs?limit=30', jobChanged);
   useTick(!!active.data?.length);

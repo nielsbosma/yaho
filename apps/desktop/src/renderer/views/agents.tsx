@@ -6,9 +6,21 @@ import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
 import { ago, Badge, Card, Empty, ErrorNote, money, PageHeader, Section, StatusBadge, Tabs } from '../components/ui/display.tsx';
 import { Field, Input, ListInput, Switch, Textarea } from '../components/ui/form.tsx';
-import { api, url, useApi, type Agent, type FileEntry, type Job, type Project, type Resource, type TriggerSpec } from '../lib/api.ts';
+import {
+  api,
+  url,
+  useApi,
+  type Agent,
+  type Artifact,
+  type FileEntry,
+  type Job,
+  type Project,
+  type Resource,
+  type TriggerSpec,
+} from '../lib/api.ts';
 import { go, href } from '../lib/router.ts';
 import type { ViewProps } from './index.tsx';
+import { ArtifactGrid } from './artifacts.tsx';
 import { JobList } from './jobs.tsx';
 
 const agentChanged = (name?: string) => (e: { type: string; entity?: string; name?: string; job?: unknown }) =>
@@ -125,6 +137,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
           { id: 'edit', label: 'Definition' },
           { id: 'briefings', label: 'Briefing history' },
           { id: 'workspace', label: 'Workspace' },
+          { id: 'artifacts', label: 'Artifacts' },
         ]}
       />
       <div className="space-y-6 p-8">
@@ -133,6 +146,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
         {tab === 'edit' && <AgentEditor existing={a} />}
         {tab === 'briefings' && <BriefingHistory agent={a} />}
         {tab === 'workspace' && <Workspace agent={a.name} />}
+        {tab === 'artifacts' && <AgentArtifacts agent={a.name} />}
       </div>
     </>
   );
@@ -534,4 +548,10 @@ function Workspace({ agent }: { agent: string }) {
       )}
     </Card>
   );
+}
+
+function AgentArtifacts({ agent }: { agent: string }) {
+  const arts = useApi<Artifact[]>(`/api/artifacts?agent=${agent}`, (e) => e.type === 'changed' && e.entity === 'artifacts');
+  if (arts.data && !arts.data.length) return <div className="text-sm text-muted">No artifacts yet.</div>;
+  return <ArtifactGrid artifacts={arts.data ?? []} />;
 }
