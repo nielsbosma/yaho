@@ -186,6 +186,7 @@ export class JobRunner {
     let prompt = contextPrompt(ctx, agent, fresh, ses.summary, ses.resumed);
     if (ses.resumed && job.trigger_type === 'continue') prompt = `Your budget was raised. Continue exactly where you stopped.\n\n${prompt}`;
     updateJob(ctx, job.id, { model });
+    addJobEvent(ctx, job.id, 'prompt', { system: systemPrompt(agent), user: prompt });
     addJobEvent(ctx, job.id, 'status', { text: `${ses.resumed ? 'Resuming' : 'Starting'} ${agent.harness} with ${model}` });
 
     if (r.ending) return this.finalize(r, r.ending); // stopped while starting

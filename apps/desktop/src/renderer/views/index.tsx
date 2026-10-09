@@ -1,5 +1,8 @@
 import type { ComponentType } from 'react';
 import { Empty, PageHeader } from '../components/ui/display.tsx';
+import { AgentsView } from './agents.tsx';
+import { ArtifactsView } from './artifacts.tsx';
+import { JobsView } from './jobs.tsx';
 
 export interface ViewProps {
   route: string[];
@@ -17,10 +20,10 @@ const placeholder = (title: string) =>
 
 export const views: Record<string, ComponentType<ViewProps>> = {
   inbox: placeholder('Inbox'),
-  jobs: placeholder('Running jobs'),
-  agents: placeholder('Agents'),
+  jobs: JobsView,
+  agents: AgentsView,
   projects: placeholder('Projects'),
-  artifacts: placeholder('Artifacts'),
+  artifacts: ArtifactsView,
   resources: placeholder('Resources'),
   settings: placeholder('Settings'),
 };
