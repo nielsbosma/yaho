@@ -27,7 +27,7 @@ function ProjectList() {
         sub="What agents work on: a product, a campaign, a portfolio. Each holds a briefing, files and artifacts."
         actions={
           <Button variant="primary" onClick={() => go('projects', 'new')}>
-            <Plus /> New project
+            <Plus /> New Project
           </Button>
         }
       />
@@ -101,14 +101,14 @@ function ProjectForm({ existing, onDone }: { existing?: Project; onDone?: () => 
         <Textarea className="min-h-40" value={briefing} onChange={(e) => setBriefing(e.target.value)} />
       </Field>
       <Button variant="primary" onClick={() => void save()} disabled={!name}>
-        {existing ? 'Save' : 'Create project'}
+        {existing ? 'Save' : 'Create Project'}
       </Button>
     </div>
   );
   if (existing) return form;
   return (
     <>
-      <PageHeader title="New project" />
+      <PageHeader title="New Project" />
       <div className="p-8">{form}</div>
     </>
   );
@@ -178,7 +178,7 @@ function ProjectDetail({ name }: { name: string }) {
           title="Files"
           actions={
             <Button size="sm" onClick={() => input.current?.click()}>
-              <Upload /> Add files
+              <Upload /> Add Files
             </Button>
           }
         >
@@ -270,7 +270,7 @@ function ProjectDetail({ name }: { name: string }) {
                 go('projects');
               }}
             >
-              Delete project
+              Delete Project
             </Button>
           </>
         }

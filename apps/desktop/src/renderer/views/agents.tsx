@@ -20,6 +20,7 @@ import {
 } from '../lib/api.ts';
 import { go, href } from '../lib/router.ts';
 import type { ViewProps } from './index.tsx';
+import { ModelPicker } from '../components/ModelPicker.tsx';
 import { ArtifactGrid } from './artifacts.tsx';
 import { JobList } from './jobs.tsx';
 
@@ -41,7 +42,7 @@ function AgentList() {
         sub="Long-lived agents that run on triggers, within a budget."
         actions={
           <Button variant="primary" onClick={() => go('agents', 'new')}>
-            <Plus /> New agent
+            <Plus /> New Agent
           </Button>
         }
       />
@@ -124,7 +125,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
                 })
               }
             >
-              <Play /> Run now
+              <Play /> Run Now
             </Button>
           </>
         }
@@ -135,7 +136,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
         tabs={[
           { id: 'overview', label: 'Overview' },
           { id: 'edit', label: 'Definition' },
-          { id: 'briefings', label: 'Briefing history' },
+          { id: 'briefings', label: 'Briefing History' },
           { id: 'workspace', label: 'Workspace' },
           { id: 'artifacts', label: 'Artifacts' },
         ]}
@@ -168,7 +169,7 @@ function AgentOverview({ agent: a, onError }: { agent: Agent; onError: (e: strin
             <div className={cn('h-full', pct >= 100 ? 'bg-danger' : 'bg-accent')} style={{ width: `${pct}%` }} />
           </div>
           <Button size="sm" className="mt-3" onClick={() => setRaise(true)}>
-            <Wallet /> Change budget
+            <Wallet /> Change Budget
           </Button>
         </Card>
         <Card className="p-4">
@@ -185,7 +186,7 @@ function AgentOverview({ agent: a, onError }: { agent: Agent; onError: (e: strin
           ))}
         </Card>
         <Card className="p-4">
-          <div className="text-xs text-muted">Works on</div>
+          <div className="text-xs text-muted">Works On</div>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {a.projects.map((p) => (
               <a key={p} href={href('projects', p)}>
@@ -210,7 +211,7 @@ function AgentOverview({ agent: a, onError }: { agent: Agent; onError: (e: strin
       <Dialog
         open={raise}
         onClose={() => setRaise(false)}
-        title="Change budget"
+        title="Change Budget"
         footer={
           <>
             <Button onClick={() => setRaise(false)}>Cancel</Button>
@@ -347,8 +348,8 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
           <Field label="Name" hint="Lowercase letters, digits and dashes.">
             <Input value={draft.name} onChange={(e) => set('name', e.target.value)} placeholder="social-scout" />
           </Field>
-          <Field label="Allowed models" hint="Names as defined in LiteLLM. The first is used.">
-            <ListInput value={draft.models} onChange={(v) => set('models', v)} placeholder="claude-sonnet, claude-haiku" />
+          <Field label="Allowed models" hint="From your LiteLLM proxy. Jobs run with the primary." group>
+            <ModelPicker value={draft.models} onChange={(v) => set('models', v)} />
           </Field>
           <Field label="Briefing" className="md:col-span-2">
             <Textarea
@@ -412,7 +413,7 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
       )}
       <div className="flex items-center gap-2">
         <Button variant="primary" onClick={() => void save()} disabled={saving}>
-          {existing ? 'Save' : 'Create agent'}
+          {existing ? 'Save' : 'Create Agent'}
         </Button>
         {existing && <DeleteAgent name={existing.name} />}
       </div>
@@ -422,7 +423,7 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
   if (existing) return body;
   return (
     <>
-      <PageHeader title="New agent" sub="Fill in the form, switch to YAML and paste a definition, or start from an example." />
+      <PageHeader title="New Agent" sub="Fill in the form, switch to YAML and paste a definition, or start from an example." />
       <div className="space-y-8 p-8">
         <Examples />
         {body}
@@ -476,7 +477,7 @@ function DeleteAgent({ name }: { name: string }) {
                 go('agents');
               }}
             >
-              Delete agent
+              Delete Agent
             </Button>
           </>
         }
@@ -519,7 +520,7 @@ function BriefingHistory({ agent }: { agent: Agent }) {
                 className="ml-auto"
                 onClick={() => void api(`/api/agents/${agent.name}/briefings/${h.id}/revert`, { method: 'POST' })}
               >
-                Revert to this
+                Revert to This
               </Button>
             )}
           </div>
@@ -565,11 +566,11 @@ function AgentArtifacts({ agent }: { agent: string }) {
 }
 
 function Examples() {
-  const examples = useApi<Array<{ name: string; about: string; installed: boolean }>>('/api/examples');
+  const examples = useApi<Array<{ name: string; about: string; installed: boolean }>>('/api/examples', agentChanged());
   const [error, setError] = useState<string | null>(null);
   if (!examples.data?.length) return null;
   return (
-    <Section title="Start from an example">
+    <Section title="Start From an Example">
       <ErrorNote>{error}</ErrorNote>
       <div className="grid max-w-3xl gap-3 md:grid-cols-3">
         {examples.data.map((x) => (
@@ -591,7 +592,7 @@ function Examples() {
                 }
               }}
             >
-              {x.installed ? 'Installed' : 'Use this'}
+              {x.installed ? 'Installed' : 'Use This'}
             </Button>
           </Card>
         ))}

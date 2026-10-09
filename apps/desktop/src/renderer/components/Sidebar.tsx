@@ -1,4 +1,5 @@
-import { Bot, FolderKanban, Images, Inbox, KeyRound, Play, Plus, Settings } from 'lucide-react';
+import { Bot, FolderKanban, Images, Inbox, KeyRound, Monitor, Moon, Play, Plus, Settings, Sun } from 'lucide-react';
+import { useTheme, type Theme } from '../lib/theme.ts';
 import type { ReactNode } from 'react';
 import type { AppState } from '../App.tsx';
 import { useApi, type Agent } from '../lib/api.ts';
@@ -58,7 +59,7 @@ export function Sidebar({ route, state, connected }: { route: string[]; state: A
         <NavItem
           to={href('jobs')}
           icon={<Play />}
-          label="Running jobs"
+          label="Running Jobs"
           active={at === 'jobs'}
           count={(state?.running ?? 0) + (state?.queued ?? 0)}
           countTone="muted"
@@ -107,8 +108,39 @@ export function Sidebar({ route, state, connected }: { route: string[]; state: A
             </div>
           </div>
         )}
-        <NavItem to={href('settings')} icon={<Settings />} label="Settings" active={at === 'settings'} />
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <NavItem to={href('settings')} icon={<Settings />} label="Settings" active={at === 'settings'} />
+          </div>
+          <ThemeSwitch />
+        </div>
       </div>
     </aside>
+  );
+}
+
+function ThemeSwitch() {
+  const [theme, setTheme] = useTheme();
+  const options: Array<[Theme, typeof Sun, string]> = [
+    ['system', Monitor, 'Match System'],
+    ['light', Sun, 'Light'],
+    ['dark', Moon, 'Dark'],
+  ];
+  return (
+    <div className="flex shrink-0 rounded-lg bg-hover p-0.5" role="radiogroup" aria-label="Theme">
+      {options.map(([t, Icon, label]) => (
+        <button
+          key={t}
+          type="button"
+          role="radio"
+          aria-checked={theme === t}
+          title={label}
+          onClick={() => setTheme(t)}
+          className={cn('cursor-pointer rounded-md p-1 text-muted', theme === t && 'bg-panel text-ink shadow-sm')}
+        >
+          <Icon className="size-3.5" />
+        </button>
+      ))}
+    </div>
   );
 }

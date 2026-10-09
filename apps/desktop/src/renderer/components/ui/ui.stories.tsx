@@ -14,10 +14,10 @@ export const Buttons: Story = {
   render: () => (
     <div className="flex flex-wrap items-center gap-2">
       <Button variant="primary">
-        <Play /> Run now
+        <Play /> Run Now
       </Button>
       <Button>
-        <Plus /> New agent
+        <Plus /> New Agent
       </Button>
       <Button variant="ghost">Ghost</Button>
       <Button variant="danger">
@@ -100,7 +100,7 @@ export const Header: Story = {
           sub="claude-code · claude-haiku-5-5 · inbox"
           actions={
             <Button variant="primary">
-              <Play /> Run now
+              <Play /> Run Now
             </Button>
           }
         />
@@ -110,7 +110,7 @@ export const Header: Story = {
           tabs={[
             { id: 'overview', label: 'Overview' },
             { id: 'edit', label: 'Definition' },
-            { id: 'briefings', label: 'Briefing history' },
+            { id: 'briefings', label: 'Briefing History' },
           ]}
         />
       </>
@@ -131,11 +131,11 @@ export const DialogBox: Story = {
     const [open, setOpen] = useState(true);
     return (
       <>
-        <Button onClick={() => setOpen(true)}>Open dialog</Button>
+        <Button onClick={() => setOpen(true)}>Open Dialog</Button>
         <Dialog
           open={open}
           onClose={() => setOpen(false)}
-          title="Change budget"
+          title="Change Budget"
           footer={
             <>
               <Button onClick={() => setOpen(false)}>Cancel</Button>

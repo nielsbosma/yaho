@@ -26,7 +26,7 @@ function ResourceList() {
         sub="APIs, CLIs and accounts agents may use. Key values live in Dopbase; agents only ever see the names."
         actions={
           <Button variant="primary" onClick={() => go('resources', 'new')}>
-            <Plus /> New resource
+            <Plus /> New Resource
           </Button>
         }
       />
@@ -107,19 +107,19 @@ function ResourceEditor({ existing, onDone }: { existing?: Resource; onDone?: ()
             </div>
           ))}
           <Button size="sm" onClick={() => setKeys([...keys, { name: '', secret: true }])}>
-            <Plus /> Add key
+            <Plus /> Add Key
           </Button>
         </div>
       </Field>
       <Button variant="primary" onClick={() => void save()} disabled={!name}>
-        {existing ? 'Save' : 'Create resource'}
+        {existing ? 'Save' : 'Create Resource'}
       </Button>
     </div>
   );
   if (existing) return form;
   return (
     <>
-      <PageHeader title="New resource" />
+      <PageHeader title="New Resource" />
       <div className="p-8">{form}</div>
     </>
   );
@@ -185,7 +185,7 @@ function ResourceDetail({ name }: { name: string }) {
                         setSetting(k.name);
                       }}
                     >
-                      Set value
+                      Set Value
                     </Button>
                   </div>
                 ))}
@@ -194,7 +194,7 @@ function ResourceDetail({ name }: { name: string }) {
             </Section>
           </>
         )}
-        <Section title="Agents with access">
+        <Section title="Agents With Access">
           <div className="flex flex-wrap gap-1.5">
             {agents.data?.map((a) => {
               const on = a.resources.includes(name);
@@ -260,7 +260,7 @@ function ResourceDetail({ name }: { name: string }) {
                 go('resources');
               }}
             >
-              Delete resource
+              Delete Resource
             </Button>
           </>
         }

@@ -150,6 +150,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     if (m.reply_to) s.markRead(ctx, m.reply_to, true);
     return msg;
   });
+  r.on('DELETE', '/api/messages/:id', (req) => s.deleteMessage(ctx, req.params.id!));
   r.on('POST', '/api/messages/:id/read', async (req) => {
     const b = await req.body<{ read?: boolean }>();
     s.markRead(ctx, req.params.id!, b.read ?? true);

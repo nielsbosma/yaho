@@ -508,6 +508,14 @@ export function sendMessage(ctx: Ctx, m: SendInput): Message {
   return msg;
 }
 
+/** Discard a message. Replies to it stay, unthreaded. */
+export function deleteMessage(ctx: Ctx, id: string): void {
+  const m = getMessage(ctx, id);
+  ctx.db.prepare('UPDATE messages SET reply_to = NULL WHERE reply_to = ?').run(id);
+  ctx.db.prepare('DELETE FROM messages WHERE id = ?').run(id);
+  ctx.bus.emitEvent({ type: 'message', message: { ...m, deleted: true } });
+}
+
 export function markRead(ctx: Ctx, id: string, read = true, owner?: string) {
   const m = getMessage(ctx, id);
   if (owner && m.to !== owner) throw new HttpError(403, 'not your message');

@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react';
 import YAML from 'yaml';
 import { Button } from '../components/ui/button.tsx';
 import { Card, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
-import { Field, Input, ListInput, Textarea } from '../components/ui/form.tsx';
+import { Field, Input, Textarea } from '../components/ui/form.tsx';
+import { ModelPicker } from '../components/ModelPicker.tsx';
 import { api, useApi } from '../lib/api.ts';
-import type { ViewProps } from './index.tsx';
 
 interface Settings {
   server: { host: string; port: number };
@@ -42,7 +42,7 @@ function Check({ label, run }: { label: string; run: () => Promise<string> }) {
   );
 }
 
-export function SettingsView(_: ViewProps) {
+export function SettingsView() {
   const saved = useApi<Settings>('/api/settings', (e) => e.type === 'changed' && e.entity === 'settings');
   const [s, setS] = useState<Settings | null>(null);
   const [mode, setMode] = useState<'form' | 'yaml'>('form');
@@ -92,7 +92,7 @@ export function SettingsView(_: ViewProps) {
               setMode(mode === 'form' ? 'yaml' : 'form');
             }}
           >
-            {mode === 'form' ? 'Edit as YAML' : 'Back to form'}
+            {mode === 'form' ? 'Edit as YAML' : 'Back to Form'}
           </Button>
         }
       />
@@ -128,7 +128,7 @@ export function SettingsView(_: ViewProps) {
                 </Field>
                 <div className="md:col-span-2">
                   <Check
-                    label="List models"
+                    label="List Models"
                     run={async () => {
                       await save();
                       const r = await api<{ models: string[] }>('/api/settings/litellm/models');
@@ -149,7 +149,7 @@ export function SettingsView(_: ViewProps) {
                         onClick={() => upd((d) => void (d.dopbase.mode = m))}
                         className={`cursor-pointer rounded-md px-3 py-1 ${s.dopbase.mode === m ? 'bg-panel shadow-sm' : 'text-muted'}`}
                       >
-                        {m === 'bundled' ? 'Bundled (local)' : 'External server'}
+                        {m === 'bundled' ? 'Bundled (Local)' : 'External Server'}
                       </button>
                     ))}
                   </div>
@@ -184,7 +184,7 @@ export function SettingsView(_: ViewProps) {
                 </Field>
                 <div className="md:col-span-2">
                   <Check
-                    label="Test connection"
+                    label="Test Connection"
                     run={async () => {
                       await save();
                       const r = await api<{ ok: boolean; error?: string; health?: { version?: string } }>('/api/settings/dopbase/test', {
@@ -209,10 +209,10 @@ export function SettingsView(_: ViewProps) {
                 </Field>
               </Card>
             </Section>
-            <Section title="Defaults for new agents">
+            <Section title="Defaults for New Agents">
               <Card className="grid gap-4 p-4 md:grid-cols-2">
-                <Field label="Models">
-                  <ListInput value={s.defaults.models} onChange={(v) => upd((d) => void (d.defaults.models = v))} />
+                <Field label="Models" className="md:col-span-2" group>
+                  <ModelPicker value={s.defaults.models} onChange={(v) => upd((d) => void (d.defaults.models = v))} />
                 </Field>
                 <Field label="Budget (USD)">
                   <Input
@@ -245,7 +245,7 @@ export function SettingsView(_: ViewProps) {
         )}
         <div className="flex items-center gap-3">
           <Button variant="primary" onClick={() => void save()}>
-            Save settings
+            Save Settings
           </Button>
           {ok && <span className="text-sm text-ok">Saved</span>}
         </div>

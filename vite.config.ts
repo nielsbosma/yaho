@@ -10,7 +10,8 @@ export default defineConfig({
   root: 'apps/desktop/src/renderer',
   base: './',
   plugins: [...(desktop.plugins ?? []), yahoDev(repo)],
-  server: desktop.server,
+  // The renderer also works in a plain browser tab during dev: API calls go through to the dev core.
+  server: { ...desktop.server, proxy: { '/api': `http://127.0.0.1:${process.env.YAHO_PORT ?? 4701}` } },
   build: { outDir: '../../dist/renderer', emptyOutDir: true },
   fmt: {
     singleQuote: true,

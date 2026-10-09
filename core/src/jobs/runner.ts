@@ -366,6 +366,7 @@ export class JobRunner {
     const all = [...this.running.values()];
     for (const r of all) r.proc?.kill();
     await Promise.race([Promise.all(all.map((r) => r.proc?.done)), new Promise((res) => setTimeout(res, 5000))]);
-    for (const r of [...this.running.values()]) this.finalize(r, { status: 'queued' });
+    // A copy: finalize() deletes from the map while we walk it.
+    for (const r of Array.from(this.running.values())) this.finalize(r, { status: 'queued' });
   }
 }

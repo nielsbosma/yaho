@@ -3,10 +3,10 @@ import { useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { ago, Badge, Card, Empty, PageHeader } from '../components/ui/display.tsx';
+import { Input, Select } from '../components/ui/form.tsx';
 import { api, url, useApi, type Agent, type Artifact, type Project } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
 import { href } from '../lib/router.ts';
-import type { ViewProps } from './index.tsx';
 
 const ext = (p: string) => p.split('.').pop()?.toLowerCase() ?? '';
 const isImage = (p: string) => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext(p));
@@ -111,10 +111,10 @@ function ArtifactViewer({ a, onClose }: { a: Artifact; onClose: () => void }) {
                 )
               }
             >
-              <FolderOpen /> {platform.kind === 'desktop' ? 'Show in folder' : 'Download'}
+              <FolderOpen /> {platform.kind === 'desktop' ? 'Show in Folder' : 'Download'}
             </Button>
             <Button size="sm" onClick={() => void copyPath()}>
-              <Copy /> {copied ? 'Copied' : 'Copy path'}
+              <Copy /> {copied ? 'Copied' : 'Copy Path'}
             </Button>
             <Button size="sm" variant="ghost" onClick={onClose}>
               Close
@@ -127,7 +127,7 @@ function ArtifactViewer({ a, onClose }: { a: Artifact; onClose: () => void }) {
   );
 }
 
-export function ArtifactsView(_: ViewProps) {
+export function ArtifactsView() {
   const [project, setProject] = useState('');
   const [agent, setAgent] = useState('');
   const [job, setJob] = useState('');
@@ -135,7 +135,6 @@ export function ArtifactsView(_: ViewProps) {
   const artifacts = useApi<Artifact[]>(`/api/artifacts?${q}`, (e) => e.type === 'changed' && e.entity === 'artifacts');
   const projects = useApi<Project[]>('/api/projects');
   const agents = useApi<Agent[]>('/api/agents');
-  const select = 'h-8 rounded-lg border border-line bg-panel px-2 text-sm';
   return (
     <>
       <PageHeader
@@ -143,27 +142,21 @@ export function ArtifactsView(_: ViewProps) {
         sub="Everything agents have made, stored in their projects."
         actions={
           <>
-            <select className={select} value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
-              <option value="">All projects</option>
+            <Select className="w-44" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
+              <option value="">All Projects</option>
               {projects.data?.map((p) => (
                 <option key={p.name} value={p.name}>
                   {p.title}
                 </option>
               ))}
-            </select>
-            <select className={select} value={agent} onChange={(e) => setAgent(e.target.value)} aria-label="Agent">
-              <option value="">All agents</option>
+            </Select>
+            <Select className="w-40" value={agent} onChange={(e) => setAgent(e.target.value)} aria-label="Agent">
+              <option value="">All Agents</option>
               {agents.data?.map((a) => (
                 <option key={a.name}>{a.name}</option>
               ))}
-            </select>
-            <input
-              className={cn(select, 'w-36')}
-              placeholder="Job id"
-              value={job}
-              onChange={(e) => setJob(e.target.value.trim())}
-              aria-label="Job"
-            />
+            </Select>
+            <Input className="w-36" placeholder="Job id" value={job} onChange={(e) => setJob(e.target.value.trim())} aria-label="Job" />
           </>
         }
       />

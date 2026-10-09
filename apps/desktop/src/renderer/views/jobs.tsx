@@ -31,7 +31,7 @@ function ActiveJobs() {
   useTick(!!active.data?.length);
   return (
     <>
-      <PageHeader title="Running jobs" sub="Every active job, with its trigger, runtime and cost." />
+      <PageHeader title="Running Jobs" sub="Every active job, with its trigger, runtime and cost." />
       <div className="space-y-8 p-8">
         {active.data?.length ? (
           <JobTable jobs={active.data} showAgent />
@@ -250,7 +250,7 @@ function JobDetail({ id }: { id: string }) {
           <div ref={bottom} />
         </div>
         <aside className="space-y-6">
-          <Section title="Files touched">
+          <Section title="Files Touched">
             {files.length ? (
               <ul className="space-y-1 text-xs">
                 {files.map((f) => (
@@ -338,7 +338,7 @@ function EventRow({ e }: { e: JobEvent }) {
       return (
         <div className="text-xs">
           <button type="button" onClick={() => setOpen(!open)} className="flex cursor-pointer items-center gap-1.5 text-muted">
-            <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} /> Prompt sent to the harness
+            <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} /> Prompt Sent to the Harness
           </button>
           {open && (
             <div className="mt-1 space-y-2">

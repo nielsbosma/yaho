@@ -12,6 +12,8 @@ export interface Platform {
   /** Show a file in Explorer/Finder. Web: download it instead. */
   reveal(path: string, downloadUrl: string): void;
   openExternal(url: string): void;
+  /** Desktop: match native chrome (title bar, menus) to the chosen theme. */
+  setTheme?(theme: 'system' | 'light' | 'dark'): void;
 }
 
 interface DesktopBridge {
@@ -22,6 +24,7 @@ interface DesktopBridge {
   reveal(path: string): void;
   openExternal(url: string): void;
   onNavigate(cb: (route: string) => void): void;
+  setTheme(theme: string): void;
 }
 
 declare global {
@@ -53,6 +56,7 @@ function makePlatform(): Platform {
       notify: (t, b) => d.notify(t, b),
       reveal: (p) => d.reveal(p),
       openExternal: (u) => d.openExternal(u),
+      setTheme: (t) => d.setTheme(t),
     };
   }
   const baseTitle = document.title;

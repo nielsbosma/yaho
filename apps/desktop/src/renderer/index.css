@@ -20,8 +20,9 @@
   color-scheme: light;
 }
 
+/* Dark: an explicit choice (data-theme on <html>), or the system's when the person chose "system". */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --c-bg: #262624;
     --c-sidebar: #1f1e1d;
     --c-panel: #2c2b29;
@@ -39,6 +40,25 @@
     --c-code: #1f1e1d;
     color-scheme: dark;
   }
+}
+
+:root[data-theme='dark'] {
+  --c-bg: #262624;
+  --c-sidebar: #1f1e1d;
+  --c-panel: #2c2b29;
+  --c-ink: #ece9e1;
+  --c-muted: #a5a197;
+  --c-line: #3b3a37;
+  --c-line-strong: #4b4945;
+  --c-hover: #34332f;
+  --c-accent: #d97757;
+  --c-accent-hover: #e38a6b;
+  --c-ok: #6cbf8b;
+  --c-warn: #e0a84a;
+  --c-danger: #e57368;
+  --c-info: #7ea7e0;
+  --c-code: #1f1e1d;
+  color-scheme: dark;
 }
 
 @theme inline {

@@ -4,8 +4,8 @@ import { MessageCard, who } from '../components/MessageCard.tsx';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
-import { ago, Empty, ErrorNote, PageHeader } from '../components/ui/display.tsx';
-import { Field, Input, Textarea } from '../components/ui/form.tsx';
+import { ago, Empty, ErrorNote } from '../components/ui/display.tsx';
+import { Field, Input, Select, Textarea } from '../components/ui/form.tsx';
 import { api, useApi, type Agent, type Message } from '../lib/api.ts';
 import { go, href } from '../lib/router.ts';
 import type { ViewProps } from './index.tsx';
@@ -84,6 +84,8 @@ export function InboxView({ route }: ViewProps) {
 
 function Thread({ id }: { id: string }) {
   const thread = useApi<Message[]>(`/api/messages/${id}/thread`, onMessage);
+  const agents = useApi<Agent[]>('/api/agents', (e) => e.type === 'changed' && e.entity === 'agents');
+  const exists = (addr: string) => !addr.startsWith('agent:') || !agents.data || agents.data.some((a) => `agent:${a.name}` === addr);
   const [error, setError] = useState<string | null>(null);
   const main = thread.data?.find((m) => m.id === id);
 
@@ -118,6 +120,11 @@ function Thread({ id }: { id: string }) {
               : undefined
           }
           onMarkRead={m.to === 'human' ? (read) => void api(`/api/messages/${m.id}/read`, { body: { read } }) : undefined}
+          canReply={exists(m.from)}
+          onDiscard={async () => {
+            await api(`/api/messages/${m.id}`, { method: 'DELETE' });
+            if (m.id === id) go('inbox');
+          }}
         />
       ))}
     </div>
@@ -134,7 +141,7 @@ function Compose({ open, onClose }: { open: boolean; onClose: () => void }) {
     <Dialog
       open={open}
       onClose={onClose}
-      title="Message an agent"
+      title="Message an Agent"
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -162,12 +169,12 @@ function Compose({ open, onClose }: { open: boolean; onClose: () => void }) {
       <div className="space-y-3">
         <ErrorNote>{error}</ErrorNote>
         <Field label="To">
-          <select className="h-9 rounded-lg border border-line bg-panel px-2 text-sm" value={to} onChange={(e) => setTo(e.target.value)}>
-            <option value="">Choose an agent…</option>
+          <Select value={to} onChange={(e) => setTo(e.target.value)}>
+            <option value="">Choose an Agent…</option>
             {agents.data?.map((a) => (
               <option key={a.name}>{a.name}</option>
             ))}
-          </select>
+          </Select>
         </Field>
         <Field label="Title">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />

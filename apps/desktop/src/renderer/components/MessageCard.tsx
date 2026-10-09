@@ -1,4 +1,4 @@
-import { Bot, Check, Copy, CornerDownRight, ExternalLink, HelpCircle, Info, ListChecks, Send, User } from 'lucide-react';
+import { Bot, Check, Copy, Trash2, CornerDownRight, ExternalLink, HelpCircle, Info, ListChecks, Send, User } from 'lucide-react';
 import { useState } from 'react';
 import type { Message } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
@@ -42,11 +42,14 @@ export interface MessageCardProps {
   /** Sends a reply. Resolves when stored. */
   onReply?: (body: string) => Promise<void>;
   onMarkRead?: (read: boolean) => void;
+  onDiscard?: () => void;
+  /** False when the sender no longer exists: replying is pointless, discarding is not. */
+  canReply?: boolean;
   compact?: boolean;
 }
 
 /** One message, rendered for a human checkpoint: choices, steps with Open/Copy, one-click Done and a feedback box. */
-export function MessageCard({ message: m, onReply, onMarkRead, compact }: MessageCardProps) {
+export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canReply = true, compact }: MessageCardProps) {
   const meta = typeMeta[m.type] ?? typeMeta.info;
   const [text, setText] = useState('');
   const [sending, setSending] = useState<string | null>(null);
@@ -112,7 +115,17 @@ export function MessageCard({ message: m, onReply, onMarkRead, compact }: Messag
           </ol>
         ) : null}
 
-        {!compact && onReply && !fromHuman && (
+        {!compact && onDiscard && (!onReply || !canReply || fromHuman) && (
+          <div className="flex items-center gap-2 border-t border-line pt-3">
+            {!canReply && !fromHuman && (
+              <span className="text-xs text-muted">{who(m.from)} no longer exists, so it can't get a reply.</span>
+            )}
+            <Button variant="ghost" className="ml-auto" onClick={onDiscard} title="Discard this message">
+              <Trash2 /> Discard
+            </Button>
+          </div>
+        )}
+        {!compact && onReply && canReply && !fromHuman && (
           <div className="space-y-2 border-t border-line pt-3">
             {sent ? (
               <div className="flex items-center gap-2 text-sm text-ok">
@@ -137,7 +150,12 @@ export function MessageCard({ message: m, onReply, onMarkRead, compact }: Messag
                   ) : null}
                   {onMarkRead && (
                     <Button variant="ghost" onClick={() => onMarkRead(!m.read)} className="ml-auto">
-                      Mark {m.read ? 'unread' : 'read'}
+                      {m.read ? 'Mark Unread' : 'Mark Read'}
+                    </Button>
+                  )}
+                  {onDiscard && (
+                    <Button variant="ghost" onClick={onDiscard} title="Discard this message">
+                      <Trash2 /> Discard
                     </Button>
                   )}
                 </div>

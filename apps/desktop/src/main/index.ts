@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, shell, Tray } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { startCore, type CoreConnection } from './core.ts';
@@ -49,7 +49,7 @@ function createWindow(conn: CoreConnection): BrowserWindow {
     title: 'YAHO',
     icon: appIcon(64),
     show: !startHidden,
-    backgroundColor: '#faf9f5',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#262624' : '#faf9f5',
     autoHideMenuBar: true,
     webPreferences: {
       preload,
@@ -100,10 +100,10 @@ function buildTrayMenu(): void {
     Menu.buildFromTemplate([
       { label: 'Open YAHO', click: () => show() },
       { label: `Inbox${state.unread ? ` (${state.unread} unread)` : ''}`, click: () => show('inbox') },
-      { label: `Running jobs (${state.running})`, click: () => show('jobs') },
+      { label: `Running Jobs (${state.running})`, click: () => show('jobs') },
       { type: 'separator' },
       {
-        label: 'Start with Windows',
+        label: 'Start With Windows',
         type: 'checkbox',
         checked: login.openAtLogin,
         click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] }),
@@ -176,6 +176,9 @@ ipcMain.on('yaho:notify', (_e, title: string, body: string) => {
 });
 ipcMain.on('yaho:reveal', (_e, path: string) => {
   if (existsSync(path)) shell.showItemInFolder(path);
+});
+ipcMain.on('yaho:theme', (_e, theme: string) => {
+  if (theme === 'light' || theme === 'dark' || theme === 'system') nativeTheme.themeSource = theme;
 });
 ipcMain.on('yaho:open', (_e, url: string) => {
   if (/^https?:\/\//.test(url)) void shell.openExternal(url);
