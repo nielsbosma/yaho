@@ -18,33 +18,14 @@ export interface AppState {
 export function App() {
   const route = useRoute();
   const [connected, setConnected] = useState(true);
-  const [assistant, setAssistant] = useState(() => {
-    try {
-      return localStorage.getItem('yaho-assistant-open') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const toggleAssistant = (open = !assistant) => {
-    setAssistant(open);
-    try {
-      localStorage.setItem('yaho-assistant-open', open ? '1' : '0');
-    } catch {
-      /* this session only */
-    }
-  };
+  // The chat starts closed on every launch; Ctrl+J or the sidebar button opens it.
+  const [assistant, setAssistant] = useState(false);
+  const toggleAssistant = (open = !assistant) => setAssistant(open);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
         e.preventDefault();
-        setAssistant((a) => {
-          try {
-            localStorage.setItem('yaho-assistant-open', a ? '0' : '1');
-          } catch {
-            /* this session only */
-          }
-          return !a;
-        });
+        setAssistant((a) => !a);
       }
     };
     window.addEventListener('keydown', onKey);
