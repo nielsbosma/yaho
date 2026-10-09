@@ -88,4 +88,14 @@ resources: []
     const hist = await (await api('/api/agents/ads-optimiser/briefings')).json();
     expect(hist.length).toBe(1);
   });
+
+  it('lists and installs the example agents with what they need', async () => {
+    const list = await (await api('/api/examples')).json();
+    expect(list.map((x: { name: string }) => x.name).sort()).toEqual(['ads-optimiser', 'day-trader', 'social-scout']);
+    const res = await api('/api/examples/day-trader/install', { method: 'POST' });
+    const out = await res.json();
+    expect(out.created).toEqual(['project trading', 'resource stock-account']);
+    expect(out.agent).toMatchObject({ name: 'day-trader', enabled: false, resources: ['stock-account'] });
+    expect((await api('/api/examples/day-trader/install', { method: 'POST' })).status).toBe(409);
+  });
 });

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { Router } from './api/http.ts';
 import { agentRoutes } from './api/agentRoutes.ts';
-import { humanRoutes } from './api/routes.ts';
+import { exampleRoutes, humanRoutes } from './api/routes.ts';
 import { startServer } from './api/server.ts';
 import { apiToken, loadSettings, paths } from './config.ts';
 import { Bus, type Ctx } from './context.ts';
@@ -33,6 +33,7 @@ export async function serve(
   const router = new Router();
   humanRoutes(ctx, router);
   agentRoutes(ctx, router);
+  exampleRoutes(ctx, router);
   writeShims(ctx);
 
   const host = opts.host ?? settings.server.host;

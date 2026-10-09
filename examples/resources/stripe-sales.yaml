@@ -1,0 +1,6 @@
+name: stripe-sales
+briefing: |
+  Read-only Stripe key for sales data (charges and checkout sessions with their UTM metadata).
+keys:
+  - name: STRIPE_READ_KEY
+    secret: true

@@ -1,0 +1,4 @@
+name: trading
+title: Trading
+briefing: |
+  The trading account. Record the strategy's rationale, a watch list, and any rules beyond the agent's briefing.

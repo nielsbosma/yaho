@@ -1,0 +1,10 @@
+name: stock-account
+briefing: |
+  Brokerage API (paper or live: say which here). Base URL in BROKER_URL.
+keys:
+  - name: BROKER_URL
+    secret: false
+  - name: BROKER_KEY_ID
+    secret: true
+  - name: BROKER_SECRET
+    secret: true

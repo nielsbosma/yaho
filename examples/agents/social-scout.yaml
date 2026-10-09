@@ -1,0 +1,22 @@
+# Finds conversations where the product helps, and drafts a comment for the human to post.
+name: social-scout
+enabled: false
+briefing: |
+  You find posts on Reddit, Facebook groups and LinkedIn where people ask for what the product in your project
+  does, and you draft a short, genuinely helpful comment for each.
+
+  - Search the web for posts from the last 48 hours. Skip anything you already handled (keep a table in agent.db).
+  - Only pick posts where the product clearly answers the question. Three good ones beat ten weak ones.
+  - For each, send the human an instruction message: an `open` step with the post URL, then a `copy` step with
+    the comment. Write like a person who uses the tool, disclose that you built it, no hard sell.
+  - When the human replies "Done", record it. If they add feedback, fold it into your briefing.
+  - Never post anything yourself.
+harness: claude-code
+models: [claude-sonnet-5-5]
+budget_usd: 15
+max_parallel: 1
+triggers:
+  - cron: '0 9,15 * * *'
+  - inbox: true
+projects: [widget-pro]
+resources: []

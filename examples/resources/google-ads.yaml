@@ -1,0 +1,10 @@
+name: google-ads
+briefing: |
+  Google Ads API for the Widget Pro account. Use the google-ads Python client.
+keys:
+  - name: GOOGLE_ADS_CUSTOMER_ID
+    secret: false
+  - name: GOOGLE_ADS_DEVELOPER_TOKEN
+    secret: true
+  - name: GOOGLE_ADS_REFRESH_TOKEN
+    secret: true

@@ -422,8 +422,11 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
   if (existing) return body;
   return (
     <>
-      <PageHeader title="New agent" sub="Fill in the form, or switch to YAML and paste a definition." />
-      <div className="p-8">{body}</div>
+      <PageHeader title="New agent" sub="Fill in the form, switch to YAML and paste a definition, or start from an example." />
+      <div className="space-y-8 p-8">
+        <Examples />
+        {body}
+      </div>
     </>
   );
 }
@@ -559,4 +562,43 @@ function AgentArtifacts({ agent }: { agent: string }) {
   const arts = useApi<Artifact[]>(`/api/artifacts?agent=${agent}`, (e) => e.type === 'changed' && e.entity === 'artifacts');
   if (arts.data && !arts.data.length) return <div className="text-sm text-muted">No artifacts yet.</div>;
   return <ArtifactGrid artifacts={arts.data ?? []} />;
+}
+
+function Examples() {
+  const examples = useApi<Array<{ name: string; about: string; installed: boolean }>>('/api/examples');
+  const [error, setError] = useState<string | null>(null);
+  if (!examples.data?.length) return null;
+  return (
+    <Section title="Start from an example">
+      <ErrorNote>{error}</ErrorNote>
+      <div className="grid max-w-3xl gap-3 md:grid-cols-3">
+        {examples.data.map((x) => (
+          <Card key={x.name} className="flex flex-col gap-2 p-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Bot className="size-4 text-muted" /> {x.name}
+            </div>
+            <p className="flex-1 text-xs text-muted">{x.about}</p>
+            <Button
+              size="sm"
+              disabled={x.installed}
+              onClick={async () => {
+                setError(null);
+                try {
+                  const r = await api<{ agent: Agent }>(`/api/examples/${x.name}/install`, { method: 'POST' });
+                  go('agents', r.agent.name);
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }}
+            >
+              {x.installed ? 'Installed' : 'Use this'}
+            </Button>
+          </Card>
+        ))}
+      </div>
+      <p className="text-xs text-muted">
+        Examples install disabled, with any projects and resources they need. Fill in the resource keys, then enable.
+      </p>
+    </Section>
+  );
 }

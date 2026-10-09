@@ -1,5 +1,6 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
 import type { Ctx } from '../context.ts';
@@ -249,4 +250,55 @@ export function storeArtifactFile(ctx: Ctx, project: string, source: string): st
   for (let i = 2; existsSync(join(dir, target)); i++) target = name.replace(/(\.[^.]*)?$/, `-${i}$1`);
   copyFileSync(source, join(dir, target));
   return target;
+}
+
+function examplesDir(): string {
+  if (process.env.YAHO_EXAMPLES_DIR) return process.env.YAHO_EXAMPLES_DIR;
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const c of [join(here, '../../../examples'), join(here, '../examples'), join(here, 'examples')]) if (existsSync(c)) return c;
+  return join(here, '../../../examples');
+}
+
+const readExample = (kind: string, name: string) => {
+  const file = join(examplesDir(), kind, `${name}.yaml`);
+  if (!existsSync(file)) return null;
+  const text = readFileSync(file, 'utf8');
+  return { text, data: YAML.parse(text) as Record<string, unknown> };
+};
+
+/** The example agents under examples/: listed with their YAML, installed with the projects and resources they use. */
+export function exampleRoutes(ctx: Ctx, r: Router): void {
+  r.on('GET', '/api/examples', () => {
+    const dir = join(examplesDir(), 'agents');
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((f) => f.endsWith('.yaml'))
+      .map((f) => {
+        const ex = readExample('agents', f.slice(0, -5))!;
+        return {
+          name: ex.data.name,
+          about: String(ex.text.split('\n')[0] ?? '').replace(/^#\s*/, ''),
+          yaml: ex.text,
+          installed: s.agentExists(ctx, String(ex.data.name)),
+        };
+      });
+  });
+  r.on('POST', '/api/examples/:name/install', (req) => {
+    const ex = readExample('agents', req.params.name!);
+    if (!ex) throw new HttpError(404, `no example ${req.params.name}`);
+    const agent = ex.data as unknown as s.Agent;
+    if (s.agentExists(ctx, agent.name)) throw new HttpError(409, `agent ${agent.name} already exists`);
+    const created: string[] = [];
+    for (const p of agent.projects ?? []) {
+      if (ctx.db.prepare('SELECT 1 FROM projects WHERE name = ?').get(p)) continue;
+      s.saveProject(ctx, (readExample('projects', p)?.data as unknown as s.Project) ?? { name: p, title: p, briefing: '' });
+      created.push(`project ${p}`);
+    }
+    for (const res of agent.resources ?? []) {
+      if (ctx.db.prepare('SELECT 1 FROM resources WHERE name = ?').get(res)) continue;
+      s.saveResource(ctx, (readExample('resources', res)?.data as unknown as s.Resource) ?? { name: res, briefing: '', keys: [] });
+      created.push(`resource ${res}`);
+    }
+    return { agent: s.saveAgent(ctx, agent), created };
+  });
 }
