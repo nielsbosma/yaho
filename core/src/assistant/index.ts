@@ -1,3 +1,5 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import YAML from 'yaml';
 import { saveSettings } from '../config.ts';
 import type { Ctx } from '../context.ts';
@@ -295,13 +297,42 @@ call that does the whole thing (a full YAML definition) over many small ones.
 - Delete only after the human confirmed in this conversation; then pass confirmed: true.
 - After acting, answer in one or two short sentences saying what you did. Use plain text, no headings.`;
 
-/** What the chat is about, when it was opened from a page (Chat About Agent). */
+/** What the chat is about, when it was opened from a page (Chat About Agent, Chat About Project). */
 export interface ChatFocus {
   agent?: string;
+  project?: string;
+}
+
+/** The focused project: its briefing, agents, context files and recent artifacts. */
+function projectFocus(ctx: Ctx, name: string): string {
+  const p = s.getProject(ctx, name);
+  const dir = join(ctx.paths.project(name), 'files');
+  const files = existsSync(dir) ? readdirSync(dir) : [];
+  const artifacts = s
+    .listArtifacts(ctx, { project: name })
+    .slice(0, 15)
+    .map((a) => ({ id: a.id, kind: a.kind, file: a.file_path, agent: a.agent, created: a.created }));
+  return [
+    '',
+    `## This chat is about the project "${p.name}" (${p.title})`,
+    'The human opened it from that project\'s page. Questions are about this project unless they say otherwise: what it is',
+    'for, which agents work on it, what they made, how to improve its briefing. When they ask for a change, make it with',
+    'save_project (or save_agent to assign agents) and say what changed. When explaining, you may answer at more length',
+    'than one or two sentences.',
+    '',
+    `Briefing:\n${p.briefing.trim() || '(empty)'}`,
+    '',
+    `Agents on it: ${p.agents.join(', ') || 'none'}`,
+    `Context files: ${files.join(', ') || 'none'}`,
+    '',
+    'Recent artifacts (newest first):',
+    artifacts.length ? YAML.stringify(artifacts).trim() : 'none',
+  ].join('\n');
 }
 
 /** The focused agent's definition and recent activity, so the model can discuss it without a lookup first. */
 function focusPrompt(ctx: Ctx, focus: ChatFocus | undefined): string {
+  if (focus?.project) return projectFocus(ctx, focus.project);
   if (!focus?.agent) return '';
   const a = s.getAgent(ctx, focus.agent);
   const jobs = s.listJobs(ctx, { agent: a.name, limit: 10 }).map((j) => {

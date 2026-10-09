@@ -4,6 +4,7 @@ import { Resizer, usePanelWidth } from './Resizer.tsx';
 import { ArrowUp, Check, ChevronRight, SquarePen, Sparkles, X, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.ts';
+import type { ChatFocus } from '../lib/chat.ts';
 import { go } from '../lib/router.ts';
 import { Button } from './ui/button.tsx';
 import { cn } from './ui/cn.ts';
@@ -60,15 +61,15 @@ function StepRow({ step }: { step: Step }) {
 export function Assistant({
   onClose,
   job,
-  agent,
+  focus,
   onLeaveJob,
-  onLeaveAgent,
+  onLeaveFocus,
 }: {
   onClose: () => void;
   job: string | null;
-  agent: string | null;
+  focus: ChatFocus | null;
   onLeaveJob: () => void;
-  onLeaveAgent: () => void;
+  onLeaveFocus: () => void;
 }) {
   const [state, setState] = useState(empty);
   const [width, setWidth] = usePanelWidth('assistant', 400, 320, 760);
@@ -86,7 +87,7 @@ export function Assistant({
     setState(empty());
     setError(null);
     input.current?.focus();
-  }, [agent]);
+  }, [focus?.kind, focus?.name]);
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
   }, [state.turns.length, busy]);
@@ -102,7 +103,7 @@ export function Assistant({
     setBusy(true);
     try {
       const r = await api<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }>('/api/assistant', {
-        body: { messages: history, focus: agent ? { agent } : undefined },
+        body: { messages: history, focus: focus ? { [focus.kind]: focus.name } : undefined },
       });
       const answer = r.messages.at(-1)?.content ?? '';
       const next = { history: r.messages, turns: [...turns, { role: 'assistant' as const, text: answer, steps: r.steps }] };
@@ -131,7 +132,7 @@ export function Assistant({
           <Button size="icon" variant="ghost" title="New Chat" onClick={() => {
             reset();
             onLeaveJob();
-            onLeaveAgent();
+            onLeaveFocus();
           }}>
             <SquarePen />
           </Button>
@@ -145,12 +146,12 @@ export function Assistant({
         <JobChat job={job} onLeave={onLeaveJob} />
       ) : (
         <>
-      {agent && (
+      {focus && (
         <div className="flex items-center gap-2 border-b border-line bg-panel/60 px-4 py-2 text-xs">
           <span className="min-w-0 flex-1 truncate text-muted">
-            About <span className="font-medium text-ink">{agent}</span>
+            About {focus.kind} <span className="font-medium text-ink">{focus.name}</span>
           </span>
-          <button type="button" onClick={onLeaveAgent} title="Chat about anything" className="cursor-pointer text-muted hover:text-ink">
+          <button type="button" onClick={onLeaveFocus} title="Chat about anything" className="cursor-pointer text-muted hover:text-ink">
             <X className="size-3.5" />
           </button>
         </div>
@@ -158,8 +159,10 @@ export function Assistant({
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {!state.turns.length && (
           <p className="text-sm text-muted">
-            {agent
-              ? `Ask about ${agent}: how it works, why it did something, what it costs. Or ask for a change, like a better briefing, another model or a schedule, and Yaho makes it.`
+            {focus?.kind === 'agent'
+              ? `Ask about ${focus.name}: how it works, why it did something, what it costs. Or ask for a change, like a better briefing, another model or a schedule, and Yaho makes it.`
+              : focus
+                ? `Ask about ${focus.name}: what it is for, which agents work on it, what they made. Or ask for a change, like a sharper briefing or another agent on it, and Yaho makes it.`
               : 'Ask for anything you can do in Yaho: create or change agents, projects and resources, run jobs, read your inbox, adjust settings.'}
           </p>
         )}
@@ -203,7 +206,7 @@ export function Assistant({
                 void send(text);
               }
             }}
-            placeholder={agent ? `Ask about ${agent}…` : 'Ask Yaho to do something…'}
+            placeholder={focus ? `Ask about ${focus.name}…` : 'Ask Yaho to do something…'}
             className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 text-sm outline-none placeholder:text-muted/70"
           />
           <Button size="icon" variant="primary" disabled={!text.trim() || busy} onClick={() => void send(text)} title="Send (Enter)">

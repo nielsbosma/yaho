@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Assistant } from './components/Assistant.tsx';
+import type { ChatFocus } from './lib/chat.ts';
 import { Sidebar } from './components/Sidebar.tsx';
 import { onLive, useApi } from './lib/api.ts';
 import { platform } from './lib/platform.ts';
@@ -31,25 +32,25 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  // What the chat is about: a job to continue, or an agent to discuss (at most one).
+  // What the chat is about: a job to continue, or an agent or project to discuss (at most one).
   const [chatJob, setChatJob] = useState<string | null>(null);
-  const [chatAgent, setChatAgent] = useState<string | null>(null);
+  const [chatFocus, setChatFocus] = useState<ChatFocus | null>(null);
   useEffect(() => {
     const onJob = (e: Event) => {
-      setChatAgent(null);
+      setChatFocus(null);
       setChatJob((e as CustomEvent<string>).detail);
       toggleAssistant(true);
     };
-    const onAgent = (e: Event) => {
+    const onFocus = (e: Event) => {
       setChatJob(null);
-      setChatAgent((e as CustomEvent<string>).detail);
+      setChatFocus((e as CustomEvent<ChatFocus>).detail);
       toggleAssistant(true);
     };
     window.addEventListener('yaho:chat-job', onJob);
-    window.addEventListener('yaho:chat-agent', onAgent);
+    window.addEventListener('yaho:chat-focus', onFocus);
     return () => {
       window.removeEventListener('yaho:chat-job', onJob);
-      window.removeEventListener('yaho:chat-agent', onAgent);
+      window.removeEventListener('yaho:chat-focus', onFocus);
     };
   });
   const state = useApi<AppState>('/api/state', (e) => e.type === 'message' || e.type === 'job');
@@ -86,13 +87,13 @@ export function App() {
       {assistant && (
         <Assistant
           job={chatJob}
-          agent={chatAgent}
+          focus={chatFocus}
           onLeaveJob={() => setChatJob(null)}
-          onLeaveAgent={() => setChatAgent(null)}
+          onLeaveFocus={() => setChatFocus(null)}
           onClose={() => {
             toggleAssistant(false);
             setChatJob(null);
-            setChatAgent(null);
+            setChatFocus(null);
           }}
         />
       )}

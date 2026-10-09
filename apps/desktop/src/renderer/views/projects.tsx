@@ -2,7 +2,8 @@ import { Markdown } from '../components/Markdown.tsx';
 import { useConfirmDelete } from '../components/ConfirmDelete.tsx';
 import { useContextMenu } from '../components/ContextMenu.tsx';
 import { DataTable, LayoutSwitch, openDeleteMenu, useLayout } from '../components/ListLayout.tsx';
-import { FileText, FolderKanban, Plus, Trash2, Upload } from 'lucide-react';
+import { FileText, FolderKanban, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
+import { chatAboutProject } from '../lib/chat.ts';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
@@ -207,6 +208,9 @@ function ProjectDetail({ name }: { name: string }) {
         sub={<code>{p.name}</code>}
         actions={
           <>
+            <Button onClick={() => chatAboutProject(p.name)} title="Ask about this project, or have Yaho change it">
+              <Sparkles /> Chat About Project
+            </Button>
             <Button onClick={() => setEditing(!editing)}>{editing ? 'Cancel' : 'Edit'}</Button>
             <Button variant="danger" onClick={() => setDeleting(true)}>
               <Trash2 />
