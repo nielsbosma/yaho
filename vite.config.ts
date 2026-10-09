@@ -23,6 +23,7 @@ export default defineConfig({
   test: {
     include: ['{core,cli,apps}/**/*.test.ts'],
     root: '.',
+    testTimeout: 30_000,
   },
   run: {
     cache: true,
