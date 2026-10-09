@@ -4,6 +4,7 @@ import YAML from 'yaml';
 import { saveSettings } from '../config.ts';
 import type { Ctx } from '../context.ts';
 import { HttpError } from '../store.ts';
+import { addProjectFile, readLocalFile } from './files.ts';
 import * as s from '../store.ts';
 
 /**
@@ -116,6 +117,20 @@ function tools(ctx: Ctx): Record<string, Tool> {
       run: (a) => (runner().continueJob(String(a.id)), { continued: a.id }),
     },
     list_projects: { description: 'List projects.', parameters: obj({}), run: () => s.listProjects(ctx) },
+    read_file: {
+      description:
+        'Read a file on this computer by its full path, as text. PDFs are extracted to text; text formats (md, txt, csv, json, yaml, html...) are read as they are. Use it when the human points at a file, e.g. to write a briefing from a document.',
+      parameters: obj({ path: str('full path, e.g. D:\\Docs\\plan.pdf') }, ['path']),
+      run: (a) => readLocalFile(String(a.path)),
+    },
+    add_project_file: {
+      description: "Copy a file on this computer into a project's context files, where its agents can read it.",
+      parameters: obj(
+        { project: str('project name'), path: str('full path of the file'), name: str('file name in the project (default: the same)') },
+        ['project', 'path'],
+      ),
+      run: (a) => addProjectFile(ctx, String(a.project), String(a.path), a.name ? String(a.name) : undefined),
+    },
     save_project: {
       description: 'Create or update a project from YAML (name, title, briefing, agents).',
       parameters: obj({ yaml: str('the project in YAML'), rename_from: str('current name, when renaming') }, ['yaml']),
@@ -285,7 +300,8 @@ function deepMerge(target: Record<string, unknown>, patch: Record<string, unknow
 const SYSTEM = `You are the assistant inside Yaho (Yet Another Harness Orchestrator), a desktop app where long-lived AI agents run
 on schedules, work on projects, use resources whose secret key values live in Dopbase, and talk to the human through an inbox.
 
-You can do anything the UI can, with your tools: create and edit agents, projects and resources, run and stop jobs, read
+You can do anything the UI can, with your tools: create and edit agents, projects and resources, read files on this
+computer and copy them into projects, run and stop jobs, read
 the inbox and message agents, change non-secret settings, and open pages. Act; don't just describe. Prefer one tool
 call that does the whole thing (a full YAML definition) over many small ones.
 
