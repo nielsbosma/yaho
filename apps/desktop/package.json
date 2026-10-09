@@ -6,7 +6,9 @@
   "main": "src/main/index.ts",
   "scripts": {
     "build": "vp build",
-    "start": "electron ."
+    "start": "electron .",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build -o dist/storybook"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -18,11 +20,13 @@
     "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@storybook/react-vite": "^10.6.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "^44.7.0",
+    "storybook": "^10.6.1",
     "tailwindcss": "^4.3.3"
   }
 }
