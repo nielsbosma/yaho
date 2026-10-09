@@ -59,6 +59,12 @@ for (const [dir, want] of [
 }
 
 cpSync(join(repo, 'briefings'), join(stage, 'briefings'), { recursive: true });
+
+console.log('\n== dopbase');
+const dopbaseExe = process.platform === 'win32' ? 'dopbase.exe' : 'dopbase';
+if (!existsSync(join(repo, 'vendor/dopbase', dopbaseExe)))
+  execFileSync(process.execPath, [join(repo, 'tools/build-dopbase.mjs')], { stdio: 'inherit' });
+cpSync(join(repo, 'vendor/dopbase'), join(stage, 'dopbase'), { recursive: true });
 cpSync(join(repo, 'examples'), join(stage, 'examples'), { recursive: true });
 
 const electronVersion = require('electron/package.json').version;

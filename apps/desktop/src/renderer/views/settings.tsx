@@ -11,7 +11,7 @@ interface Settings {
   server: { host: string; port: number };
   harnesses: Record<string, { command: string; args?: string[] }>;
   litellm: { url: string; api_key?: string; master_key?: string };
-  dopbase: { url: string; token?: string; environment: string; project_prefix: string };
+  dopbase: { mode: 'bundled' | 'external'; url: string; token?: string; local_port?: number; environment: string; project_prefix: string };
   global_spend_cap_usd: number;
   defaults: { harness: string; models: string[]; budget_usd: number; max_parallel: number; guardrails: Record<string, number | undefined> };
 }
@@ -140,16 +140,42 @@ export function SettingsView(_: ViewProps) {
             </Section>
             <Section title="Secrets (Dopbase)">
               <Card className="grid gap-4 p-4 md:grid-cols-2">
-                <Field label="Server URL">
-                  <Input value={s.dopbase.url} onChange={(e) => upd((d) => void (d.dopbase.url = e.target.value))} />
+                <Field label="Where values live" className="md:col-span-2">
+                  <div className="flex gap-1 rounded-lg bg-hover p-0.5 text-sm w-fit">
+                    {(['bundled', 'external'] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => upd((d) => void (d.dopbase.mode = m))}
+                        className={`cursor-pointer rounded-md px-3 py-1 ${s.dopbase.mode === m ? 'bg-panel shadow-sm' : 'text-muted'}`}
+                      >
+                        {m === 'bundled' ? 'Bundled (local)' : 'External server'}
+                      </button>
+                    ))}
+                  </div>
                 </Field>
-                <Field label="Token" hint="A Dopbase CLI or admin token that can create projects and set secrets.">
-                  <Input
-                    type="password"
-                    value={s.dopbase.token ?? ''}
-                    onChange={(e) => upd((d) => void (d.dopbase.token = e.target.value || undefined))}
-                  />
-                </Field>
+                {s.dopbase.mode === 'bundled' ? (
+                  <Field label="Local port" hint="YAHO runs its own Dopbase on 127.0.0.1, with its data in the YAHO data directory.">
+                    <Input
+                      type="number"
+                      value={s.dopbase.local_port ?? 4702}
+                      onChange={(e) => upd((d) => void (d.dopbase.local_port = Number(e.target.value)))}
+                    />
+                  </Field>
+                ) : (
+                  <>
+                    <Field label="Server URL">
+                      <Input value={s.dopbase.url} onChange={(e) => upd((d) => void (d.dopbase.url = e.target.value))} />
+                    </Field>
+                    <Field label="Token" hint="A Dopbase CLI or admin token that can create projects and set secrets.">
+                      <Input
+                        type="password"
+                        value={s.dopbase.token ?? ''}
+                        onChange={(e) => upd((d) => void (d.dopbase.token = e.target.value || undefined))}
+                      />
+                    </Field>
+                  </>
+                )}
                 <Field label="Environment">
                   <Input value={s.dopbase.environment} onChange={(e) => upd((d) => void (d.dopbase.environment = e.target.value))} />
                 </Field>

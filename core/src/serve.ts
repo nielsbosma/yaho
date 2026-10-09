@@ -11,6 +11,7 @@ import { Bus, type Ctx } from './context.ts';
 import { openDb } from './db/index.ts';
 import { JobRunner } from './jobs/runner.ts';
 import { Scheduler } from './scheduler/index.ts';
+import { LocalDopbase } from './secrets/localDopbase.ts';
 
 // node:sqlite prints an ExperimentalWarning on Node 22; it is expected.
 process.removeAllListeners('warning');
@@ -27,6 +28,9 @@ export async function serve(
 
   const runner = new JobRunner(ctx);
   runner.recover();
+  // The bundled Dopbase runs next to the core whatever the mode, so switching to it in Settings needs no restart.
+  ctx.localDopbase = new LocalDopbase(ctx);
+  if (ctx.settings.dopbase.mode === 'bundled' && !process.env.YAHO_NO_DOPBASE) await ctx.localDopbase.start();
   const scheduler = new Scheduler(ctx);
   ctx.scheduler = scheduler;
 
@@ -48,6 +52,7 @@ export async function serve(
 
   const close = async () => {
     scheduler.stop();
+    ctx.localDopbase?.stop();
     await runner.shutdown();
     rmSync(p.server, { force: true });
     server.closeAllConnections();

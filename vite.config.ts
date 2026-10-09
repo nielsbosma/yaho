@@ -24,6 +24,8 @@ export default defineConfig({
     include: ['{core,cli,apps}/**/*.test.ts'],
     root: '.',
     testTimeout: 30_000,
+    // Tests never start the bundled Dopbase; the secrets tests use a mock server.
+    env: { YAHO_NO_DOPBASE: '1' },
   },
   run: {
     cache: true,

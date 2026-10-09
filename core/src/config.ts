@@ -15,7 +15,8 @@ export interface Settings {
     /** With a master key YAHO mints one virtual key per job, capped at the agent's remaining budget. */
     master_key?: string;
   };
-  dopbase: { url: string; token?: string; environment: string; project_prefix: string };
+  /** bundled: YAHO runs its own Dopbase on local_port. external: an existing server at url, with token. */
+  dopbase: { mode: 'bundled' | 'external'; url: string; token?: string; local_port?: number; environment: string; project_prefix: string };
   global_spend_cap_usd: number;
   defaults: {
     harness: string;
@@ -36,7 +37,7 @@ export const defaultSettings = (): Settings => ({
   server: { host: '127.0.0.1', port: 4700 },
   harnesses: { 'claude-code': { command: 'claude' } },
   litellm: { url: 'http://localhost:4000' },
-  dopbase: { url: 'http://localhost:8840', environment: 'production', project_prefix: 'yaho-' },
+  dopbase: { mode: 'bundled', url: 'http://localhost:8840', local_port: 4702, environment: 'production', project_prefix: 'yaho-' },
   global_spend_cap_usd: 100,
   defaults: {
     harness: 'claude-code',

@@ -11,18 +11,38 @@ export class Dopbase {
     this.ctx = ctx;
   }
 
+  get local() {
+    return this.ctx.settings.dopbase.mode === 'bundled' ? this.ctx.localDopbase : undefined;
+  }
+
+  get url(): string {
+    return (this.local?.url ?? this.ctx.settings.dopbase.url).replace(/\/$/, '');
+  }
+
   get configured(): boolean {
+    if (this.ctx.settings.dopbase.mode === 'bundled') return !!this.local?.child;
     return !!this.ctx.settings.dopbase.url && !!this.ctx.settings.dopbase.token;
   }
 
-  async call<T>(method: string, path: string, body?: unknown, allow404 = false): Promise<T | null> {
-    const { url, token } = this.ctx.settings.dopbase;
+  private async token(fresh = false): Promise<string> {
+    if (this.ctx.settings.dopbase.mode === 'bundled') {
+      if (!this.local?.child)
+        throw new HttpError(503, `the bundled Dopbase is not running${this.local?.lastError ? `: ${this.local.lastError}` : ''}`);
+      return this.local.sessionToken(fresh);
+    }
+    const token = this.ctx.settings.dopbase.token;
     if (!token) throw new HttpError(503, 'Dopbase is not configured: set dopbase.token in Settings');
-    const res = await fetch(`${url.replace(/\/$/, '')}/api/v1${path}`, {
+    return token;
+  }
+
+  async call<T>(method: string, path: string, body?: unknown, allow404 = false, retried = false): Promise<T | null> {
+    const res = await fetch(`${this.url}/api/v1${path}`, {
       method,
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { Authorization: `Bearer ${await this.token(retried)}`, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+    // A bundled session can expire; sign in again once.
+    if (res.status === 401 && this.local && !retried) return this.call(method, path, body, allow404, true);
     if (allow404 && res.status === 404) return null;
     const text = await res.text();
     const env = text ? (JSON.parse(text) as { success?: boolean; data?: T; error?: Record<string, string> }) : {};
@@ -38,7 +58,7 @@ export class Dopbase {
   }
 
   async health(): Promise<unknown> {
-    const res = await fetch(`${this.ctx.settings.dopbase.url.replace(/\/$/, '')}/api/v1/health`);
+    const res = await fetch(`${this.url}/api/v1/health`);
     return res.json();
   }
 

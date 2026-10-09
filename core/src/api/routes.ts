@@ -69,6 +69,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const next = await definition<Settings>(req);
     Object.assign(ctx.settings, next);
     saveSettings(ctx.settings);
+    if (ctx.settings.dopbase.mode === 'bundled' && ctx.localDopbase && !ctx.localDopbase.child) await ctx.localDopbase.start();
     ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
     runner(ctx).pump();
     return ctx.settings;

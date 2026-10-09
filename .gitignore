@@ -38,3 +38,6 @@ dist-ssr
 # Packaging output
 apps/desktop/build/
 apps/desktop/release/
+
+# Built by tools/build-dopbase.mjs
+vendor/

@@ -64,7 +64,7 @@ beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'yaho-dop-'));
   process.env.YAHO_DATA_DIR = dir;
   const settings = defaultSettings();
-  settings.dopbase = { url: mock.url(), token: 't0k', environment: 'production', project_prefix: 'yaho-' };
+  settings.dopbase = { mode: 'external', url: mock.url(), token: 't0k', environment: 'production', project_prefix: 'yaho-' };
   ctx = { db: openDb(join(dir, 'yaho.db')), settings, paths: paths(dir), apiToken: 'x', bus: new Bus(), apiUrl: '' };
   saveResource(ctx, {
     name: 'ads',
