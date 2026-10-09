@@ -4,6 +4,7 @@ import { extname, join, normalize, sep } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import type { Ctx, BusEvent } from '../context.ts';
 import { HttpError } from '../store.ts';
+import { OPEN_PATHS } from './fonts.ts';
 import { Router, parseBody, readBytes, send, type Req } from './http.ts';
 
 export const MIME: Record<string, string> = {
@@ -96,7 +97,10 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
       if (path === '/api/health') return send(res, 200, { ok: true, name: 'yaho', pid: process.pid }, wantsYaml);
 
       if (path.startsWith('/api/')) {
-        const caller = authenticate(ctx, bearer(raw, url.searchParams));
+        // Font files are the only open routes: CSS url() cannot carry a token.
+        const caller =
+          authenticate(ctx, bearer(raw, url.searchParams)) ??
+          (OPEN_PATHS.test(path) && raw.method === 'GET' ? { kind: 'human' as const } : null);
         if (!caller) throw new HttpError(401, 'missing or invalid token');
 
         if (path === '/api/events' && caller.kind === 'human') {

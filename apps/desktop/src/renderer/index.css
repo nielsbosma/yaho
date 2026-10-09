@@ -1,63 +1,63 @@
 @import 'tailwindcss';
 
-/* Claude Desktop palette: warm paper, clay accent, serif headings. */
+/* Cool paper, a blue accent, serif headings. */
 :root {
-  --c-bg: #faf9f5;
-  --c-sidebar: #f3f1ea;
+  --c-bg: #f7f9fc;
+  --c-sidebar: #eef2f8;
   --c-panel: #ffffff;
-  --c-ink: #2c2a24;
-  --c-muted: #77736a;
-  --c-line: #e7e3d8;
-  --c-line-strong: #d6d1c3;
-  --c-hover: #ece9df;
-  --c-accent: #c96442;
-  --c-accent-hover: #b4583a;
+  --c-ink: #1b2334;
+  --c-muted: #64708a;
+  --c-line: #e0e6ef;
+  --c-line-strong: #cbd4e2;
+  --c-hover: #e6ebf4;
+  --c-accent: #2f6fde;
+  --c-accent-hover: #2459bd;
   --c-ok: #3a7d55;
   --c-warn: #a86b12;
   --c-danger: #c0453a;
-  --c-info: #3c6fb0;
-  --c-code: #f2efe7;
+  --c-info: #0e8aa3;
+  --c-code: #eef2f8;
   color-scheme: light;
 }
 
 /* Dark: an explicit choice (data-theme on <html>), or the system's when the person chose "system". */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --c-bg: #262624;
-    --c-sidebar: #1f1e1d;
-    --c-panel: #2c2b29;
-    --c-ink: #ece9e1;
-    --c-muted: #a5a197;
-    --c-line: #3b3a37;
-    --c-line-strong: #4b4945;
-    --c-hover: #34332f;
-    --c-accent: #d97757;
-    --c-accent-hover: #e38a6b;
+    --c-bg: #161b25;
+    --c-sidebar: #11151d;
+    --c-panel: #1d2330;
+    --c-ink: #e5e9f1;
+    --c-muted: #96a0b6;
+    --c-line: #2a3242;
+    --c-line-strong: #384255;
+    --c-hover: #242b39;
+    --c-accent: #5b8ff0;
+    --c-accent-hover: #7aa5f4;
     --c-ok: #6cbf8b;
     --c-warn: #e0a84a;
     --c-danger: #e57368;
-    --c-info: #7ea7e0;
-    --c-code: #1f1e1d;
+    --c-info: #4fc3d9;
+    --c-code: #11151d;
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --c-bg: #262624;
-  --c-sidebar: #1f1e1d;
-  --c-panel: #2c2b29;
-  --c-ink: #ece9e1;
-  --c-muted: #a5a197;
-  --c-line: #3b3a37;
-  --c-line-strong: #4b4945;
-  --c-hover: #34332f;
-  --c-accent: #d97757;
-  --c-accent-hover: #e38a6b;
+  --c-bg: #161b25;
+  --c-sidebar: #11151d;
+  --c-panel: #1d2330;
+  --c-ink: #e5e9f1;
+  --c-muted: #96a0b6;
+  --c-line: #2a3242;
+  --c-line-strong: #384255;
+  --c-hover: #242b39;
+  --c-accent: #5b8ff0;
+  --c-accent-hover: #7aa5f4;
   --c-ok: #6cbf8b;
   --c-warn: #e0a84a;
   --c-danger: #e57368;
-  --c-info: #7ea7e0;
-  --c-code: #1f1e1d;
+  --c-info: #4fc3d9;
+  --c-code: #11151d;
   color-scheme: dark;
 }
 
@@ -77,8 +77,8 @@
   --color-danger: var(--c-danger);
   --color-info: var(--c-info);
   --color-code: var(--c-code);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-serif: 'Tiempos Text', 'Iowan Old Style', 'Palatino Linotype', Georgia, ui-serif, serif;
+  --font-sans: 'Anthropic Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Anthropic Serif', 'Iowan Old Style', 'Palatino Linotype', Georgia, ui-serif, serif;
   --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
 }
 

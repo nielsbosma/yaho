@@ -1,10 +1,10 @@
 import { nativeImage, type NativeImage } from 'electron';
 
 /**
- * Icons drawn in code, so the app needs no image assets: a clay disc for the tray and window, with a red dot when
+ * Icons drawn in code, so the app needs no image assets: a blue disc for the tray and window, with a red dot when
  * the human has unread messages, plus the small red overlay Windows shows on the taskbar button.
  */
-const CLAY = [0x42, 0x64, 0xc9]; // BGR of #c96442
+const ACCENT = [0xde, 0x6f, 0x2f]; // BGR of #2f6fde, the accent blue
 const RED = [0x3a, 0x45, 0xd9];
 const WHITE = [0xff, 0xff, 0xff];
 
@@ -64,7 +64,7 @@ export function appIcon(size = 32, unread = false): NativeImage {
       [c, join, c, c + R * 0.52],
     ];
     const inY = segs.some(([x1, y1, x2, y2]) => segDist(x, y, x1, y1, x2, y2) < t);
-    return [inY ? WHITE : CLAY, cover(d, R)];
+    return [inY ? WHITE : ACCENT, cover(d, R)];
   });
 }
 

@@ -49,7 +49,7 @@ function createWindow(conn: CoreConnection): BrowserWindow {
     title: 'YAHO',
     icon: appIcon(64),
     show: !startHidden,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#262624' : '#faf9f5',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#161b25' : '#f7f9fc',
     autoHideMenuBar: true,
     webPreferences: {
       preload,

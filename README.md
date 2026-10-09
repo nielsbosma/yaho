@@ -102,6 +102,12 @@ Each job gets `yaho` on its PATH and a short-lived job token that scopes what it
 | `yaho budget`                                         | Budget, spend and this job's cost              |
 | `yaho sleep <duration>` / `yaho finish [--summary …]` | End the job                                    |
 
+## Fonts
+
+YAHO uses Claude Desktop's typefaces, Anthropic Sans and Anthropic Serif. They belong to Anthropic and are not in
+this repository: when the Claude desktop app is installed, the core reads them from its `app.asar` at run time and
+serves them to the UI. Without it, YAHO falls back to system fonts.
+
 ## Repository
 
 ```
