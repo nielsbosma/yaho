@@ -29,13 +29,6 @@ interface Turn {
 /** A chat lasts as long as the panel is open: closing it (or Ctrl+J) discards the conversation. */
 const empty = (): { history: ChatMessage[]; turns: Turn[] } => ({ history: [], turns: [] });
 
-const SUGGESTIONS = [
-  'Create an agent that summarises Hacker News every morning and sends me the top 5 stories',
-  'Install the social-scout example',
-  'What is running right now?',
-  'Add a resource for the OpenAI API with a secret OPENAI_API_KEY',
-];
-
 const label = (tool: string) => tool.replace(/_/g, ' ');
 
 function StepRow({ step }: { step: Step }) {
@@ -132,16 +125,6 @@ export function Assistant({ onClose }: { onClose: () => void }) {
               Ask for anything you can do in YAHO: create or change agents, projects and resources, run jobs, read your inbox, adjust
               settings.
             </p>
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => void send(s)}
-                className="block w-full cursor-pointer rounded-lg border border-line bg-panel px-3 py-2 text-left text-sm hover:border-line-strong"
-              >
-                {s}
-              </button>
-            ))}
           </div>
         )}
         {state.turns.map((t, i) =>
