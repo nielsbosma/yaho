@@ -162,8 +162,9 @@ export class JobRunner {
     for (const w of secrets.warnings) addJobEvent(ctx, job.id, 'system', { text: w });
 
     const env: Record<string, string> = {};
-    for (const [k, v] of Object.entries(process.env))
-      if (v !== undefined && !k.startsWith('CLAUDECODE') && k !== 'CLAUDE_CODE_ENTRYPOINT') env[k] = v;
+    // Never inherit another Claude session's identity or credentials: the harness talks to LiteLLM only.
+    const skip = /^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL)$/;
+    for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !skip.test(k)) env[k] = v;
     const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
     Object.assign(env, secrets.env, {
       [pathKey]: `${ctx.paths.bin}${process.platform === 'win32' ? ';' : ':'}${env[pathKey] ?? ''}`,
@@ -174,7 +175,6 @@ export class JobRunner {
       YAHO_AGENT_DB: join(cwd, 'agent.db'),
       ANTHROPIC_BASE_URL: settings.litellm.url,
       ANTHROPIC_AUTH_TOKEN: modelKey,
-      ANTHROPIC_API_KEY: '',
       // Background calls (titles, summaries) must also use a model LiteLLM knows.
       ANTHROPIC_DEFAULT_HAIKU_MODEL: agent.models[agent.models.length - 1] ?? model,
       ANTHROPIC_SMALL_FAST_MODEL: agent.models[agent.models.length - 1] ?? model,

@@ -1,4 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { delimiter, extname, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
 
@@ -11,6 +13,21 @@ function toolResultText(content: unknown): string {
       .map((c) => (c && typeof c === 'object' && 'text' in c ? String((c as { text: unknown }).text) : JSON.stringify(c)))
       .join('\n');
   return JSON.stringify(content);
+}
+
+/** Find a command on PATH (with PATHEXT on Windows) so we can spawn it without a shell. */
+export function resolveCommand(cmd: string, env: Record<string, string | undefined> = process.env): string {
+  if (isAbsolute(cmd) || cmd.includes('/') || cmd.includes('\\')) return cmd;
+  const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+  const exts = process.platform === 'win32' ? (env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').filter(Boolean) : [''];
+  for (const dir of (env[pathKey] ?? '').split(delimiter)) {
+    if (!dir) continue;
+    for (const ext of process.platform === 'win32' && extname(cmd) ? ['', ...exts] : exts) {
+      const full = join(dir, cmd + ext);
+      if (existsSync(full)) return full;
+    }
+  }
+  return cmd;
 }
 
 /** Kill a process and its whole tree; on Windows a plain kill leaves the harness's children running. */
@@ -48,12 +65,14 @@ export const claudeCode: HarnessAdapter = {
       run.systemPrompt,
     ];
     if (run.resumeSessionId) args.push('--resume', run.resumeSessionId);
-    const child = spawn(run.command, args, {
+    const command = resolveCommand(run.command, run.env);
+    const child = spawn(command, args, {
       cwd: run.cwd,
       env: run.env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
-      shell: process.platform === 'win32' && !run.command.toLowerCase().endsWith('.exe'),
+      // Only batch files need a shell; everything else is spawned directly so arguments pass through untouched.
+      shell: /\.(cmd|bat)$/i.test(command),
       detached: process.platform !== 'win32',
     });
     // The prompt goes over stdin: Windows command lines cap at 32k characters.
