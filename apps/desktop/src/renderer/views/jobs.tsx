@@ -40,9 +40,14 @@ function ActiveJobs() {
             Jobs start from cron schedules, inbox messages, delays, or Run now on an agent.
           </Empty>
         )}
-        <Section title="Recent">
-          <JobTable jobs={recent.data?.filter((j) => j.status !== 'running' && j.status !== 'queued') ?? []} showAgent />
-        </Section>
+        {(() => {
+          const done = recent.data?.filter((j) => j.status !== 'running' && j.status !== 'queued') ?? [];
+          return done.length ? (
+            <Section title="Recent">
+              <JobTable jobs={done} showAgent />
+            </Section>
+          ) : null;
+        })()}
       </div>
     </>
   );

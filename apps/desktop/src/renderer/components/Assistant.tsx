@@ -1,3 +1,4 @@
+import { Resizer, usePanelWidth } from './Resizer.tsx';
 import { ArrowUp, Check, ChevronRight, SquarePen, Sparkles, X, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.ts';
@@ -63,6 +64,7 @@ function StepRow({ step }: { step: Step }) {
 
 export function Assistant({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState(empty);
+  const [width, setWidth] = usePanelWidth('assistant', 400, 320, 760);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +109,8 @@ export function Assistant({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <aside className="flex w-[400px] shrink-0 flex-col border-l border-line bg-sidebar">
+    <aside className="relative flex shrink-0 flex-col border-l border-line bg-sidebar" style={{ width }}>
+      <Resizer width={width} onChange={setWidth} side="left" initial={400} />
       <div className="flex h-14 items-center gap-2 border-b border-line px-4">
         <Sparkles className="size-4 text-accent" />
         <span className="font-serif text-lg">Chat with Yaho</span>

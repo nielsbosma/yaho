@@ -57,6 +57,7 @@ const cleanFileName = (n: string) => {
 export function humanRoutes(ctx: Ctx, r: Router): void {
   // ---- overview ----
   r.on('GET', '/api/state', () => ({
+    version: yahoVersion(),
     unread: s.unreadCount(ctx),
     running: ctx.db.prepare("SELECT COUNT(*) n FROM jobs WHERE status = 'running'").get()!.n,
     queued: ctx.db.prepare("SELECT COUNT(*) n FROM jobs WHERE status = 'queued'").get()!.n,
@@ -311,4 +312,20 @@ export function exampleRoutes(ctx: Ctx, r: Router): void {
     }
     return { agent: s.saveAgent(ctx, agent), created };
   });
+}
+
+let version: string | undefined;
+/** The app version: the repo's package.json in development, the staged one in a packaged app. */
+export function yahoVersion(): string {
+  if (version) return version;
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const p of [join(here, '../../../package.json'), join(here, '../package.json')]) {
+    try {
+      const pkg = JSON.parse(readFileSync(p, 'utf8')) as { name?: string; version?: string };
+      if (pkg.name === 'yaho' && pkg.version) return (version = pkg.version);
+    } catch {
+      /* try the next */
+    }
+  }
+  return (version = 'dev');
 }

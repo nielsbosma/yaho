@@ -1,3 +1,4 @@
+import { Resizer, usePanelWidth } from './Resizer.tsx';
 import { Bot, FolderKanban, Images, Inbox, KeyRound, Monitor, Moon, Play, Plus, Settings, Sparkles, Sun } from 'lucide-react';
 import { useTheme, type Theme } from '../lib/theme.ts';
 import type { ReactNode } from 'react';
@@ -55,11 +56,14 @@ export function Sidebar({
     (e) => (e.type === 'changed' && e.entity === 'agents') || e.type === 'job' || e.type === 'message',
   );
   const at = route[0];
+  const [width, setWidth] = usePanelWidth('sidebar', 256, 200, 420);
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-sidebar">
+    <aside className="relative flex shrink-0 flex-col border-r border-line bg-sidebar" style={{ width }}>
+      <Resizer width={width} onChange={setWidth} side="right" initial={256} />
       <div className="flex h-14 items-center gap-2 px-4">
         <div className="flex size-7 items-center justify-center rounded-lg bg-accent font-serif text-[15px] text-white">Y</div>
         <span className="font-serif text-lg text-ink">YAHO</span>
+        {state?.version && <span className="text-[11px] text-muted tabular-nums">v{state.version}</span>}
         <span
           title={connected ? 'Connected to the core' : 'Reconnecting to the core…'}
           className={cn('ml-auto size-2 rounded-full', connected ? 'bg-ok' : 'animate-pulse bg-warn')}

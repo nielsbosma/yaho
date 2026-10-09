@@ -1,3 +1,4 @@
+import { Resizer, usePanelWidth } from '../components/Resizer.tsx';
 import { Inbox, PenLine } from 'lucide-react';
 import { useState } from 'react';
 import { MessageCard, who } from '../components/MessageCard.tsx';
@@ -17,11 +18,13 @@ export function InboxView({ route }: ViewProps) {
   const inbox = useApi<Message[]>(`/api/messages?to=human${filter === 'unread' ? '&unread=1' : ''}`, onMessage);
   const [compose, setCompose] = useState(false);
   const selected = route[1];
+  const [listWidth, setListWidth] = usePanelWidth('inbox-list', 380, 260, 720);
   const unread = inbox.data?.filter((m) => !m.read).length ?? 0;
 
   return (
     <div className="flex h-full">
-      <div className="flex w-[380px] shrink-0 flex-col border-r border-line">
+      <div className="relative flex shrink-0 flex-col border-r border-line" style={{ width: listWidth }}>
+        <Resizer width={listWidth} onChange={setListWidth} side="right" initial={380} />
         <div className="flex items-center gap-2 border-b border-line px-5 pt-6 pb-4">
           <h1 className="font-serif text-[26px]">Inbox</h1>
           <span className="text-sm text-muted">{unread ? `${unread} unread` : ''}</span>

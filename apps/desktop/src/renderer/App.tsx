@@ -7,6 +7,7 @@ import { go, useRoute } from './lib/router.ts';
 import { views } from './views/index.tsx';
 
 export interface AppState {
+  version: string;
   unread: number;
   running: number;
   queued: number;
