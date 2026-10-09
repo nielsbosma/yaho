@@ -13,5 +13,5 @@ contextBridge.exposeInMainWorld('yahoDesktop', {
   notify: (title: string, body: string) => ipcRenderer.send('yaho:notify', title, body),
   reveal: (path: string) => ipcRenderer.send('yaho:reveal', path),
   openExternal: (url: string) => ipcRenderer.send('yaho:open', url),
-  onNotificationClick: (cb: (id: string) => void) => ipcRenderer.on('yaho:notification-click', (_e: unknown, id: string) => cb(id)),
+  onNavigate: (cb: (route: string) => void) => ipcRenderer.on('yaho:navigate', (_e: unknown, route: string) => cb(route)),
 });

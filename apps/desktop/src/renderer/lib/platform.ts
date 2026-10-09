@@ -21,7 +21,7 @@ interface DesktopBridge {
   notify(title: string, body: string): void;
   reveal(path: string): void;
   openExternal(url: string): void;
-  onNotificationClick(cb: (id: string) => void): void;
+  onNavigate(cb: (route: string) => void): void;
 }
 
 declare global {
@@ -43,6 +43,8 @@ function webToken(): string {
 function makePlatform(): Platform {
   const d = window.yahoDesktop;
   if (d) {
+    // The tray and native notifications ask the window to show a page.
+    d.onNavigate((route) => (location.hash = `#/${route}`));
     return {
       kind: 'desktop',
       apiUrl: d.apiUrl,
