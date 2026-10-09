@@ -44,6 +44,9 @@ export function jobPath(bin: string, inherited: string): string {
 
 const ENDED = ['finished', 'sleeping', 'failed', 'budget_exhausted', 'stopped'];
 
+/** Jobs a human started; they run even while the agent is disabled. */
+const HUMAN_STARTED = new Set(['manual', 'followup', 'continue']);
+
 export class JobRunner {
   ctx: Ctx;
   running = new Map<string, Running>();
@@ -71,17 +74,15 @@ export class JobRunner {
     addJobEvent(this.ctx, id, 'status', { text: `Interrupted: ${why}. It resumes when the core is back.` });
   }
 
-  /** Create a queued job. Returns null when the agent is disabled (its triggers are ignored). */
+  /** Create a queued job. Returns null when the agent is disabled (its triggers are ignored), unless forced by the human. */
   enqueue(
     agentName: string,
     trigger: string,
     opts: { detail?: string; hop?: number; sessionId?: string | null; force?: boolean } = {},
   ): Job | null {
     const agent = getAgent(this.ctx, agentName);
-    if (!agent.enabled) {
-      if (opts.force) throw new HttpError(409, `agent ${agentName} is disabled`);
-      return null;
-    }
+    // Disabled means no automatic runs; the human can still start one by hand (force).
+    if (!agent.enabled && !opts.force) return null;
     const id = newId('job');
     this.ctx.db
       .prepare('INSERT INTO jobs (id, agent, session_id, trigger_type, trigger_detail, status, hop, created) VALUES (?,?,?,?,?,?,?,?)')
@@ -108,7 +109,7 @@ export class JobRunner {
         } catch {
           continue;
         }
-        if (!agent.enabled) {
+        if (!agent.enabled && !HUMAN_STARTED.has(job.trigger_type)) {
           updateJob(this.ctx, job.id, { status: 'stopped', reason: 'agent disabled', ended: now() });
           continue;
         }

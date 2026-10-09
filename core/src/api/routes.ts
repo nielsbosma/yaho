@@ -127,7 +127,6 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('POST', '/api/agents/:name/run', async (req) => {
     const name = req.params.name!;
     const message = (await req.body<{ message?: string }>()).message?.trim();
-    if (!s.getAgent(ctx, name).enabled) throw new HttpError(409, `agent ${name} is disabled`);
     // The message first, so it is in the inbox the job's prompt lists; wake: false keeps it from starting a second job.
     if (message)
       s.sendMessage(ctx, {

@@ -176,7 +176,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
               <Button onClick={() => chatAboutAgent(a.name)} title="Ask about this agent, or have Yaho change it">
                 <Sparkles /> Chat About Agent
               </Button>
-              <Button variant="primary" disabled={!a.enabled} onClick={() => setRunning(true)}>
+              <Button variant="primary" onClick={() => setRunning(true)} title={a.enabled ? undefined : 'Disabled: it only runs when you start it'}>
                 <Play /> Run Now
               </Button>
             </>

@@ -122,6 +122,13 @@ describe('scheduler', () => {
     expect(events.some((e) => e.kind === 'text' && e.data.text?.startsWith('resumed fake-'))).toBe(true);
   });
 
+  it('a disabled agent still runs when the human starts it', async () => {
+    await agent('sleepy', { enabled: false });
+    script('sleepy', [{ cmd: 'yaho finish' }]);
+    await api('/api/agents/sleepy/run', { method: 'POST' });
+    expect((await settle('sleepy', 1))[0]).toMatchObject({ trigger_type: 'manual', status: 'finished' });
+  });
+
   it('wait_for_inbox skips scheduled runs until the human has read the agent\'s messages', async () => {
     await agent('patient', { triggers: [{ cron: '0 3 * * *' }], guardrails: { wait_for_inbox: true } });
     script('patient', [{ cmd: 'yaho finish' }]);

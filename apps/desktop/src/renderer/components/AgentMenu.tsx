@@ -134,7 +134,7 @@ export function useAgentMenu() {
     "Running jobs are stopped, and the agent's jobs, sessions and briefing history are removed. Its workspace folder stays on disk.",
   );
   const items = (a: Agent): MenuItem[] => [
-    ...(a.enabled ? [{ label: 'Run', icon: <Play />, onSelect: () => setRunning(a) }] : []),
+    { label: 'Run', icon: <Play />, onSelect: () => setRunning(a) },
     { label: 'Rename', icon: <Pencil />, onSelect: () => setRenaming(a.name) },
     { label: 'Delete', icon: <Trash2 />, danger: true, onSelect: () => del.ask(a.name) },
   ];
