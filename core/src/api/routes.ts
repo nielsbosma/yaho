@@ -89,7 +89,11 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     if (s.agentExists(ctx, a.name)) throw new HttpError(409, `agent ${a.name} already exists`);
     return s.saveAgent(ctx, a);
   });
-  r.on('GET', '/api/agents/:name', (req) => ({ ...s.getAgent(ctx, req.params.name!), ...s.agentStats(ctx, req.params.name!) }));
+  r.on('GET', '/api/agents/:name', (req) => ({
+    ...s.getAgent(ctx, req.params.name!),
+    ...s.agentStats(ctx, req.params.name!),
+    upcoming: ctx.scheduler?.upcoming(req.params.name!) ?? [],
+  }));
   r.on('GET', '/api/agents/:name/yaml', (req) => ({ yaml: YAML.stringify(s.getAgent(ctx, req.params.name!)) }));
   r.on('PUT', '/api/agents/:name', async (req) => {
     const a = await definition<s.Agent>(req);

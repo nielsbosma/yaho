@@ -178,6 +178,11 @@ function AgentOverview({ agent: a, onError }: { agent: Agent; onError: (e: strin
             <span className="text-base text-muted">queued</span>
           </div>
           <div className="mt-2 text-xs text-muted">max {a.max_parallel} in parallel</div>
+          {a.upcoming?.map((u) => (
+            <div key={u.at + u.type} className="mt-1 text-xs text-muted" title={new Date(u.at).toLocaleString()}>
+              Next {u.type === 'delay' ? 'wake-up' : 'cron run'} {ago(u.at)}
+            </div>
+          ))}
         </Card>
         <Card className="p-4">
           <div className="text-xs text-muted">Works on</div>

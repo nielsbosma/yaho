@@ -118,6 +118,7 @@ export interface Agent {
   running?: number;
   queued?: number;
   unread?: number;
+  upcoming?: Array<{ type: string; at: string; cron?: string }>;
 }
 
 export interface Job {

@@ -10,6 +10,7 @@ import { apiToken, loadSettings, paths } from './config.ts';
 import { Bus, type Ctx } from './context.ts';
 import { openDb } from './db/index.ts';
 import { JobRunner } from './jobs/runner.ts';
+import { Scheduler } from './scheduler/index.ts';
 
 // node:sqlite prints an ExperimentalWarning on Node 22; it is expected.
 process.removeAllListeners('warning');
@@ -26,6 +27,8 @@ export async function serve(
 
   const runner = new JobRunner(ctx);
   runner.recover();
+  const scheduler = new Scheduler(ctx);
+  ctx.scheduler = scheduler;
 
   const router = new Router();
   humanRoutes(ctx, router);
@@ -43,6 +46,7 @@ export async function serve(
   writeFileSync(p.server, YAML.stringify({ url: ctx.apiUrl, pid: process.pid, started: new Date().toISOString() }));
 
   const close = async () => {
+    scheduler.stop();
     await runner.shutdown();
     rmSync(p.server, { force: true });
     server.closeAllConnections();
@@ -59,6 +63,7 @@ export async function serve(
   }
 
   runner.pump();
+  scheduler.start(Number(process.env.YAHO_TICK_MS ?? 5000));
   return { ctx, close };
 }
 

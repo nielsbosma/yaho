@@ -12,6 +12,7 @@ export interface Ctx {
   bus: Bus;
   /** Set by the server once it listens. */
   apiUrl: string;
+  scheduler?: { upcoming(agent: string): Array<{ type: string; at: string; cron?: string }>; tick(at?: Date): void };
   /** Set by the job runner; lets the scheduler and API start and stop jobs without import cycles. */
   runner?: {
     enqueue(agent: string, trigger: string, opts?: { detail?: string; hop?: number; sessionId?: string | null; force?: boolean }): unknown;
