@@ -6,6 +6,8 @@ import { Card, ErrorNote, PageHeader, Section } from '../components/ui/display.t
 import { Field, Input, Textarea } from '../components/ui/form.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
 import { api, useApi } from '../lib/api.ts';
+import { platform } from '../lib/platform.ts';
+import { href } from '../lib/router.ts';
 
 interface Settings {
   server: { host: string; port: number };
@@ -200,7 +202,8 @@ export function SettingsView() {
             </Section>
             <Section title="Apps (Composio)">
               <Card className="grid gap-4 p-4 md:grid-cols-2">
-                <Field label="Composio API key" hint="From composio.dev → Settings. Agents never see it: YAHO makes their calls.">
+                <ComposioKeyHelp />
+                <Field label="Composio API key" hint="Agents never see it: YAHO makes their calls.">
                   <Input
                     type="password"
                     value={s.composio?.api_key ?? ''}
@@ -279,5 +282,60 @@ export function SettingsView() {
         </div>
       </div>
     </>
+  );
+}
+
+/** How to create a Composio API key, and which permissions YAHO needs. */
+function ComposioKeyHelp() {
+  const rows: Array<[string, string, string]> = [
+    ['Toolkits', 'Read', 'the All Apps list'],
+    ['Tools', 'Read', 'tool lists and their inputs'],
+    ['Connected accounts', 'Read + Write', 'your connections; Write lets the Connect button add new ones'],
+    ['Auth configs', 'Read + Write', 'Write sets up sign-in the first time you connect an app'],
+    ['Tool execution', 'Write', 'agents running tools with yaho tool'],
+  ];
+  return (
+    <details className="group rounded-lg border border-line bg-bg/60 px-3 py-2 text-sm md:col-span-2">
+      <summary className="cursor-pointer font-medium text-ink/90 select-none">How to Get a Composio API Key</summary>
+      <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-ink/85">
+        <li>
+          Sign in at{' '}
+          <button
+            type="button"
+            className="cursor-pointer text-accent underline"
+            onClick={() => platform.openExternal('https://platform.composio.dev')}
+          >
+            platform.composio.dev
+          </button>{' '}
+          (a free account is enough) and open your project.
+        </li>
+        <li>Go to the project's Settings → API Keys and choose Create API key. Name it, for example, "YAHO".</li>
+        <li>Tick these permissions. They can't be changed later, so check them before you create the key:</li>
+      </ol>
+      <table className="mt-2 ml-5 text-xs">
+        <tbody>
+          {rows.map(([perm, level, why]) => (
+            <tr key={perm}>
+              <td className="py-0.5 pr-4 font-medium">{perm}</td>
+              <td className="py-0.5 pr-4 whitespace-nowrap text-accent">{level}</td>
+              <td className="py-0.5 text-muted">{why}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-2 ml-5 text-xs text-muted">
+        Sessions, session tool execution and triggers are not used. Tool execution sits further down Composio's list than the others.
+      </p>
+      <ol start={4} className="mt-2 list-decimal space-y-1.5 pl-5 text-ink/85">
+        <li>Copy the key, paste it below and press Test Composio. Composio shows the key only once.</li>
+        <li>
+          Then open{' '}
+          <a className="text-accent underline" href={href('resources', 'composio')}>
+            Resources → From Composio
+          </a>{' '}
+          to connect apps and add them as resources.
+        </li>
+      </ol>
+    </details>
   );
 }
