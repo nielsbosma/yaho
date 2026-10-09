@@ -37,6 +37,17 @@ export function composioRoutes(ctx: Ctx, r: Router): void {
     return conns.map((x) => ({ ...x, resources: used.get(x.id) ?? [] }));
   });
   r.on('GET', '/api/composio/connections/:id', (req: Req) => c().connection(req.params.id!));
+  r.on('DELETE', '/api/composio/connections/:id', async (req: Req) => {
+    const id = req.params.id!;
+    // Only this Yaho's own connections, and none a resource still uses.
+    const conn = await c().connection(id);
+    if (conn.user_id !== c().userId) throw new HttpError(403, 'that connection belongs to another Composio user');
+    const users = s.listResources(ctx).filter((x) => x.kind === 'composio' && x.config?.connected_account_id === id).map((x) => x.name);
+    if (users.length) throw new HttpError(409, `still used by ${users.join(', ')}: delete those resources first`);
+    await c().disconnect(id);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'resources', name: id });
+    return { deleted: id };
+  });
   r.on('POST', '/api/composio/connect', async (req: Req) => {
     const { toolkit } = await req.body<{ toolkit?: string }>();
     if (!toolkit) throw new HttpError(400, 'toolkit is required');

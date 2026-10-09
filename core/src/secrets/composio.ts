@@ -128,6 +128,11 @@ export class Composio {
     return toConnection(await this.call<Raw>('GET', `/connected_accounts/${encodeURIComponent(id)}`));
   }
 
+  /** Delete a connection at Composio: its tokens are revoked there and it cannot be used again. */
+  async disconnect(id: string): Promise<void> {
+    await this.call('DELETE', `/connected_accounts/${encodeURIComponent(id)}`);
+  }
+
   /** Start connecting an app: reuse (or create) a Composio-managed auth config, then get a hosted sign-in link. */
   async connect(toolkit: string): Promise<{ id: string; redirect_url: string }> {
     const configs = await this.call<{ items: Raw[] }>('GET', '/auth_configs', {

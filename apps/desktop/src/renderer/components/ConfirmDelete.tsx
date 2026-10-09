@@ -9,6 +9,7 @@ import { Dialog } from './ui/dialog.tsx';
  */
 export function useConfirmDelete(noun: string, remove: (name: string) => Promise<unknown>, consequence: string) {
   const [target, setTarget] = useState<string | null>(null);
+  const [label, setLabel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const close = () => {
@@ -19,7 +20,7 @@ export function useConfirmDelete(noun: string, remove: (name: string) => Promise
     <Dialog
       open={!!target}
       onClose={close}
-      title={`Delete ${target}?`}
+      title={`Delete ${label ?? target}?`}
       footer={
         <>
           <Button onClick={close}>Cancel</Button>
@@ -50,5 +51,10 @@ export function useConfirmDelete(noun: string, remove: (name: string) => Promise
       </div>
     </Dialog>
   );
-  return { ask: setTarget, dialog };
+  /** `label` names it in the title when the key is not readable (an id). */
+  const ask = (key: string, name?: string) => {
+    setTarget(key);
+    setLabel(name ?? null);
+  };
+  return { ask, dialog };
 }

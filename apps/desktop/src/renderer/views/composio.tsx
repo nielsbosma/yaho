@@ -1,10 +1,12 @@
-import { Blocks, Check, ExternalLink, Link2, Loader2, Plus, Search } from 'lucide-react';
+import { Blocks, Check, ExternalLink, Link2, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
 import { ago, Badge, Card, Empty, ErrorNote, PageHeader, Tabs } from '../components/ui/display.tsx';
 import { Field, Input } from '../components/ui/form.tsx';
+import { useConfirmDelete } from '../components/ConfirmDelete.tsx';
+import { useContextMenu } from '../components/ContextMenu.tsx';
 import { api, useApi, type Resource } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
 import { go, href } from '../lib/router.ts';
@@ -103,6 +105,15 @@ function Connections({ onAdd, onBrowse }: { onAdd: (c: { id: string; toolkit: st
   const conns = useApi<Connection[]>('/api/composio/connections', (e) => e.type === 'changed' && e.entity === 'resources');
   const logos = useLogos(conns.data?.map((c) => c.toolkit) ?? []);
   const [query, setQuery] = useState('');
+  const del = useConfirmDelete(
+    'Connection',
+    async (id) => {
+      await api(`/api/composio/connections/${id}`, { method: 'DELETE' });
+      conns.reload();
+    },
+    'The connection is deleted at Composio and its sign-in is revoked. To use the app again, connect it anew.',
+  );
+  const menu = useContextMenu();
   if (conns.error) return <ErrorNote>{conns.error}</ErrorNote>;
   if (!conns.data) return <Loading />;
   if (!conns.data.length)
@@ -120,7 +131,13 @@ function Connections({ onAdd, onBrowse }: { onAdd: (c: { id: string; toolkit: st
       <SearchBox value={query} onChange={setQuery} placeholder={`Search ${conns.data.length} connections…`} />
       <Card className="divide-y divide-line">
         {shown.map((c) => (
-          <div key={c.id} className="flex items-center gap-3 px-4 py-3">
+          <div
+            key={c.id}
+            className="flex items-center gap-3 px-4 py-3"
+            onContextMenu={(e) =>
+              menu.open(e, [{ label: 'Delete', icon: <Trash2 />, danger: true, onSelect: () => del.ask(c.id, logos[c.toolkit]?.name ?? c.toolkit) }])
+            }
+          >
             <AppLogo src={logos[c.toolkit]?.logo} name={c.toolkit} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 text-sm font-medium">
@@ -136,10 +153,21 @@ function Connections({ onAdd, onBrowse }: { onAdd: (c: { id: string; toolkit: st
             <Button size="sm" disabled={c.status !== 'ACTIVE'} onClick={() => onAdd({ id: c.id, toolkit: c.toolkit })}>
               <Plus /> Add as Resource
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              title={c.resources.length ? `Used by ${c.resources.join(', ')}: delete those resources first` :'Delete connection'}
+              disabled={c.resources.length > 0}
+              onClick={() => del.ask(c.id, logos[c.toolkit]?.name ?? c.toolkit)}
+            >
+              <Trash2 />
+            </Button>
           </div>
         ))}
         {!shown.length && <div className="p-4 text-sm text-muted">No matches.</div>}
       </Card>
+      {del.dialog}
+      {menu.element}
     </div>
   );
 }
