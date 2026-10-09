@@ -1,3 +1,4 @@
+import { plainText } from '../lib/plainText.ts';
 import { Resizer, usePanelWidth } from '../components/Resizer.tsx';
 import { Inbox, PenLine } from 'lucide-react';
 import { useState } from 'react';
@@ -61,9 +62,9 @@ export function InboxView({ route }: ViewProps) {
                 <span className="ml-auto shrink-0 text-muted">{ago(m.created)}</span>
               </div>
               <div className={cn('mt-1 truncate pl-4 text-sm', !m.read ? 'font-medium' : 'text-ink/80')}>
-                {m.title || m.body.slice(0, 80)}
+                {m.title || plainText(m.body).slice(0, 80)}
               </div>
-              <div className="mt-0.5 truncate pl-4 text-xs text-muted">{m.body.split('\n')[0]}</div>
+              <div className="mt-0.5 truncate pl-4 text-xs text-muted">{plainText(m.body).slice(0, 160)}</div>
             </a>
           ))}
           {inbox.data?.length === 0 && (
