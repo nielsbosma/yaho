@@ -7,6 +7,7 @@ import { useApi, type Agent } from '../lib/api.ts';
 import { href } from '../lib/router.ts';
 import { cn } from './ui/cn.ts';
 import { Wordmark } from './Wordmark.tsx';
+import { useAgentMenu } from './AgentMenu.tsx';
 import { CountPill, money } from './ui/display.tsx';
 
 function NavItem({
@@ -57,6 +58,7 @@ export function Sidebar({
     (e) => (e.type === 'changed' && e.entity === 'agents') || e.type === 'job' || e.type === 'message',
   );
   const at = route[0];
+  const agentMenu = useAgentMenu();
   const [width, setWidth] = usePanelWidth('sidebar', 256, 200, 420);
   return (
     <aside className="relative flex shrink-0 flex-col border-r border-line bg-sidebar" style={{ width }}>
@@ -113,6 +115,7 @@ export function Sidebar({
           <a
             key={a.name}
             href={href('agents', a.name)}
+            onContextMenu={(e) => agentMenu.open(e, a)}
             className={cn(
               'flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors',
               at === 'agents' && route[1] === a.name ? 'bg-hover font-medium' : 'hover:bg-hover/70',
@@ -124,6 +127,7 @@ export function Sidebar({
             {a.running ? <span className="ml-auto size-1.5 animate-pulse rounded-full bg-info" /> : null}
           </a>
         ))}
+        {agentMenu.element}
         {agents.data?.length === 0 && <div className="px-2.5 py-1 text-xs text-muted">No agents yet</div>}
       </div>
 

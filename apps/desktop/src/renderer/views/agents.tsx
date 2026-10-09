@@ -1,10 +1,10 @@
 import { describeCron, SchedulePicker } from '../components/SchedulePicker.tsx';
 import { WorkspaceBrowser } from '../components/WorkspaceBrowser.tsx';
 import { Markdown } from '../components/Markdown.tsx';
-import { useConfirmDelete } from '../components/ConfirmDelete.tsx';
-import { useContextMenu } from '../components/ContextMenu.tsx';
-import { DataTable, LayoutSwitch, openDeleteMenu, useLayout } from '../components/ListLayout.tsx';
-import { Bot, History, LibraryBig, Play, Plus, Trash2, Wallet } from 'lucide-react';
+import { useContextMenu, type MenuItem } from '../components/ContextMenu.tsx';
+import { RunDialog, useAgentMenu } from '../components/AgentMenu.tsx';
+import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
+import { Bot, ExternalLink, History, LibraryBig, Play, Plus, Trash2, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import YAML from 'yaml';
 import { Button } from '../components/ui/button.tsx';
@@ -31,17 +31,9 @@ export function AgentsView({ route }: ViewProps) {
 
 function AgentList() {
   const agents = useApi<Agent[]>('/api/agents', agentChanged());
-  const del = useConfirmDelete(
-    'Agent',
-    (name) => api(`/api/agents/${name}`, { method: 'DELETE' }),
-    "Running jobs are stopped, and the agent's jobs, sessions and briefing history are removed. Its workspace folder stays on disk.",
-  );
+  const menu = useAgentMenu();
+  const rowMenu = (a: Agent): MenuItem[] => [{ label: 'Open', icon: <ExternalLink />, onSelect: () => go('agents', a.name) }, ...menu.items(a)];
   const cardMenu = useContextMenu();
-  const rowMenu = (name: string) =>
-    openDeleteMenu(
-      () => go('agents', name),
-      () => del.ask(name),
-    );
   const [layout, setLayout] = useLayout('agents');
   return (
     <>
@@ -61,7 +53,7 @@ function AgentList() {
         <div className="p-8">
           <DataTable
             rows={agents.data}
-            menu={(a) => rowMenu(a.name)}
+            menu={rowMenu}
             rowKey={(a) => a.name}
             to={(a) => ['agents', a.name]}
             columns={[
@@ -105,11 +97,11 @@ function AgentList() {
           />
         </div>
       )}
-      {del.dialog}
+      {menu.element}
       {cardMenu.element}
       <div className={cn('grid gap-3 p-8 md:grid-cols-2', layout === 'table' && 'hidden')}>
         {agents.data?.map((a) => (
-          <a key={a.name} href={href('agents', a.name)} onContextMenu={(e) => cardMenu.open(e, rowMenu(a.name))}>
+          <a key={a.name} href={href('agents', a.name)} onContextMenu={(e) => cardMenu.open(e, rowMenu(a))}>
             <Card className="p-4 transition-colors hover:border-line-strong">
               <div className="flex items-center gap-2">
                 <Bot className={cn('size-4', a.running ? 'text-info' : 'text-muted')} />
@@ -605,61 +597,5 @@ function Examples() {
         <span className="ml-auto shrink-0 text-sm text-accent">Open Library →</span>
       </Card>
     </a>
-  );
-}
-
-/** Run Now, with optional instructions for this run. Agents without a schedule usually need them. */
-function RunDialog({ agent, open, onClose }: { agent: Agent; open: boolean; onClose: () => void }) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const onDemand = !agent.triggers.some((t) => 'cron' in t);
-  const run = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const job = await api<Job>(`/api/agents/${agent.name}/run`, { body: { message: text } });
-      setText('');
-      onClose();
-      go('jobs', job.id);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={`Run ${agent.name}`}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={busy} onClick={() => void run()} title="Run (Ctrl+Enter)">
-            <Play /> Run
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-2">
-        <ErrorNote>{error}</ErrorNote>
-        <Field
-          label="What should it do this time?"
-          hint="Sent to the agent's inbox as instructions for this run. Leave empty to just run its briefing."
-        >
-          <Textarea
-            autoFocus
-            className="min-h-32"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void run();
-            }}
-            placeholder={onDemand ? 'e.g. Make a 1200x630 social card for the 3.0 launch' : 'Optional'}
-          />
-        </Field>
-      </div>
-    </Dialog>
   );
 }
