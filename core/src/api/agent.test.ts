@@ -135,4 +135,11 @@ describe('yaho CLI inside a job', () => {
     const human = await fetch(`${ctx.apiUrl}/api/settings`, { headers: { Authorization: 'Bearer old' } });
     expect(human.status).toBe(403);
   });
+
+  it('deletes an artifact with its file', async () => {
+    const [a] = await api<Array<{ id: string; file_path: string }>>('/api/artifacts?project=widget');
+    await api(`/api/artifacts/${a!.id}`, { method: 'DELETE' });
+    expect(await api<unknown[]>('/api/artifacts?project=widget')).toEqual([]);
+    expect(existsSync(join(dir, 'projects', 'widget', 'artifacts', a!.file_path))).toBe(false);
+  });
 });

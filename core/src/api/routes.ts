@@ -288,6 +288,17 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const file = safeJoin(join(ctx.paths.project(a.project), 'artifacts'), a.file_path);
     sendFile(req.res, file, req.query.get('download') ? basename(a.file_path) : undefined);
   });
+  r.on('DELETE', '/api/artifacts/:id', (req) => {
+    const a = ctx.db.prepare('SELECT * FROM artifacts WHERE id = ?').get(req.params.id!) as
+      | { project: string; file_path: string }
+      | undefined;
+    if (!a) throw new HttpError(404, 'artifact not found');
+    // Another artifact can point at the same file only by copying it, so the file goes with its record.
+    rmSync(safeJoin(join(ctx.paths.project(a.project), 'artifacts'), a.file_path), { force: true });
+    ctx.db.prepare('DELETE FROM artifacts WHERE id = ?').run(req.params.id!);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'artifacts', name: req.params.id! });
+    return { deleted: req.params.id };
+  });
   r.on('GET', '/api/artifacts/:id/path', (req) => {
     const a = ctx.db.prepare('SELECT * FROM artifacts WHERE id = ?').get(req.params.id!) as
       | { project: string; file_path: string }

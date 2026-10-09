@@ -1,8 +1,10 @@
-import { Copy, ExternalLink, File, FileText, FolderOpen, Images, Presentation } from 'lucide-react';
+import { Copy, ExternalLink, File, FileText, FolderOpen, Images, Presentation, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { useContextMenu } from '../components/ContextMenu.tsx';
 import { Button } from '../components/ui/button.tsx';
+import { Dialog } from '../components/ui/dialog.tsx';
 import { cn } from '../components/ui/cn.ts';
-import { ago, Badge, Card, Empty, PageHeader } from '../components/ui/display.tsx';
+import { ago, Badge, Card, Empty, ErrorNote, PageHeader } from '../components/ui/display.tsx';
 import { Input, Select } from '../components/ui/form.tsx';
 import { api, url, useApi, type Agent, type Artifact, type Project } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
@@ -13,6 +15,18 @@ const isImage = (p: string) => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].incl
 const isVideo = (p: string) => ['mp4', 'webm', 'mov'].includes(ext(p));
 const isPdf = (p: string) => ext(p) === 'pdf';
 const isSlides = (p: string) => ['ppt', 'pptx', 'key', 'odp'].includes(ext(p));
+const isDocument = (p: string) => ['md', 'txt', 'doc', 'docx', 'odt', 'rtf', 'html', 'csv', 'xls', 'xlsx', 'json'].includes(ext(p));
+
+/** The file types the gallery can filter on, in the order the chips show. */
+const TYPES = [
+  ['image', 'Images', isImage],
+  ['video', 'Video', isVideo],
+  ['pdf', 'PDF', isPdf],
+  ['slides', 'Slides', isSlides],
+  ['document', 'Documents', isDocument],
+] as const;
+type FileType = (typeof TYPES)[number][0] | 'other';
+export const fileTypeOf = (p: string): FileType => TYPES.find(([, , test]) => test(p))?.[0] ?? 'other';
 
 const fileUrl = (a: Artifact) => url(`/api/artifacts/${a.id}/file`);
 
@@ -34,11 +48,36 @@ function Preview({ a, large }: { a: Artifact; large?: boolean }) {
 
 export function ArtifactGrid({ artifacts, compact }: { artifacts: Artifact[]; compact?: boolean }) {
   const [open, setOpen] = useState<Artifact | null>(null);
+  const [deleting, setDeleting] = useState<Artifact | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const menu = useContextMenu();
+  const remove = async (a: Artifact) => {
+    setDeleting(null);
+    setError(null);
+    try {
+      await api(`/api/artifacts/${a.id}`, { method: 'DELETE' });
+      if (open?.id === a.id) setOpen(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   return (
     <>
+      <ErrorNote>{error}</ErrorNote>
       <div className={cn('grid gap-3', compact ? 'grid-cols-2' : 'grid-cols-[repeat(auto-fill,minmax(210px,1fr))]')}>
         {artifacts.map((a) => (
-          <button key={a.id} type="button" onClick={() => setOpen(a)} className="cursor-pointer text-left">
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => setOpen(a)}
+            onContextMenu={(e) =>
+              menu.open(e, [
+                { label: 'Open', icon: <ExternalLink />, onSelect: () => setOpen(a) },
+                { label: 'Delete', icon: <Trash2 />, danger: true, onSelect: () => setDeleting(a) },
+              ])
+            }
+            className="cursor-pointer text-left"
+          >
             <Card className="overflow-hidden transition-colors hover:border-line-strong">
               <Preview a={a} />
               {!compact && (
@@ -56,12 +95,28 @@ export function ArtifactGrid({ artifacts, compact }: { artifacts: Artifact[]; co
           </button>
         ))}
       </div>
-      {open && <ArtifactViewer a={open} onClose={() => setOpen(null)} />}
+      {open && <ArtifactViewer a={open} onClose={() => setOpen(null)} onDelete={() => setDeleting(open)} />}
+      {menu.element}
+      <Dialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={`Delete ${deleting?.file_path}?`}
+        footer={
+          <>
+            <Button onClick={() => setDeleting(null)}>Cancel</Button>
+            <Button variant="danger" onClick={() => deleting && void remove(deleting)}>
+              Delete Artifact
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted">The file is removed from the project for good. Messages that showed it no longer will.</p>
+      </Dialog>
     </>
   );
 }
 
-function ArtifactViewer({ a, onClose }: { a: Artifact; onClose: () => void }) {
+function ArtifactViewer({ a, onClose, onDelete }: { a: Artifact; onClose: () => void; onDelete: () => void }) {
   const [copied, setCopied] = useState(false);
   const copyPath = async () => {
     const { path } = await api<{ path: string }>(`/api/artifacts/${a.id}/path`);
@@ -116,6 +171,9 @@ function ArtifactViewer({ a, onClose }: { a: Artifact; onClose: () => void }) {
             <Button size="sm" onClick={() => void copyPath()}>
               <Copy /> {copied ? 'Copied' : 'Copy Path'}
             </Button>
+            <Button size="sm" variant="danger" onClick={onDelete} title="Delete">
+              <Trash2 />
+            </Button>
             <Button size="sm" variant="ghost" onClick={onClose}>
               Close
             </Button>
@@ -135,6 +193,18 @@ export function ArtifactsView() {
   const artifacts = useApi<Artifact[]>(`/api/artifacts?${q}`, (e) => e.type === 'changed' && e.entity === 'artifacts');
   const projects = useApi<Project[]>('/api/projects');
   const agents = useApi<Agent[]>('/api/agents');
+  const [type, setType] = useState<FileType | ''>('');
+  const [kind, setKind] = useState('');
+  const all = artifacts.data ?? [];
+  const counts = new Map<FileType, number>();
+  for (const a of all) counts.set(fileTypeOf(a.file_path), (counts.get(fileTypeOf(a.file_path)) ?? 0) + 1);
+  const kinds = [...new Set(all.map((a) => a.kind))].sort();
+  const shown = all.filter((a) => (!type || fileTypeOf(a.file_path) === type) && (!kind || a.kind === kind));
+  const chips: Array<[FileType | '', string, number]> = [
+    ['', 'All', all.length],
+    ...TYPES.map(([id, label]) => [id, label, counts.get(id) ?? 0] as [FileType, string, number]),
+    ['other', 'Other', counts.get('other') ?? 0],
+  ];
   return (
     <>
       <PageHeader
@@ -160,9 +230,38 @@ export function ArtifactsView() {
           </>
         }
       />
-      <div className="p-8">
-        {artifacts.data?.length ? (
-          <ArtifactGrid artifacts={artifacts.data} />
+      <div className="space-y-4 p-8">
+        {all.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {chips
+              .filter(([id, , n]) => id === '' || n > 0)
+              .map(([id, label, n]) => (
+                <button
+                  key={id || 'all'}
+                  type="button"
+                  onClick={() => setType(id)}
+                  className={cn(
+                    'cursor-pointer rounded-md px-2.5 py-1 text-xs',
+                    type === id ? 'bg-accent/12 font-medium text-accent' : 'text-muted hover:bg-hover hover:text-ink',
+                  )}
+                >
+                  {label} <span className="opacity-60">{n}</span>
+                </button>
+              ))}
+            {kinds.length > 1 && (
+              <Select className="ml-auto w-40" value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Kind">
+                <option value="">All kinds</option>
+                {kinds.map((k) => (
+                  <option key={k}>{k}</option>
+                ))}
+              </Select>
+            )}
+          </div>
+        )}
+        {shown.length ? (
+          <ArtifactGrid artifacts={shown} />
+        ) : all.length ? (
+          <div className="text-sm text-muted">Nothing of this type.</div>
         ) : (
           <Empty icon={<Images />} title="No artifacts">
             Agents register what they make with <code>yaho artifact add</code>.
