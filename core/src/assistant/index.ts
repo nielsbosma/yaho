@@ -59,7 +59,7 @@ function tools(ctx: Ctx): Record<string, Tool> {
     },
     save_agent: {
       description:
-        'Create or update an agent from a YAML definition (fields: name, enabled, briefing, harness, models, budget_usd, max_parallel, triggers [{cron: "..."} | {inbox: true}], projects, resources, guardrails {rate_per_hour, cooldown_seconds, hop_limit}). Omitted fields keep their current value. To rename, pass rename_from.',
+        'Create or update an agent from a YAML definition (fields: name, enabled, briefing, harness, models, budget_usd, max_parallel, triggers [{cron: "..."} | {inbox: true}], projects, resources, guardrails {rate_per_hour, cooldown_seconds, hop_limit, wait_for_inbox: skip scheduled runs while the human has unread messages from the agent}). Omitted fields keep their current value. To rename, pass rename_from.',
       parameters: obj({ yaml: str('the agent definition in YAML'), rename_from: str('current name, when renaming') }, ['yaml']),
       run: (a, out) => {
         const def = yamlDef<s.Agent>(a);

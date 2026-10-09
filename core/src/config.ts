@@ -37,6 +37,8 @@ export interface Guardrails {
   rate_per_hour?: number;
   cooldown_seconds?: number;
   hop_limit?: number;
+  /** Skip scheduled runs while the human has unread messages from this agent. */
+  wait_for_inbox?: boolean;
 }
 
 export const defaultSettings = (): Settings => ({

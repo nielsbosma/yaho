@@ -424,9 +424,18 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
           <Field label="Schedule" className="md:col-span-2" group>
             <SchedulePicker value={crons} onChange={(v) => setTriggers(v, inbox)} />
           </Field>
-          <Field label="Inbox trigger" hint="A new message starts a job." className="md:col-span-2">
+          <Field label="Inbox trigger" hint="A new message starts a job.">
             <div className="flex h-9 items-center">
               <Switch checked={inbox} onChange={(v) => setTriggers(crons, v)} label="Inbox trigger" />
+            </div>
+          </Field>
+          <Field label="Wait for me" hint="Skip scheduled runs while your inbox has unread messages from this agent.">
+            <div className="flex h-9 items-center">
+              <Switch
+                checked={!!draft.guardrails.wait_for_inbox}
+                onChange={(v) => set('guardrails', { ...draft.guardrails, wait_for_inbox: v || undefined })}
+                label="Wait for me"
+              />
             </div>
           </Field>
           <Field label="Projects" group>

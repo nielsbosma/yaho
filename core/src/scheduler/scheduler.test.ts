@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test';
 import { defaultSettings } from '../config.ts';
 import type { Ctx } from '../context.ts';
 import { serve } from '../serve.ts';
-import type { Job, Message } from '../store.ts';
+import { sendMessage, type Job, type Message } from '../store.ts';
 
 const fake = fileURLToPath(new URL('../../test/fake-claude.mjs', import.meta.url));
 let dir: string;
@@ -120,6 +120,20 @@ describe('scheduler', () => {
     });
     const events = await api<Array<{ kind: string; data: { text?: string } }>>(`/api/jobs/${second.id}/events`);
     expect(events.some((e) => e.kind === 'text' && e.data.text?.startsWith('resumed fake-'))).toBe(true);
+  });
+
+  it('wait_for_inbox skips scheduled runs until the human has read the agent\'s messages', async () => {
+    await agent('patient', { triggers: [{ cron: '0 3 * * *' }], guardrails: { wait_for_inbox: true } });
+    script('patient', [{ cmd: 'yaho finish' }]);
+    const m = sendMessage(ctx, { from: 'agent:patient', to: 'human', body: 'report' });
+    const due = () => ctx.db.prepare("UPDATE triggers SET next_fire = '2000-01-01T00:00:00.000Z' WHERE agent = 'patient'").run();
+    due();
+    ctx.scheduler!.tick();
+    expect(await jobs('patient')).toHaveLength(0);
+    await api(`/api/messages/${m.id}/read`, { body: { read: true } });
+    due();
+    ctx.scheduler!.tick();
+    expect((await settle('patient', 1))[0]).toMatchObject({ trigger_type: 'cron', status: 'finished' });
   });
 
   it('a follow-up resumes the job session and shows up in its thread', async () => {

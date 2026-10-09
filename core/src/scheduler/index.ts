@@ -41,13 +41,19 @@ export class Scheduler {
       const enabled = getAgent(this.ctx, agent).enabled;
       if (t.type === 'cron') {
         db.prepare('UPDATE triggers SET next_fire = ? WHERE id = ?').run(nextCron(t.cron as string, at), t.id as string);
-        if (enabled) this.ctx.runner!.enqueue(agent, 'cron', { detail: t.cron as string });
+        if (enabled && !this.waitingOnHuman(agent)) this.ctx.runner!.enqueue(agent, 'cron', { detail: t.cron as string });
       } else if (enabled) {
         // A delay resumes the session the agent went to sleep in. While the agent is disabled it waits.
         db.prepare('DELETE FROM triggers WHERE id = ?').run(t.id as string);
         this.ctx.runner!.enqueue(agent, 'delay', { sessionId: t.session_id as string, detail: `woke from yaho sleep` });
       }
     }
+  }
+
+  /** wait_for_inbox: the human has not read this agent's last messages yet, so its next scheduled run is skipped. */
+  waitingOnHuman(agent: string): boolean {
+    if (!getAgent(this.ctx, agent).guardrails?.wait_for_inbox) return false;
+    return !!this.ctx.db.prepare("SELECT 1 FROM messages WHERE from_addr = ? AND to_addr = 'human' AND read = 0 LIMIT 1").get(`agent:${agent}`);
   }
 
   /** A message for an agent with an inbox trigger starts a job, within the agent's loop guardrails. */
