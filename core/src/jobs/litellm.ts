@@ -42,3 +42,40 @@ export async function litellmModels(s: Settings): Promise<string[]> {
   const j = (await res.json()) as { data?: Array<{ id: string }> };
   return (j.data ?? []).map((m) => m.id);
 }
+
+export interface ModelPrice {
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+}
+
+const prices = new Map<string, { at: number; price: ModelPrice | null }>();
+
+/** Per-token prices from LiteLLM's /model/info, cached for an hour. Null when the proxy does not say. */
+export async function modelPrice(s: Settings, model: string): Promise<ModelPrice | null> {
+  const hit = prices.get(model);
+  if (hit && Date.now() - hit.at < 3600_000) return hit.price;
+  let price: ModelPrice | null = null;
+  try {
+    const key = s.litellm.master_key ?? s.litellm.api_key;
+    const res = await fetch(`${s.litellm.url.replace(/\/$/, '')}/model/info`, {
+      headers: key ? { Authorization: `Bearer ${key}` } : {},
+      signal: AbortSignal.timeout(10_000),
+    });
+    const j = (await res.json()) as { data?: Array<{ model_name: string; model_info?: Record<string, number | null> }> };
+    const info = j.data?.find((m) => m.model_name === model)?.model_info;
+    if (info?.input_cost_per_token != null && info.output_cost_per_token != null) {
+      price = {
+        input: info.input_cost_per_token,
+        output: info.output_cost_per_token,
+        cache_read: info.cache_read_input_token_cost ?? info.input_cost_per_token,
+        cache_write: info.cache_creation_input_token_cost ?? info.input_cost_per_token,
+      };
+    }
+  } catch {
+    /* no estimate; the final total still arrives with the result */
+  }
+  prices.set(model, { at: Date.now(), price });
+  return price;
+}

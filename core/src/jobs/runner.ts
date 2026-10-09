@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { newId, now } from '../db/index.ts';
@@ -9,7 +9,7 @@ import { envForAgent } from '../secrets/dopbase.ts';
 import type { Agent, Job } from '../store.ts';
 import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, totalSpend, updateJob } from '../store.ts';
 import { contextPrompt, systemPrompt } from './prompt.ts';
-import { createLitellmKey, deleteLitellmKey, litellmKeySpend } from './litellm.ts';
+import { createLitellmKey, deleteLitellmKey, litellmKeySpend, modelPrice, type ModelPrice } from './litellm.ts';
 
 type Row = Record<string, unknown>;
 
@@ -20,6 +20,9 @@ interface Running {
   ending?: { status: string; reason?: string; summary?: string; resumeAt?: string };
   baseCost: number;
   liteKey?: string;
+  /** Live estimate from token usage when LiteLLM cannot report spend per job. Keyed by response id. */
+  usage: Map<string, number>;
+  price?: ModelPrice | null;
   poll?: NodeJS.Timeout;
 }
 
@@ -119,7 +122,7 @@ export class JobRunner {
           });
           continue;
         }
-        const r: Running = { job: job.id, proc: null, baseCost: job.cost_usd };
+        const r: Running = { job: job.id, proc: null, baseCost: job.cost_usd, usage: new Map() };
         this.running.set(job.id, r);
         updateJob(this.ctx, job.id, { status: 'running', started: job.started ?? now(), reason: null });
         this.start(agent, job, r).catch((e) => {
@@ -203,10 +206,15 @@ export class JobRunner {
     let prompt = contextPrompt(ctx, agent, fresh, ses.summary, ses.resumed);
     if (ses.resumed && job.trigger_type === 'continue') prompt = `Your budget was raised. Continue exactly where you stopped.\n\n${prompt}`;
     updateJob(ctx, job.id, { model });
+    if (!r.liteKey) r.price = await modelPrice(settings, model);
     addJobEvent(ctx, job.id, 'prompt', { system: systemPrompt(agent), user: prompt });
     addJobEvent(ctx, job.id, 'status', { text: `${ses.resumed ? 'Resuming' : 'Starting'} ${agent.harness} with ${model}` });
 
     if (r.ending) return this.finalize(r, r.ending); // stopped while starting
+    // Raw harness output, kept per session in the agent's workspace under .yaho/ (the Session's transcript ref).
+    mkdirSync(join(cwd, '.yaho'), { recursive: true });
+    const transcript = join(cwd, '.yaho', `${ses.id}.jsonl`);
+    ctx.db.prepare('UPDATE sessions SET transcript_ref = ? WHERE id = ?').run(transcript, ses.id);
     r.proc = adapter.start(
       {
         command: harnessCfg.command,
@@ -217,6 +225,8 @@ export class JobRunner {
         systemPrompt: systemPrompt(agent),
         prompt,
         resumeSessionId: ses.harnessId,
+        transcriptPath: transcript,
+        maxBudgetUsd: remaining,
       },
       (e) => this.onEvent(r, ses.id, e),
     );
@@ -235,10 +245,15 @@ export class JobRunner {
   private onEvent(r: Running, sessionId: string, e: HarnessEvent): void {
     const { ctx } = this;
     switch (e.kind) {
+      case 'usage':
+        if (!r.liteKey && r.price) {
+          const p = r.price;
+          r.usage.set(e.id, e.input * p.input + e.output * p.output + e.cache_read * p.cache_read + e.cache_write * p.cache_write);
+          this.setCost(r, r.baseCost + [...r.usage.values()].reduce((a, b) => a + b, 0));
+        }
+        return;
       case 'session':
-        ctx.db
-          .prepare('UPDATE sessions SET harness_session_id = ?, transcript_ref = ?, updated = ? WHERE id = ?')
-          .run(e.sessionId, e.sessionId, now(), sessionId);
+        ctx.db.prepare('UPDATE sessions SET harness_session_id = ?, updated = ? WHERE id = ?').run(e.sessionId, now(), sessionId);
         return;
       case 'result':
         if (e.summary)

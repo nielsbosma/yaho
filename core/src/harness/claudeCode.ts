@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import { delimiter, extname, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
@@ -65,6 +65,8 @@ export const claudeCode: HarnessAdapter = {
       run.systemPrompt,
     ];
     if (run.resumeSessionId) args.push('--resume', run.resumeSessionId);
+    // Claude Code stops itself once its own spend estimate reaches this; YAHO passes what the agent has left.
+    if (run.maxBudgetUsd !== undefined) args.push('--max-budget-usd', run.maxBudgetUsd.toFixed(4));
     const command = resolveCommand(run.command, run.env);
     const child = spawn(command, args, {
       cwd: run.cwd,
@@ -82,6 +84,7 @@ export const claudeCode: HarnessAdapter = {
     const lines = createInterface({ input: child.stdout });
     lines.on('line', (line) => {
       if (!line.trim()) return;
+      if (run.transcriptPath) appendFileSync(run.transcriptPath, `${line}\n`);
       let m: Record<string, unknown>;
       try {
         m = JSON.parse(line);
@@ -90,6 +93,18 @@ export const claudeCode: HarnessAdapter = {
         return;
       }
       if (m.session_id && m.type === 'system') onEvent({ kind: 'session', sessionId: m.session_id as string });
+      if (m.type === 'assistant') {
+        const msg = m.message as { id?: string; usage?: Record<string, number> } | undefined;
+        if (msg?.id && msg.usage)
+          onEvent({
+            kind: 'usage',
+            id: msg.id,
+            input: msg.usage.input_tokens ?? 0,
+            output: msg.usage.output_tokens ?? 0,
+            cache_read: msg.usage.cache_read_input_tokens ?? 0,
+            cache_write: msg.usage.cache_creation_input_tokens ?? 0,
+          });
+      }
       if (m.type === 'assistant' || m.type === 'user') {
         const content = ((m.message as { content?: unknown[] })?.content ?? []) as Record<string, unknown>[];
         for (const c of content) {
@@ -104,10 +119,13 @@ export const claudeCode: HarnessAdapter = {
         if (m.session_id) onEvent({ kind: 'session', sessionId: m.session_id as string });
         onEvent({
           kind: 'result',
-          ok: !m.is_error,
+          ok: !m.is_error && !String(m.subtype ?? '').startsWith('error'),
           summary: typeof m.result === 'string' ? (m.result as string) : undefined,
           cost_usd: typeof m.total_cost_usd === 'number' ? (m.total_cost_usd as number) : undefined,
-          error: m.is_error ? String(m.result ?? m.subtype ?? 'error') : undefined,
+          error:
+            m.is_error || String(m.subtype ?? '').startsWith('error')
+              ? [m.subtype, m.result].filter(Boolean).join(': ') || 'error'
+              : undefined,
         });
       }
     });
