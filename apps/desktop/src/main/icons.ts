@@ -1,12 +1,13 @@
 import { nativeImage, type NativeImage } from 'electron';
 
 /**
- * Icons drawn in code, so the app needs no image assets: a blue disc for the tray and window, with a red dot when
- * the human has unread messages, plus the small red overlay Windows shows on the taskbar button.
+ * Icons drawn in code, so the app needs no image files: the Yaho mark for the tray and window, plus the small red
+ * overlay Windows shows on the taskbar button.
  */
-const ACCENT = [0x5b, 0x7a, 0x2f]; // BGR of #2f7a5b, the accent green
+const ACCENT = [0x8f, 0xbf, 0x5f]; // BGR of #5fbf8f, the loop
+const DOT = [0xc3, 0xe0, 0xa8]; // BGR of #a8e0c3
+const BG = [0x1e, 0x21, 0x1c]; // BGR of #1c211e
 const RED = [0x3a, 0x45, 0xd9];
-const WHITE = [0xff, 0xff, 0xff];
 
 function draw(size: number, paint: (x: number, y: number) => [number[], number] | null): NativeImage {
   const buf = Buffer.alloc(size * size * 4);
@@ -25,46 +26,31 @@ function draw(size: number, paint: (x: number, y: number) => [number[], number] 
   return nativeImage.createFromBitmap(buf, { width: size, height: size });
 }
 
-/** Distance from a point to a line segment. */
-function segDist(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const k = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
-  return Math.hypot(px - (x1 + k * dx), py - (y1 + k * dy));
-}
-
 /** Soft edge: 1 inside, 0 outside, a pixel of anti-aliasing between. */
 const cover = (d: number, r: number) => Math.max(0, Math.min(1, r - d + 0.5));
 
+/** Rounded square: true inside, with a soft edge. */
+function roundRect(x: number, y: number, size: number, r: number): number {
+  const cx = Math.min(Math.max(x, r), size - r);
+  const cy = Math.min(Math.max(y, r), size - r);
+  return cover(Math.hypot(x - cx, y - cy), r);
+}
+
+/**
+ * The mark from assets/logo/mark.svg: a dark rounded square, the wordmark's green loop, and the dot riding it.
+ * With unread messages the dot turns red, which doubles as the tray's badge.
+ */
 export function appIcon(size = 32, unread = false): NativeImage {
-  const c = size / 2;
-  const R = size * 0.46;
-  const bR = size * 0.2;
-  const bx = size - bR - 0.5;
-  const by = bR + 0.5;
+  const k = size / 64;
   return draw(size, (x, y) => {
-    if (unread) {
-      const db = Math.hypot(x - bx, y - by);
-      if (db <= bR + 1.5) {
-        // a thin white ring separates the dot from the disc
-        if (db <= bR) return [RED, cover(db, bR)];
-        return [WHITE, cover(db, bR + 1.5)];
-      }
-    }
-    const d = Math.hypot(x - c, y - c);
-    if (d > R + 1) return null;
-    // A white "Y": two arms meeting just above the centre, and a stem.
-    const t = size * 0.075;
-    const top = c - R * 0.5;
-    const join = c + R * 0.05;
-    const arm = R * 0.42;
-    const segs: Array<[number, number, number, number]> = [
-      [c - arm, top, c, join],
-      [c + arm, top, c, join],
-      [c, join, c, c + R * 0.52],
-    ];
-    const inY = segs.some(([x1, y1, x2, y2]) => segDist(x, y, x1, y1, x2, y2) < t);
-    return [inY ? WHITE : ACCENT, cover(d, R)];
+    const bg = roundRect(x, y, size, 14 * k);
+    if (bg <= 0) return null;
+    const dot = Math.hypot(x - 44 * k, y - 20 * k);
+    const dotR = (unread ? 8 : 6) * k;
+    if (dot <= dotR + 0.5) return [unread ? RED : DOT, Math.min(bg, cover(dot, dotR))];
+    const ring = Math.abs(Math.hypot(x - 30 * k, y - 35 * k) - 14 * k);
+    if (ring <= 4 * k + 0.5) return [ACCENT, Math.min(bg, cover(ring, 4 * k))];
+    return [BG, bg];
   });
 }
 

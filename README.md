@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/wordmark-dark.svg">
+    <img src="assets/logo/wordmark.svg" alt="yaho" width="220">
+  </picture>
+</p>
+
 # Yaho — Yet Another Harness Orchestrator
 
 A local desktop app that runs long-lived, self-improving agents on a schedule, lets them work on projects with

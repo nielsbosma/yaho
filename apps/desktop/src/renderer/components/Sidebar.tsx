@@ -6,6 +6,7 @@ import type { AppState } from '../App.tsx';
 import { useApi, type Agent } from '../lib/api.ts';
 import { href } from '../lib/router.ts';
 import { cn } from './ui/cn.ts';
+import { Wordmark } from './Wordmark.tsx';
 import { CountPill, money } from './ui/display.tsx';
 
 function NavItem({
@@ -61,8 +62,7 @@ export function Sidebar({
     <aside className="relative flex shrink-0 flex-col border-r border-line bg-sidebar" style={{ width }}>
       <Resizer width={width} onChange={setWidth} side="right" initial={256} />
       <div className="flex h-14 items-center gap-2 px-4">
-        <div className="flex size-7 items-center justify-center rounded-lg bg-accent font-serif text-[15px] text-white">Y</div>
-        <span className="font-serif text-lg text-ink">Yaho</span>
+        <Wordmark className="h-6 text-ink" />
         {state?.version && <span className="text-[11px] text-muted tabular-nums">v{state.version}</span>}
         <span
           title={connected ? 'Connected to the core' : 'Reconnecting to the core…'}
