@@ -24,21 +24,8 @@ interface Turn {
   steps?: Step[];
 }
 
-const KEY = 'yaho-assistant';
-const load = (): { history: ChatMessage[]; turns: Turn[] } => {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) ?? '') as { history: ChatMessage[]; turns: Turn[] };
-  } catch {
-    return { history: [], turns: [] };
-  }
-};
-const save = (v: { history: ChatMessage[]; turns: Turn[] }) => {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(v));
-  } catch {
-    /* this session only */
-  }
-};
+/** A chat lasts as long as the panel is open: closing it (or Ctrl+J) discards the conversation. */
+const empty = (): { history: ChatMessage[]; turns: Turn[] } => ({ history: [], turns: [] });
 
 const SUGGESTIONS = [
   'Create an agent that summarises Hacker News every morning and sends me the top 5 stories',
@@ -75,7 +62,7 @@ function StepRow({ step }: { step: Step }) {
 }
 
 export function Assistant({ onClose }: { onClose: () => void }) {
-  const [state, setState] = useState(load);
+  const [state, setState] = useState(empty);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,11 +92,9 @@ export function Assistant({ onClose }: { onClose: () => void }) {
       const answer = r.messages.at(-1)?.content ?? '';
       const next = { history: r.messages, turns: [...turns, { role: 'assistant' as const, text: answer, steps: r.steps }] };
       setState(next);
-      save(next);
       if (r.navigate?.length) go(...r.navigate);
     } catch (e) {
       setError((e as Error).message);
-      save({ history, turns });
     } finally {
       setBusy(false);
       input.current?.focus();
@@ -117,9 +102,7 @@ export function Assistant({ onClose }: { onClose: () => void }) {
   };
 
   const reset = () => {
-    const empty = { history: [], turns: [] };
-    setState(empty);
-    save(empty);
+    setState(empty());
     setError(null);
   };
 
