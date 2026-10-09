@@ -44,6 +44,26 @@ export function yahoDev(repo: string): Plugin {
     return Promise.resolve();
   }
 
+  /**
+   * One restart at a time: a change that lands while the core is restarting queues exactly one more restart.
+   * Overlapping restarts would start two cores, and the loser would leave this plugin tracking a dead one.
+   */
+  let restarting: Promise<void> | null = null;
+  let again = false;
+  function requestRestart(): void {
+    if (restarting) {
+      again = true;
+      return;
+    }
+    restarting = restartCore().finally(() => {
+      restarting = null;
+      if (again) {
+        again = false;
+        requestRestart();
+      }
+    });
+  }
+
   /** Graceful: closing stdin lets the core queue its running jobs to resume, then exit. */
   async function restartCore(): Promise<void> {
     const old = core;
@@ -118,7 +138,7 @@ export function yahoDev(repo: string): Plugin {
       void startCore();
       debounced(
         join(repo, 'core/src'),
-        () => void restartCore(),
+        () => requestRestart(),
         (f) => f.endsWith('.ts') && !f.endsWith('.test.ts'),
       );
       debounced(join(repo, 'briefings'), () => undefined); // read per job; nothing to restart

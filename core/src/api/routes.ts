@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
 import type { Ctx } from '../context.ts';
+import { chat, type ChatMessage } from '../assistant/index.ts';
 import { litellmModels } from '../jobs/litellm.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
 import * as s from '../store.ts';
@@ -83,6 +84,13 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return { ok: true, health };
   });
   r.on('GET', '/api/settings/litellm/models', async () => ({ models: await litellmModels(ctx.settings) }));
+
+  // ---- assistant ----
+  r.on('POST', '/api/assistant', async (req) => {
+    const { messages } = await req.body<{ messages?: ChatMessage[] }>();
+    if (!Array.isArray(messages) || !messages.length) throw new HttpError(400, 'messages is required');
+    return chat(ctx, messages);
+  });
 
   // ---- agents ----
   r.on('GET', '/api/agents', () => s.listAgents(ctx));

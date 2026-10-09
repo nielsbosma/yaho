@@ -153,7 +153,9 @@ function ProjectDetail({ name }: { name: string }) {
   const [error, setError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => setEditing(false), [name]);
+  useEffect(() => {
+    setEditing(false);
+  }, [name]);
 
   const p = project.data;
   if (project.error) return <Empty title="Project not found">{project.error}</Empty>;

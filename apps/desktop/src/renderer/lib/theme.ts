@@ -22,7 +22,9 @@ export function applyTheme(t: Theme): void {
 
 export function useTheme(): [Theme, (t: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(savedTheme);
-  useEffect(() => applyTheme(theme), [theme]);
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
   return [
     theme,
     (t) => {

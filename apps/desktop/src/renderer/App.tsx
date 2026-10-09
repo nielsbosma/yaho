@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Assistant } from './components/Assistant.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { onLive, useApi } from './lib/api.ts';
 import { platform } from './lib/platform.ts';
@@ -16,6 +17,38 @@ export interface AppState {
 export function App() {
   const route = useRoute();
   const [connected, setConnected] = useState(true);
+  const [assistant, setAssistant] = useState(() => {
+    try {
+      return localStorage.getItem('yaho-assistant-open') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleAssistant = (open = !assistant) => {
+    setAssistant(open);
+    try {
+      localStorage.setItem('yaho-assistant-open', open ? '1' : '0');
+    } catch {
+      /* this session only */
+    }
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setAssistant((a) => {
+          try {
+            localStorage.setItem('yaho-assistant-open', a ? '0' : '1');
+          } catch {
+            /* this session only */
+          }
+          return !a;
+        });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const state = useApi<AppState>('/api/state', (e) => e.type === 'message' || e.type === 'job');
 
   useEffect(
@@ -27,7 +60,9 @@ export function App() {
       }),
     [],
   );
-  useEffect(() => platform.setBadge(state.data?.unread ?? 0), [state.data?.unread]);
+  useEffect(() => {
+    platform.setBadge(state.data?.unread ?? 0);
+  }, [state.data?.unread]);
 
   if (!platform.token) {
     return (
@@ -41,10 +76,11 @@ export function App() {
   const View = views[route[0] ?? 'inbox'] ?? views.inbox!;
   return (
     <div className="flex h-full">
-      <Sidebar route={route} state={state.data} connected={connected} />
+      <Sidebar route={route} state={state.data} connected={connected} assistantOpen={assistant} onAssistant={() => toggleAssistant()} />
       <main className="min-w-0 flex-1 overflow-y-auto">
         <View route={route} />
       </main>
+      {assistant && <Assistant onClose={() => toggleAssistant(false)} />}
     </div>
   );
 }

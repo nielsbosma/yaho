@@ -1,4 +1,4 @@
-import { Bot, FolderKanban, Images, Inbox, KeyRound, Monitor, Moon, Play, Plus, Settings, Sun } from 'lucide-react';
+import { Bot, FolderKanban, Images, Inbox, KeyRound, Monitor, Moon, Play, Plus, Settings, Sparkles, Sun } from 'lucide-react';
 import { useTheme, type Theme } from '../lib/theme.ts';
 import type { ReactNode } from 'react';
 import type { AppState } from '../App.tsx';
@@ -37,7 +37,19 @@ function NavItem({
   );
 }
 
-export function Sidebar({ route, state, connected }: { route: string[]; state: AppState | null; connected: boolean }) {
+export function Sidebar({
+  route,
+  state,
+  connected,
+  assistantOpen,
+  onAssistant,
+}: {
+  route: string[];
+  state: AppState | null;
+  connected: boolean;
+  assistantOpen: boolean;
+  onAssistant: () => void;
+}) {
   const agents = useApi<Agent[]>(
     '/api/agents',
     (e) => (e.type === 'changed' && e.entity === 'agents') || e.type === 'job' || e.type === 'message',
@@ -54,6 +66,20 @@ export function Sidebar({ route, state, connected }: { route: string[]; state: A
         />
       </div>
 
+      <div className="px-2 pb-2">
+        <button
+          type="button"
+          onClick={onAssistant}
+          title="Chat with Yaho (Ctrl+J)"
+          className={cn(
+            'flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 text-sm transition-colors [&_svg]:size-4',
+            assistantOpen ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line bg-panel text-ink/85 hover:border-line-strong',
+          )}
+        >
+          <Sparkles /> Chat with Yaho
+          <kbd className="ml-auto text-[10px] text-muted">Ctrl J</kbd>
+        </button>
+      </div>
       <nav className="flex flex-col gap-0.5 px-2">
         <NavItem to={href('inbox')} icon={<Inbox />} label="Inbox" active={at === 'inbox'} count={state?.unread} />
         <NavItem

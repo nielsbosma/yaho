@@ -18,6 +18,8 @@ export interface Settings {
   /** bundled: YAHO runs its own Dopbase on local_port. external: an existing server at url, with token. */
   dopbase: { mode: 'bundled' | 'external'; url: string; token?: string; local_port?: number; environment: string; project_prefix: string };
   global_spend_cap_usd: number;
+  /** The in-app chat. Model defaults to the first default model. */
+  assistant?: { model?: string };
   defaults: {
     harness: string;
     models: string[];
