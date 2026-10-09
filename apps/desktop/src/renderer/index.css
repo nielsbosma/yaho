@@ -1,0 +1,99 @@
+@import 'tailwindcss';
+
+/* Claude Desktop palette: warm paper, clay accent, serif headings. */
+:root {
+  --c-bg: #faf9f5;
+  --c-sidebar: #f3f1ea;
+  --c-panel: #ffffff;
+  --c-ink: #2c2a24;
+  --c-muted: #77736a;
+  --c-line: #e7e3d8;
+  --c-line-strong: #d6d1c3;
+  --c-hover: #ece9df;
+  --c-accent: #c96442;
+  --c-accent-hover: #b4583a;
+  --c-ok: #3a7d55;
+  --c-warn: #a86b12;
+  --c-danger: #c0453a;
+  --c-info: #3c6fb0;
+  --c-code: #f2efe7;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-bg: #262624;
+    --c-sidebar: #1f1e1d;
+    --c-panel: #2c2b29;
+    --c-ink: #ece9e1;
+    --c-muted: #a5a197;
+    --c-line: #3b3a37;
+    --c-line-strong: #4b4945;
+    --c-hover: #34332f;
+    --c-accent: #d97757;
+    --c-accent-hover: #e38a6b;
+    --c-ok: #6cbf8b;
+    --c-warn: #e0a84a;
+    --c-danger: #e57368;
+    --c-info: #7ea7e0;
+    --c-code: #1f1e1d;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-sidebar: var(--c-sidebar);
+  --color-panel: var(--c-panel);
+  --color-ink: var(--c-ink);
+  --color-muted: var(--c-muted);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-hover: var(--c-hover);
+  --color-accent: var(--c-accent);
+  --color-accent-hover: var(--c-accent-hover);
+  --color-ok: var(--c-ok);
+  --color-warn: var(--c-warn);
+  --color-danger: var(--c-danger);
+  --color-info: var(--c-info);
+  --color-code: var(--c-code);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Tiempos Text', 'Iowan Old Style', 'Palatino Linotype', Georgia, ui-serif, serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--c-accent) 25%, transparent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-line-strong) transparent;
+}
+
+.prose-yaho {
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
