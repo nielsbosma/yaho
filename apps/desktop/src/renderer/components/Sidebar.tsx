@@ -1,5 +1,5 @@
 import { Resizer, usePanelWidth } from './Resizer.tsx';
-import { Bot, FolderKanban, Images, Inbox, KeyRound, LibraryBig, Monitor, Moon, Play, Plus, Settings, Sparkles, Sun } from 'lucide-react';
+import { Bot, LayoutDashboard, FolderKanban, Images, Inbox, KeyRound, LibraryBig, Monitor, Moon, Play, Plus, Settings, Sparkles, Sun } from 'lucide-react';
 import { useTheme, type Theme } from '../lib/theme.ts';
 import type { ReactNode } from 'react';
 import type { AppState } from '../App.tsx';
@@ -96,6 +96,7 @@ export function Sidebar({
           count={(state?.running ?? 0) + (state?.queued ?? 0)}
           countTone="muted"
         />
+        <NavItem to={href('dashboard')} icon={<LayoutDashboard />} label="Dashboard" active={at === 'dashboard'} />
         <NavItem to={href('projects')} icon={<FolderKanban />} label="Projects" active={at === 'projects'} />
         <NavItem to={href('artifacts')} icon={<Images />} label="Artifacts" active={at === 'artifacts'} />
         <NavItem to={href('resources')} icon={<KeyRound />} label="Resources" active={at === 'resources'} />

@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import { AgentsView } from './agents.tsx';
 import { ArtifactsView } from './artifacts.tsx';
+import { DashboardView } from './dashboard.tsx';
 import { InboxView } from './inbox.tsx';
 import { JobsView } from './jobs.tsx';
 import { LibraryView } from './library.tsx';
@@ -13,6 +14,7 @@ export interface ViewProps {
 }
 
 export const views: Record<string, ComponentType<ViewProps>> = {
+  dashboard: DashboardView,
   inbox: InboxView,
   jobs: JobsView,
   agents: AgentsView,

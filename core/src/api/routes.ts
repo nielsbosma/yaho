@@ -10,6 +10,7 @@ import { litellmModels } from '../jobs/litellm.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
+import { stats } from '../stats.ts';
 import { Router, type Req } from './http.ts';
 import { safeJoin, sendFile } from './server.ts';
 
@@ -65,6 +66,11 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     spent_usd: s.totalSpend(ctx),
     global_spend_cap_usd: ctx.settings.global_spend_cap_usd,
   }));
+
+  r.on('GET', '/api/stats', (req) => {
+    const days = Math.min(365, Math.max(1, Number(req.query.get('days')) || 30));
+    return stats(ctx.db, days);
+  });
 
   // ---- settings ----
   r.on('GET', '/api/settings', () => ctx.settings);
