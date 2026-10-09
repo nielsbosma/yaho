@@ -572,7 +572,7 @@ export function listJobs(ctx: Ctx, opts: { agent?: string; active?: boolean; lim
   if (opts.active) where.push("status IN ('running','queued')");
   return (
     ctx.db
-      .prepare(`SELECT * FROM jobs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created DESC LIMIT ${opts.limit ?? 200}`)
+      .prepare(`SELECT *, (SELECT COUNT(*) FROM messages m WHERE m.job = jobs.id) AS messages FROM jobs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created DESC LIMIT ${opts.limit ?? 200}`)
       .all(...args) as unknown as Job[]
   ).map((j) => ({ ...j }));
 }

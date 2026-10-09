@@ -138,6 +138,8 @@ export interface Job {
   reason: string | null;
   model: string | null;
   cost_usd: number;
+  /** Messages this job sent (in job lists). */
+  messages?: number;
   resume_at: string | null;
   created: string;
   started: string | null;

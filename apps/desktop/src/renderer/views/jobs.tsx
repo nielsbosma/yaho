@@ -77,6 +77,7 @@ function JobTable({ jobs, showAgent }: { jobs: Job[]; showAgent?: boolean }) {
             <th className="px-4 py-2 font-medium">Trigger</th>
             <th className="px-4 py-2 font-medium">Status</th>
             <th className="px-4 py-2 font-medium">Runtime</th>
+            <th className="px-4 py-2 text-right font-medium">Messages</th>
             <th className="px-4 py-2 text-right font-medium">Cost</th>
             {stoppable && <th className="w-10" />}
           </tr>
@@ -107,6 +108,7 @@ function JobTable({ jobs, showAgent }: { jobs: Job[]; showAgent?: boolean }) {
                 )}
               </td>
               <td className="px-4 py-2 text-muted tabular-nums">{duration(j.started, j.status === 'running' ? null : j.ended)}</td>
+              <td className={cn('px-4 py-2 text-right tabular-nums', !j.messages && 'text-muted')}>{j.messages ?? 0}</td>
               <td className="px-4 py-2 text-right tabular-nums">{money(j.cost_usd)}</td>
               {stoppable && (
                 <td className="px-2 py-2">

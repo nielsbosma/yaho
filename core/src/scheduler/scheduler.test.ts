@@ -122,6 +122,14 @@ describe('scheduler', () => {
     expect(events.some((e) => e.kind === 'text' && e.data.text?.startsWith('resumed fake-'))).toBe(true);
   });
 
+  it('job lists count the messages each job sent', async () => {
+    await agent('talker');
+    script('talker', [{ cmd: 'yaho send --to human --body one' }, { cmd: 'yaho send --to human --body two' }, { cmd: 'yaho finish' }]);
+    await api('/api/agents/talker/run', { method: 'POST' });
+    const [j] = await settle('talker', 1);
+    expect((j as Job & { messages: number }).messages).toBe(2);
+  });
+
   it('a disabled agent still runs when the human starts it', async () => {
     await agent('sleepy', { enabled: false });
     script('sleepy', [{ cmd: 'yaho finish' }]);
