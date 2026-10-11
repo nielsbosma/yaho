@@ -28,7 +28,7 @@ export function InboxView({ route }: ViewProps) {
     <div className="flex h-full">
       <div className="relative flex shrink-0 flex-col border-r border-line" style={{ width: listWidth }}>
         <Resizer width={listWidth} onChange={setListWidth} side="right" initial={380} />
-        <div className="flex items-center gap-2 border-b border-line px-5 pt-6 pb-4">
+        <div className="app-drag flex items-center gap-2 border-b border-line px-5 pt-6 pb-4">
           <h1 className="font-serif text-[26px]">Inbox</h1>
           <span className="text-sm text-muted">{unread ? `${unread} unread` : ''}</span>
           <Button size="sm" className="ml-auto" onClick={() => setCompose(true)}>
@@ -99,7 +99,7 @@ export function InboxView({ route }: ViewProps) {
           )}
         </div>
       </div>
-      <div className="min-w-0 flex-1 overflow-y-auto">
+      <div className="titlebar-below min-w-0 flex-1 overflow-y-auto">
         {selected ? (
           <Thread id={selected} />
         ) : (

@@ -327,10 +327,19 @@ export function renameFolder(ctx: Ctx, from: string, to: unknown): string[] {
 
 /** Deleting a folder moves its agents out to the top level, or deletes them too with `agents: true`. */
 export function deleteFolder(ctx: Ctx, name: string, opts: { agents?: boolean } = {}): string[] {
+  // Agents are deleted one by one; any that fail stay, moved to the top level with the rest, and are named in the error.
+  const failed: string[] = [];
   if (opts.agents)
-    for (const r of ctx.db.prepare('SELECT name FROM agents WHERE folder = ?').all(name) as Row[]) deleteAgent(ctx, r.name as string);
+    for (const r of ctx.db.prepare('SELECT name FROM agents WHERE folder = ?').all(name) as Row[]) {
+      try {
+        deleteAgent(ctx, r.name as string);
+      } catch (e) {
+        failed.push(`${r.name as string} (${(e as Error).message})`);
+      }
+    }
   ctx.db.prepare('UPDATE agents SET folder = NULL WHERE folder = ?').run(name);
   ctx.db.prepare('DELETE FROM agent_folders WHERE name = ?').run(name);
+  if (failed.length) throw new HttpError(500, `folder deleted, but these agents could not be and are now ungrouped: ${failed.join(', ')}`);
   return listFolders(ctx);
 }
 

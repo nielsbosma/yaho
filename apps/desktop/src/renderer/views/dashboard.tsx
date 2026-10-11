@@ -411,14 +411,14 @@ export function ScheduleTimeline() {
               </a>
               <div className="relative h-4 flex-1 overflow-hidden rounded bg-hover/60">
                 {grid}
-                {runs.map((r) => {
+                {runs.map((r, i) => {
                   const at = new Date(r.at);
                   const tip = `${agent} · ${at.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}${
                     r.type === 'delay' ? ' · wakes from sleep' : ` · ${r.cron}`
                   }${dur ? ` · usually ${seconds(dur)}` : ''}${r.enabled ? '' : ' · agent is disabled, will not run'}`;
                   return (
                     <div
-                      key={r.at + r.type}
+                      key={`${r.at}-${r.type}-${i}`}
                       title={tip}
                       className={cn(
                         'absolute inset-y-0.5 min-w-1.5 rounded-sm',

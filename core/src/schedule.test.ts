@@ -27,4 +27,14 @@ describe('schedule', () => {
     expect(s.agents).toEqual(['a', 'b']);
     expect(Math.round(s.duration_seconds.a!)).toBe(1800);
   });
+
+  it('covers the whole window for an every-minute schedule', () => {
+    const db = openDb(':memory:');
+    const now = new Date('2026-10-10T10:00:00Z');
+    db.prepare("INSERT INTO agents (name, created, updated) VALUES ('m', ?, ?)").run(now.toISOString(), now.toISOString());
+    db.prepare("INSERT INTO triggers (id, agent, type, cron, next_fire, created) VALUES ('t', 'm', 'cron', '* * * * *', ?, ?)").run(now.toISOString(), now.toISOString());
+    const runs = schedule(db, 24, now).runs;
+    expect(runs.length).toBe(24 * 60 + 1);
+    expect(runs.at(-1)!.at).toBe(new Date(now.getTime() + 24 * 3_600_000).toISOString());
+  });
 });

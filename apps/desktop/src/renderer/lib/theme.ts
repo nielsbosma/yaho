@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { platform } from './platform.ts';
 
 export type Theme = 'system' | 'light' | 'dark';
@@ -43,22 +43,18 @@ if (typeof window !== 'undefined') {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => syncTitleBar());
 }
 
+/** The mode, shared by every switch that shows it (the sidebar, Settings). */
+const theme = shared<Theme>(savedTheme, (t) => {
+  try {
+    localStorage.setItem(KEY, t);
+  } catch {
+    /* remembered for this session only */
+  }
+  applyTheme(t);
+});
+
 export function useTheme(): [Theme, (t: Theme) => void] {
-  const [theme, setTheme] = useState<Theme>(savedTheme);
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
-  return [
-    theme,
-    (t) => {
-      try {
-        localStorage.setItem(KEY, t);
-      } catch {
-        /* remembered for this session only */
-      }
-      setTheme(t);
-    },
-  ];
+  return [useSyncExternalStore(theme.subscribe, theme.get), theme.set];
 }
 
 /** Color themes: they change the accent (buttons, links, charts, selection). Light and dark come from Theme. */
@@ -89,20 +85,33 @@ export function applyPalette(p: Palette): void {
   syncTitleBar();
 }
 
+const palette = shared<Palette>(savedPalette, (p) => {
+  try {
+    localStorage.setItem(PALETTE_KEY, p);
+  } catch {
+    /* remembered for this session only */
+  }
+  applyPalette(p);
+});
+
 export function usePalette(): [Palette, (p: Palette) => void] {
-  const [palette, setPalette] = useState<Palette>(savedPalette);
-  useEffect(() => {
-    applyPalette(palette);
-  }, [palette]);
-  return [
-    palette,
-    (p) => {
-      try {
-        localStorage.setItem(PALETTE_KEY, p);
-      } catch {
-        /* remembered for this session only */
-      }
-      setPalette(p);
+  return [useSyncExternalStore(palette.subscribe, palette.get), palette.set];
+}
+
+/** A value outside React that components subscribe to; setting it saves and applies it once, and every subscriber re-renders. */
+function shared<T>(initial: () => T, onSet: (v: T) => void) {
+  let value: T | undefined;
+  const listeners = new Set<() => void>();
+  return {
+    get: (): T => (value ??= initial()),
+    set: (v: T) => {
+      value = v;
+      onSet(v);
+      for (const l of listeners) l();
     },
-  ];
+    subscribe: (l: () => void) => {
+      listeners.add(l);
+      return () => void listeners.delete(l);
+    },
+  };
 }

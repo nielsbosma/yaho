@@ -87,6 +87,8 @@ export function App() {
   const View = views[route[0] ?? 'inbox'] ?? views.inbox!;
   return (
     <div className="flex h-full">
+      {/* Desktop: the window can be dragged by its top edge anywhere, whatever the page under it. Header padding only. */}
+      {platform.kind === 'desktop' && <div aria-hidden className="app-drag fixed inset-x-0 top-0 z-50 h-2" />}
       <Sidebar route={route} state={state.data} connected={connected} assistantOpen={assistant} onAssistant={() => toggleAssistant()} />
       <main className="min-w-0 flex-1 overflow-y-auto">
         <View route={route} />

@@ -141,8 +141,15 @@ pre {
 }
 /* macOS: the traffic lights sit at the top left, over the sidebar's logo row. */
 :root[data-os='darwin'] .titlebar-left {
+  height: auto;
+  min-height: 4rem;
   padding-top: 1.75rem;
 }
-:root:not([data-chat-open]) .page-header {
-  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 2rem);
+/* Page header actions stay at the right edge and drop just below the window buttons (the header starts 1.75rem down). */
+:root:not([data-chat-open]) .page-header-actions {
+  margin-top: max(0px, calc(env(titlebar-area-height, 0px) - 1.5rem));
+}
+/* A pane that reaches the top right without a page header (the inbox's message pane) starts below the window buttons. */
+:root:not([data-chat-open]) .titlebar-below {
+  padding-top: env(titlebar-area-height, 0px);
 }

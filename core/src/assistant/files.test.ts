@@ -30,21 +30,23 @@ afterAll(async () => {
 });
 
 describe('agent workspace files', () => {
-  it('copies folders without caches, renames single files, writes files, and stays inside the workspace', () => {
+  it('copies folders without caches, renames single files, writes files, and stays inside the workspace', async () => {
     expect(listLocalFolder(src).map((e) => e.name).sort()).toEqual(['lib', 'old.db', 'run.py']);
     const root = ctx.paths.agent('a');
 
-    expect(copyToAgentWorkspace(ctx, 'a', src, 'scripts').files).toBe(3);
+    expect((await copyToAgentWorkspace(ctx, 'a', src, 'scripts')).files).toBe(3);
     expect(existsSync(join(root, 'scripts', 'lib', 'x.py'))).toBe(true);
     expect(existsSync(join(root, 'scripts', 'lib', '__pycache__'))).toBe(false);
 
-    copyToAgentWorkspace(ctx, 'a', join(src, 'old.db'), 'agent.db');
+    await copyToAgentWorkspace(ctx, 'a', join(src, 'old.db'), 'agent.db');
     expect(readFileSync(join(root, 'agent.db'), 'utf8')).toBe('db');
 
     expect(writeAgentFile(ctx, 'a', 'memory/notes.md', 'hi').path).toBe('memory/notes.md');
     expect(readFileSync(join(root, 'memory', 'notes.md'), 'utf8')).toBe('hi');
 
     expect(() => writeAgentFile(ctx, 'a', '../escape.txt', 'no')).toThrow(/bad path/);
-    expect(() => copyToAgentWorkspace(ctx, 'nobody', src)).toThrow(/not found/);
+    await expect(copyToAgentWorkspace(ctx, 'nobody', src)).rejects.toThrow(/not found/);
+    // A folder into a folder inside itself would never end.
+    await expect(copyToAgentWorkspace(ctx, 'a', root, 'scripts/again')).rejects.toThrow(/inside itself/);
   });
 });

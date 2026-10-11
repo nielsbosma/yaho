@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { nextCron } from './store.ts';
+import { Cron } from 'croner';
 
 type Row = Record<string, unknown>;
 
@@ -35,11 +35,13 @@ export function schedule(db: DatabaseSync, hours = 24, now = new Date()) {
       continue;
     }
     const cron = t.cron as string;
-    for (let i = 0; at <= end && i < 500; i++) {
+    const c = new Cron(cron, { paused: true });
+    // Cron's finest step is a minute (seconds fields aside), so this bound never cuts a schedule short.
+    for (let i = 0, max = hours * 60 + 1; at <= end && i < max; i++) {
       runs.push({ agent, type: 'cron', at: at.toISOString(), cron, enabled });
-      const next = nextCron(cron, at);
+      const next = c.nextRun(at);
       if (!next) break;
-      at = new Date(next);
+      at = next;
     }
   }
   runs.sort((a, b) => a.at.localeCompare(b.at));
