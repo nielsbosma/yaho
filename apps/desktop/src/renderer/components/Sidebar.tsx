@@ -1,5 +1,5 @@
 import { Resizer, usePanelWidth } from './Resizer.tsx';
-import { Bot, LayoutDashboard, FolderKanban, Images, Inbox, KeyRound, LibraryBig, Monitor, Moon, Play, Plus, Settings, Sparkles, Sun } from 'lucide-react';
+import { LayoutDashboard, FolderKanban, Images, Inbox, KeyRound, LibraryBig, Monitor, Moon, Play, Settings, Sparkles, Sun } from 'lucide-react';
 import { useTheme, type Theme } from '../lib/theme.ts';
 import type { ReactNode } from 'react';
 import type { AppState } from '../App.tsx';
@@ -7,7 +7,7 @@ import { useApi, type Agent } from '../lib/api.ts';
 import { href } from '../lib/router.ts';
 import { cn } from './ui/cn.ts';
 import { Wordmark } from './Wordmark.tsx';
-import { useAgentMenu } from './AgentMenu.tsx';
+import { AgentTree } from './AgentTree.tsx';
 import { CountPill, money } from './ui/display.tsx';
 
 function NavItem({
@@ -58,7 +58,6 @@ export function Sidebar({
     (e) => (e.type === 'changed' && e.entity === 'agents') || e.type === 'job' || e.type === 'message',
   );
   const at = route[0];
-  const agentMenu = useAgentMenu();
   const [width, setWidth] = usePanelWidth('sidebar', 256, 200, 420);
   return (
     <aside className="relative flex shrink-0 flex-col border-r border-line bg-sidebar" style={{ width }}>
@@ -103,34 +102,7 @@ export function Sidebar({
         <NavItem to={href('library')} icon={<LibraryBig />} label="Example Library" active={at === 'library'} />
       </nav>
 
-      <div className="mt-5 flex items-center justify-between px-4 pb-1">
-        <a href={href('agents')} className="text-xs font-semibold tracking-wide text-muted uppercase hover:text-ink">
-          Agents
-        </a>
-        <a href={href('agents', 'new')} title="New agent" className="rounded p-0.5 text-muted hover:bg-hover hover:text-ink">
-          <Plus className="size-3.5" />
-        </a>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2">
-        {agents.data?.map((a) => (
-          <a
-            key={a.name}
-            href={href('agents', a.name)}
-            onContextMenu={(e) => agentMenu.open(e, a)}
-            className={cn(
-              'flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors',
-              at === 'agents' && route[1] === a.name ? 'bg-hover font-medium' : 'hover:bg-hover/70',
-              !a.enabled && 'text-muted',
-            )}
-          >
-            <Bot className={cn('size-4 shrink-0', a.running ? 'text-info' : 'text-muted')} />
-            <span className="truncate">{a.name}</span>
-            {a.running ? <span className="ml-auto size-1.5 animate-pulse rounded-full bg-info" /> : null}
-          </a>
-        ))}
-        {agentMenu.element}
-        {agents.data?.length === 0 && <div className="px-2.5 py-1 text-xs text-muted">No agents yet</div>}
-      </div>
+      <AgentTree agents={agents.data} active={at === 'agents' ? (route[1] ?? null) : null} />
 
       <div className="border-t border-line p-2">
         {state && (

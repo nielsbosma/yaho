@@ -144,4 +144,7 @@ export const migrations: string[] = [
   // 3: resources of other kinds (Composio connections) besides plain keys.
   `ALTER TABLE resources ADD COLUMN kind TEXT NOT NULL DEFAULT 'keys';
    ALTER TABLE resources ADD COLUMN config TEXT NOT NULL DEFAULT '{}';`,
+  // 4: optional folders that group agents in the sidebar. An agent in no folder has folder NULL.
+  `CREATE TABLE agent_folders (name TEXT PRIMARY KEY, position INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL);
+   ALTER TABLE agents ADD COLUMN folder TEXT;`,
 ];

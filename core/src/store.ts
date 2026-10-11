@@ -133,10 +133,12 @@ function agentFromRow(ctx: Ctx, r: Row): Agent {
   };
 }
 
-export function listAgents(ctx: Ctx): Array<Agent & { spent_usd: number; running: number; queued: number; unread: number }> {
+export function listAgents(
+  ctx: Ctx,
+): Array<Agent & { folder: string | null; spent_usd: number; running: number; queued: number; unread: number }> {
   return (ctx.db.prepare('SELECT * FROM agents ORDER BY name').all() as Row[]).map((r) => {
     const a = agentFromRow(ctx, r);
-    return { ...a, ...agentStats(ctx, a.name) };
+    return { ...a, folder: (r.folder as string | null) ?? null, ...agentStats(ctx, a.name) };
   });
 }
 
@@ -291,6 +293,53 @@ export function setBriefing(ctx: Ctx, agent: string, briefing: string, author: s
 
 export function nextCron(expr: string, after?: Date): string | null {
   return new Cron(expr, { paused: true }).nextRun(after)?.toISOString() ?? null;
+}
+
+// ---------- agent folders ----------
+// Folders only group agents in the sidebar; they are not part of an agent's definition.
+
+export function listFolders(ctx: Ctx): string[] {
+  return (ctx.db.prepare('SELECT name FROM agent_folders ORDER BY position, name').all() as Row[]).map((r) => r.name as string);
+}
+
+function folderName(name: unknown): string {
+  const n = String(name ?? '').trim();
+  if (!n || n.length > 60) throw new HttpError(400, 'a folder name is 1 to 60 characters');
+  return n;
+}
+
+export function createFolder(ctx: Ctx, name: unknown): string[] {
+  const n = folderName(name);
+  if (ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(n)) throw new HttpError(409, `folder ${n} already exists`);
+  const pos = Number((ctx.db.prepare('SELECT COALESCE(MAX(position), -1) + 1 p FROM agent_folders').get() as Row).p);
+  ctx.db.prepare('INSERT INTO agent_folders (name, position, created) VALUES (?, ?, ?)').run(n, pos, now());
+  return listFolders(ctx);
+}
+
+export function renameFolder(ctx: Ctx, from: string, to: unknown): string[] {
+  const n = folderName(to);
+  if (!ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(from)) throw new HttpError(404, `folder ${from} not found`);
+  if (n !== from && ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(n)) throw new HttpError(409, `folder ${n} already exists`);
+  ctx.db.prepare('UPDATE agent_folders SET name = ? WHERE name = ?').run(n, from);
+  ctx.db.prepare('UPDATE agents SET folder = ? WHERE folder = ?').run(n, from);
+  return listFolders(ctx);
+}
+
+/** Deleting a folder moves its agents out to the top level, or deletes them too with `agents: true`. */
+export function deleteFolder(ctx: Ctx, name: string, opts: { agents?: boolean } = {}): string[] {
+  if (opts.agents)
+    for (const r of ctx.db.prepare('SELECT name FROM agents WHERE folder = ?').all(name) as Row[]) deleteAgent(ctx, r.name as string);
+  ctx.db.prepare('UPDATE agents SET folder = NULL WHERE folder = ?').run(name);
+  ctx.db.prepare('DELETE FROM agent_folders WHERE name = ?').run(name);
+  return listFolders(ctx);
+}
+
+/** Put an agent in a folder, or take it out with null. */
+export function moveAgentToFolder(ctx: Ctx, agent: string, folder: string | null): void {
+  if (!agentExists(ctx, agent)) throw new HttpError(404, `agent ${agent} not found`);
+  if (folder !== null && !ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(folder))
+    throw new HttpError(404, `folder ${folder} not found`);
+  ctx.db.prepare('UPDATE agents SET folder = ? WHERE name = ?').run(folder, agent);
 }
 
 // ---------- projects ----------

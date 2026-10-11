@@ -10,6 +10,7 @@ import { litellmModels } from '../jobs/litellm.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
+import { schedule } from '../schedule.ts';
 import { stats } from '../stats.ts';
 import { Router, type Req } from './http.ts';
 import { safeJoin, sendFile } from './server.ts';
@@ -72,6 +73,8 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return stats(ctx.db, days);
   });
 
+  r.on('GET', '/api/schedule', (req) => schedule(ctx.db, Math.min(168, Math.max(1, Number(req.query.get('hours')) || 24))));
+
   // ---- settings ----
   r.on('GET', '/api/settings', () => ctx.settings);
   r.on('PUT', '/api/settings', async (req) => {
@@ -123,6 +126,29 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return s.saveAgent(ctx, { ...patch, name: req.params.name! });
   });
   r.on('DELETE', '/api/agents/:name', (req) => s.deleteAgent(ctx, req.params.name!));
+  r.on('PUT', '/api/agents/:name/folder', async (req) => {
+    s.moveAgentToFolder(ctx, req.params.name!, (await req.body<{ folder?: string | null }>()).folder ?? null);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'agents' });
+    return { ok: true };
+  });
+
+  // ---- agent folders (sidebar grouping only) ----
+  r.on('GET', '/api/folders', () => s.listFolders(ctx));
+  r.on('POST', '/api/folders', async (req) => {
+    const f = s.createFolder(ctx, (await req.body<{ name?: string }>()).name);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'agents' });
+    return f;
+  });
+  r.on('PUT', '/api/folders/:name', async (req) => {
+    const f = s.renameFolder(ctx, req.params.name!, (await req.body<{ name?: string }>()).name);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'agents' });
+    return f;
+  });
+  r.on('DELETE', '/api/folders/:name', (req) => {
+    const f = s.deleteFolder(ctx, req.params.name!, { agents: req.query.get('agents') === '1' });
+    ctx.bus.emitEvent({ type: 'changed', entity: 'agents' });
+    return f;
+  });
   /** Run Now, optionally with instructions for this run: delivered to the agent's inbox, and the run starts at once. */
   r.on('POST', '/api/agents/:name/run', async (req) => {
     const name = req.params.name!;

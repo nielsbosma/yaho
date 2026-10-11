@@ -1,7 +1,8 @@
 import { AlertTriangle, ArrowDownRight, ArrowUpRight } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { cn } from '../components/ui/cn.ts';
 import { ago, Card, Empty, money, PageHeader, Section } from '../components/ui/display.tsx';
+import { Input } from '../components/ui/form.tsx';
 import { useApi } from '../lib/api.ts';
 import { href } from '../lib/router.ts';
 
@@ -81,6 +82,10 @@ function Body({ s }: { s: Stats }) {
         <Kpi label="Artifacts" value={String(t.artifacts)} note={`${t.active_agents} of ${t.agents} agents active`} to={href('artifacts')} />
       </div>
 
+      <Section title="Next 24 Hours">
+        <ScheduleTimeline />
+      </Section>
+
       <div className="grid gap-6 xl:grid-cols-2">
         <Section title="Jobs per Day">
           <Card className="p-4">
@@ -98,45 +103,7 @@ function Body({ s }: { s: Stats }) {
       </div>
 
       <Section title="Agents">
-        <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="border-b border-line text-left text-xs text-muted">
-              <tr>
-                <th className="px-4 py-2 font-medium">Agent</th>
-                <th className="px-4 py-2 font-medium">Spend</th>
-                <th className="px-4 py-2 text-right font-medium">Jobs</th>
-                <th className="px-4 py-2 text-right font-medium">Failed</th>
-                <th className="px-4 py-2 text-right font-medium">Avg Job</th>
-                <th className="px-4 py-2 text-right font-medium">Last Run</th>
-              </tr>
-            </thead>
-            <tbody>
-              {s.by_agent.map((a) => (
-                <tr key={a.agent} className="border-b border-line last:border-0 hover:bg-hover/50">
-                  <td className="px-4 py-2">
-                    <a href={href('agents', a.agent)} className="font-medium hover:text-accent">
-                      {a.agent}
-                    </a>
-                  </td>
-                  <td className="w-2/5 px-4 py-2">
-                    <Meter value={a.cost_usd} max={s.by_agent[0]?.cost_usd ?? 0} label={money(a.cost_usd)} />
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{a.jobs}</td>
-                  <td className={cn('px-4 py-2 text-right tabular-nums', a.failed ? 'text-danger' : 'text-muted')}>{a.failed}</td>
-                  <td className="px-4 py-2 text-right text-muted tabular-nums">{seconds(a.avg_seconds)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-right text-muted">{ago(a.last)}</td>
-                </tr>
-              ))}
-              {!s.by_agent.length && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-muted">
-                    No jobs in this period.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
+        <AgentTable rows={s.by_agent} />
       </Section>
 
       <div className="grid gap-6 xl:grid-cols-3">
@@ -157,26 +124,16 @@ function Body({ s }: { s: Stats }) {
 
       <div className="grid gap-6 xl:grid-cols-3">
         <Section title="Spend by Model">
-          <Card className="space-y-3 p-4">
-            {s.by_model.map((m) => (
-              <Meter
-                key={m.model}
-                title={m.model}
-                value={m.cost_usd}
-                max={s.by_model[0]!.cost_usd}
-                label={`${money(m.cost_usd)} · ${m.jobs} jobs`}
-              />
-            ))}
-            {!s.by_model.length && <p className="text-sm text-muted">No jobs in this period.</p>}
-          </Card>
+          <TopMeters
+            rows={s.by_model}
+            value={(m) => m.cost_usd}
+            title={(m) => m.model}
+            label={(m) => `${money(m.cost_usd)} · ${m.jobs} jobs`}
+            empty="No jobs in this period."
+          />
         </Section>
         <Section title="Artifacts by Kind">
-          <Card className="space-y-3 p-4">
-            {s.artifact_kinds.map((k) => (
-              <Meter key={k.kind} title={k.kind} value={k.count} max={s.artifact_kinds[0]!.count} label={String(k.count)} />
-            ))}
-            {!s.artifact_kinds.length && <p className="text-sm text-muted">No artifacts in this period.</p>}
-          </Card>
+          <TopMeters rows={s.artifact_kinds} value={(k) => k.count} title={(k) => k.kind} label={(k) => String(k.count)} empty="No artifacts in this period." />
         </Section>
         <Section title="Recent Failures">
           <Card className="divide-y divide-line">
@@ -330,5 +287,257 @@ function Heatmap({ cells }: { cells: Stats['heatmap'] }) {
         </text>
       ))}
     </svg>
+  );
+}
+
+interface Schedule {
+  from: string;
+  to: string;
+  hours: number;
+  runs: Array<{ agent: string; type: 'cron' | 'delay'; at: string; cron?: string; enabled: boolean }>;
+  agents: string[];
+  duration_seconds: Record<string, number>;
+}
+
+const clock = (d: Date) => d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+/** Rows shown before the timeline scrolls, and agents in the table before "Show All". */
+const TOP = 10;
+
+/**
+ * The next 24 hours: a load strip with every agent's runs per hour, then a row per agent (soonest first) with a bar
+ * per run, as long as the agent's typical job. With many agents the rows scroll and can be filtered.
+ */
+export function ScheduleTimeline() {
+  const sched = useApi<Schedule>('/api/schedule?hours=24', (e) => e.type === 'changed' || e.type === 'job');
+  const [, setTick] = useState(0);
+  const [filter, setFilter] = useState('');
+  useEffect(() => {
+    const t = setInterval(() => {
+      setTick((n) => n + 1);
+      void sched.reload();
+    }, 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const s = sched.data;
+  if (!s) return null;
+  if (!s.runs.length)
+    return <Card className="p-6 text-center text-sm text-muted">No scheduled runs in the next 24 hours. Agents with a cron trigger show up here.</Card>;
+
+  const from = new Date(s.from).getTime();
+  const span = new Date(s.to).getTime() - from;
+  const pct = (t: number) => ((t - from) / span) * 100;
+  // Ticks on every third whole hour; a stronger line at midnight with the day's name.
+  const ticks: Array<{ t: number; midnight: boolean }> = [];
+  const first = new Date(from);
+  first.setMinutes(0, 0, 0);
+  for (let t = first.getTime() + 3_600_000; t < from + span; t += 3_600_000) {
+    const h = new Date(t).getHours();
+    if (h % 3 === 0) ticks.push({ t, midnight: h === 0 });
+  }
+
+  const byAgent = new Map<string, Schedule['runs']>();
+  for (const r of s.runs) byAgent.set(r.agent, [...(byAgent.get(r.agent) ?? []), r]);
+  const live = s.runs.filter((r) => r.enabled);
+  const q = filter.trim().toLowerCase();
+  const agents = [...byAgent.keys()]
+    .filter((a) => !q || a.toLowerCase().includes(q))
+    .map((a) => ({ a, next: byAgent.get(a)!.find((r) => r.enabled)?.at }))
+    // Soonest next run first; agents that will not run (disabled) last.
+    .sort((x, y) => (x.next && y.next ? x.next.localeCompare(y.next) : x.next ? -1 : y.next ? 1 : x.a.localeCompare(y.a)))
+    .map((x) => x.a);
+
+  // Runs per hour across all agents, for the load strip.
+  const buckets = Array.from({ length: s.hours }, () => 0);
+  for (const r of live) buckets[Math.min(s.hours - 1, Math.floor((new Date(r.at).getTime() - from) / 3_600_000))]!++;
+  const peak = Math.max(1, ...buckets);
+
+  const grid = ticks.map((k) => (
+    <div key={k.t} className={cn('absolute inset-y-0 w-px', k.midnight ? 'bg-line-strong' : 'bg-line')} style={{ left: `${pct(k.t)}%` }} />
+  ));
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center gap-3 border-b border-line px-4 py-2.5 text-sm text-muted">
+        <span>
+          <span className="font-medium text-ink tabular-nums">{live.length}</span> runs from{' '}
+          <span className="font-medium text-ink tabular-nums">{new Set(live.map((r) => r.agent)).size}</span> agents
+        </span>
+        {byAgent.size > TOP && (
+          <Input className="ml-auto h-7 w-48 text-xs" placeholder="Filter agents" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        )}
+      </div>
+      <div className="px-4 pt-3">
+        <div className="flex">
+          <div className="w-44 shrink-0" />
+          <div className="relative h-5 flex-1 text-[11px] text-muted">
+            <span className="absolute left-0">Now</span>
+            {ticks
+              .filter((k) => pct(k.t) > 7)
+              .map((k) => (
+                <span key={k.t} className={cn('absolute -translate-x-1/2 tabular-nums', k.midnight && 'font-medium text-ink')} style={{ left: `${pct(k.t)}%` }}>
+                  {k.midnight ? new Date(k.t).toLocaleDateString(undefined, { weekday: 'short' }) : clock(new Date(k.t))}
+                </span>
+              ))}
+          </div>
+        </div>
+        <div className="flex items-end border-b border-line pb-1.5">
+          <div className="w-44 shrink-0 pr-3 text-xs text-muted">Runs per hour</div>
+          <div className="flex h-8 flex-1 items-end gap-px">
+            {buckets.map((n, i) => (
+              <div
+                key={i}
+                title={`${clock(new Date(from + i * 3_600_000))}: ${n} run${n === 1 ? '' : 's'}`}
+                className={cn('flex-1 rounded-t-sm', n ? 'bg-accent/70' : 'bg-hover')}
+                style={{ height: n ? `${Math.max(12, (n / peak) * 100)}%` : '2px' }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className={cn('divide-y divide-line px-4', agents.length > TOP && 'max-h-[340px] overflow-y-auto')}>
+        {agents.map((agent) => {
+          const runs = byAgent.get(agent)!;
+          const off = runs.every((r) => !r.enabled);
+          const dur = s.duration_seconds[agent] ?? 0;
+          return (
+            <div key={agent} className="flex items-center py-1">
+              <a
+                href={href('agents', agent)}
+                title={agent}
+                className={cn('flex w-44 shrink-0 items-baseline pr-3 text-sm hover:text-accent', off && 'text-muted')}
+              >
+                <span className="truncate">{agent}</span>
+                <span className="ml-1.5 shrink-0 text-xs text-muted tabular-nums">{off ? 'off' : `×${runs.length}`}</span>
+              </a>
+              <div className="relative h-4 flex-1 overflow-hidden rounded bg-hover/60">
+                {grid}
+                {runs.map((r) => {
+                  const at = new Date(r.at);
+                  const tip = `${agent} · ${at.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}${
+                    r.type === 'delay' ? ' · wakes from sleep' : ` · ${r.cron}`
+                  }${dur ? ` · usually ${seconds(dur)}` : ''}${r.enabled ? '' : ' · agent is disabled, will not run'}`;
+                  return (
+                    <div
+                      key={r.at + r.type}
+                      title={tip}
+                      className={cn(
+                        'absolute inset-y-0.5 min-w-1.5 rounded-sm',
+                        !r.enabled ? 'border border-dashed border-line-strong bg-transparent' : r.type === 'delay' ? 'bg-accent/50' : 'bg-accent',
+                      )}
+                      style={{ left: `${pct(at.getTime())}%`, width: `${((dur * 1000) / span) * 100}%` }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        {!agents.length && <div className="py-4 text-center text-sm text-muted">No agent matches “{filter}”.</div>}
+      </div>
+      <div className="flex flex-wrap gap-4 border-t border-line px-4 py-2.5 text-xs text-muted">
+        <Legend className="bg-accent">Scheduled run</Legend>
+        <Legend className="bg-accent/50">Wakes from sleep</Legend>
+        <Legend className="border border-dashed border-line-strong">Agent disabled</Legend>
+        <span className="ml-auto">Bar length is the agent's typical job.</span>
+      </div>
+    </Card>
+  );
+}
+
+/** Spend per agent: the top ones by spend, the rest behind Show All, with a filter once there are many. */
+function AgentTable({ rows }: { rows: Stats['by_agent'] }) {
+  const [all, setAll] = useState(false);
+  const [filter, setFilter] = useState('');
+  const q = filter.trim().toLowerCase();
+  const matching = q ? rows.filter((a) => a.agent.toLowerCase().includes(q)) : rows;
+  const shown = all || q ? matching : matching.slice(0, TOP);
+  const max = rows[0]?.cost_usd ?? 0;
+  return (
+    <Card className="overflow-hidden">
+      {rows.length > TOP && (
+        <div className="flex items-center gap-3 border-b border-line px-4 py-2 text-sm text-muted">
+          {q ? `${matching.length} of ${rows.length} agents` : all ? `All ${rows.length} agents` : `Top ${TOP} of ${rows.length} agents by spend`}
+          <Input className="ml-auto h-7 w-48 text-xs" placeholder="Filter agents" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        </div>
+      )}
+      <div className={cn(all && !q && rows.length > 25 && 'max-h-[520px] overflow-y-auto')}>
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 border-b border-line bg-panel text-left text-xs text-muted">
+            <tr>
+              <th className="px-4 py-2 font-medium">Agent</th>
+              <th className="px-4 py-2 font-medium">Spend</th>
+              <th className="px-4 py-2 text-right font-medium">Jobs</th>
+              <th className="px-4 py-2 text-right font-medium">Failed</th>
+              <th className="px-4 py-2 text-right font-medium">Avg Job</th>
+              <th className="px-4 py-2 text-right font-medium">Last Run</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((a) => (
+              <tr key={a.agent} className="border-b border-line last:border-0 hover:bg-hover/50">
+                <td className="max-w-56 truncate px-4 py-2">
+                  <a href={href('agents', a.agent)} title={a.agent} className="font-medium hover:text-accent">
+                    {a.agent}
+                  </a>
+                </td>
+                <td className="w-2/5 px-4 py-2">
+                  <Meter value={a.cost_usd} max={max} label={money(a.cost_usd)} />
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums">{a.jobs}</td>
+                <td className={cn('px-4 py-2 text-right tabular-nums', a.failed ? 'text-danger' : 'text-muted')}>{a.failed}</td>
+                <td className="px-4 py-2 text-right text-muted tabular-nums">{seconds(a.avg_seconds)}</td>
+                <td className="px-4 py-2 whitespace-nowrap text-right text-muted">{ago(a.last)}</td>
+              </tr>
+            ))}
+            {!shown.length && (
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-muted">
+                  {q ? `No agent matches “${filter}”.` : 'No jobs in this period.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > TOP && !q && (
+        <button
+          type="button"
+          onClick={() => setAll(!all)}
+          className="w-full cursor-pointer border-t border-line py-2 text-xs font-medium text-muted hover:bg-hover/50 hover:text-ink"
+        >
+          {all ? `Show Top ${TOP}` : `Show All ${rows.length} Agents`}
+        </button>
+      )}
+    </Card>
+  );
+}
+
+/** A meter list capped at a few rows, with the rest summed in one line. */
+function TopMeters<T>({ rows, value, title, label, empty }: { rows: T[]; value: (r: T) => number; title: (r: T) => string; label: (r: T) => string; empty: string }) {
+  const shown = rows.slice(0, 6);
+  const rest = rows.slice(6);
+  const max = rows[0] ? value(rows[0]) : 0;
+  return (
+    <Card className="space-y-3 p-4">
+      {shown.map((r) => (
+        <Meter key={title(r)} title={title(r)} value={value(r)} max={max} label={label(r)} />
+      ))}
+      {rest.length > 0 && (
+        <p className="text-xs text-muted" title={rest.map(title).join(', ')}>
+          and {rest.length} more
+        </p>
+      )}
+      {!rows.length && <p className="text-sm text-muted">{empty}</p>}
+    </Card>
+  );
+}
+
+function Legend({ className, children }: { className: string; children: ReactNode }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={cn('inline-block h-2.5 w-4 rounded-sm', className)} />
+      {children}
+    </span>
   );
 }

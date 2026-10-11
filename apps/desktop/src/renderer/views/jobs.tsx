@@ -211,7 +211,7 @@ function JobDetail({ id }: { id: string }) {
           </span>
         }
         sub={
-          <span className="flex flex-wrap gap-x-3">
+          <span className="flex flex-wrap items-baseline gap-x-3">
             <span className="font-mono text-xs">{j.id}</span>
             <span>trigger: {j.trigger_type}</span>
             {j.model && <span>model: {j.model}</span>}

@@ -3,10 +3,11 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import './index.css';
 import { platform } from './lib/platform.ts';
-import { applyTheme, savedTheme } from './lib/theme.ts';
+import { applyPalette, applyTheme, savedPalette, savedTheme } from './lib/theme.ts';
 
 // Before the first paint, so a dark choice never flashes light.
 applyTheme(savedTheme());
+applyPalette(savedPalette());
 
 // Claude Desktop's typefaces, served by the core from a local Claude install when there is one (see core/src/api/fonts.ts).
 const fonts = document.createElement('link');

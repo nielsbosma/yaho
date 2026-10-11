@@ -10,8 +10,8 @@
   --c-line: #e3e7e4;
   --c-line-strong: #d0d6d2;
   --c-hover: #e9ede9;
-  --c-accent: #2f7a5b;
-  --c-accent-hover: #25644a;
+  --c-accent: var(--pal-l, #2f7a5b);
+  --c-accent-hover: var(--pal-lh, #25644a);
   --c-ok: #3d8a4f;
   --c-warn: #a86b12;
   --c-danger: #c0453a;
@@ -31,8 +31,8 @@
     --c-line: #2b302d;
     --c-line-strong: #3a403c;
     --c-hover: #252a26;
-    --c-accent: #5fbf8f;
-    --c-accent-hover: #7dd0a5;
+    --c-accent: var(--pal-d, #5fbf8f);
+    --c-accent-hover: var(--pal-dh, #7dd0a5);
     --c-ok: #6cbf8b;
     --c-warn: #e0a84a;
     --c-danger: #e57368;
@@ -51,8 +51,8 @@
   --c-line: #2b302d;
   --c-line-strong: #3a403c;
   --c-hover: #252a26;
-  --c-accent: #5fbf8f;
-  --c-accent-hover: #7dd0a5;
+  --c-accent: var(--pal-d, #5fbf8f);
+  --c-accent-hover: var(--pal-dh, #7dd0a5);
   --c-ok: #6cbf8b;
   --c-warn: #e0a84a;
   --c-danger: #e57368;
@@ -60,6 +60,14 @@
   --c-code: #121412;
   color-scheme: dark;
 }
+
+/* Color themes: the accent for light (l, lh) and dark (d, dh). Forest, the default, is the fallback above. */
+:root[data-palette='ocean'] { --pal-l: #2867a8; --pal-lh: #1f5489; --pal-d: #6aa6e8; --pal-dh: #8bbcf0; }
+:root[data-palette='indigo'] { --pal-l: #4f52c4; --pal-lh: #4144a6; --pal-d: #9a9cf2; --pal-dh: #b3b5f6; }
+:root[data-palette='plum'] { --pal-l: #8a3f86; --pal-lh: #723470; --pal-d: #d38ccf; --pal-dh: #e0a7dd; }
+:root[data-palette='rose'] { --pal-l: #b23b58; --pal-lh: #96314a; --pal-d: #ec8aa0; --pal-dh: #f2a6b7; }
+:root[data-palette='amber'] { --pal-l: #96570b; --pal-lh: #7d4809; --pal-d: #e3a654; --pal-dh: #ecbb78; }
+:root[data-palette='slate'] { --pal-l: #4a5560; --pal-lh: #3b444d; --pal-d: #a9b6c2; --pal-dh: #c1ccd6; }
 
 @theme inline {
   --color-bg: var(--c-bg);

@@ -121,6 +121,8 @@ export interface Agent {
   triggers: TriggerSpec[];
   projects: string[];
   resources: string[];
+  /** Sidebar folder; null at the top level. */
+  folder?: string | null;
   spent_usd?: number;
   running?: number;
   queued?: number;
