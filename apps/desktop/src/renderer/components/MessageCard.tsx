@@ -1,5 +1,5 @@
 import { Markdown } from './Markdown.tsx';
-import { Bot, Check, Copy, Trash2, CornerDownRight, ExternalLink, HelpCircle, Info, ListChecks, Send, User } from 'lucide-react';
+import { Bot, Check, Copy, Trash2, CornerDownRight, ExternalLink, HelpCircle, Info, ListChecks, Send, User, Reply } from 'lucide-react';
 import { useState } from 'react';
 import { useApi, type Artifact, type Message } from '../lib/api.ts';
 import { ArtifactGrid } from '../views/artifacts.tsx';
@@ -51,13 +51,18 @@ export interface MessageCardProps {
   compact?: boolean;
 }
 
-/** One message, rendered for a human checkpoint: choices, steps with Open/Copy, one-click Done and a feedback box. */
+/**
+ * One message, rendered for a human checkpoint: choices, steps with Open/Copy, and, when the agent waits for an answer
+ * (expects_response), one-click Done and a feedback box. Other messages offer a Reply that opens the box on demand.
+ */
 export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canReply = true, compact }: MessageCardProps) {
   const meta = typeMeta[m.type] ?? typeMeta.info;
   const [text, setText] = useState('');
   const [sending, setSending] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const fromHuman = m.from === 'human';
+  const expects = m.expects_response ?? (m.type === 'question' || m.type === 'instruction');
+  const [replying, setReplying] = useState(false);
 
   const reply = async (body: string) => {
     if (!onReply || !body.trim()) return;
@@ -149,12 +154,13 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
             ) : (
               <>
                 <div className="flex flex-wrap gap-2">
-                  {m.choices?.map((c) => (
-                    <Button key={c} variant="secondary" disabled={!!sending} onClick={() => void reply(c)}>
-                      {c}
-                    </Button>
-                  ))}
-                  {m.type !== 'question' || !m.choices?.length ? (
+                  {expects &&
+                    m.choices?.map((c) => (
+                      <Button key={c} variant="secondary" disabled={!!sending} onClick={() => void reply(c)}>
+                        {c}
+                      </Button>
+                    ))}
+                  {expects && (m.type !== 'question' || !m.choices?.length) ? (
                     <Button
                       variant="primary"
                       disabled={!!sending}
@@ -163,6 +169,15 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
                       <Check /> Done
                     </Button>
                   ) : null}
+                  {!expects && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => setReplying(!replying)}
+                      title="Write to the agent; it reads it on its next run"
+                    >
+                      <Reply /> Reply
+                    </Button>
+                  )}
                   {onMarkRead && (
                     <Button variant="ghost" onClick={() => onMarkRead(!m.read)} className="ml-auto">
                       {m.read ? 'Mark Unread' : 'Mark Read'}
@@ -174,21 +189,24 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
                     </Button>
                   )}
                 </div>
-                <div className="flex items-end gap-2">
-                  <Textarea
-                    className="min-h-10"
-                    rows={1}
-                    value={text}
-                    placeholder={m.type === 'question' ? 'Answer in your own words…' : 'Optional feedback…'}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void reply(text);
-                    }}
-                  />
-                  <Button disabled={!text.trim() || !!sending} onClick={() => void reply(text)} title="Send (Ctrl+Enter)">
-                    <Send />
-                  </Button>
-                </div>
+                {(expects || replying) && (
+                  <div className="flex items-end gap-2">
+                    <Textarea
+                      autoFocus={replying}
+                      className="min-h-10"
+                      rows={1}
+                      value={text}
+                      placeholder={m.type === 'question' ? 'Answer in your own words…' : expects ? 'Optional feedback…' : 'Write a reply…'}
+                      onChange={(e) => setText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void reply(text);
+                      }}
+                    />
+                    <Button disabled={!text.trim() || !!sending} onClick={() => void reply(text)} title="Send (Ctrl+Enter)">
+                      <Send />
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </div>

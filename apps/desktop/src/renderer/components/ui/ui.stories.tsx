@@ -42,7 +42,7 @@ export const FormFields: Story = {
         <Field label="Name" hint="Lowercase letters, digits and dashes.">
           <Input placeholder="social-scout" />
         </Field>
-        <Field label="Allowed models">
+        <Field label="Allowed Models">
           <ListInput value={models} onChange={setModels} />
         </Field>
         <Field label="Briefing" className="md:col-span-2">

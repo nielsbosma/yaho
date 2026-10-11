@@ -164,6 +164,8 @@ export interface Message {
   body: string;
   choices?: string[];
   steps?: Array<{ open?: string; copy?: string }>;
+  /** The agent waits for an answer: the card offers Done (or the choices). */
+  expects_response?: boolean;
   artifacts?: string[];
   reply_to: string | null;
   read: boolean;

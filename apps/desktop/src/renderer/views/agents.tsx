@@ -4,7 +4,7 @@ import { Markdown } from '../components/Markdown.tsx';
 import { useContextMenu, type MenuItem } from '../components/ContextMenu.tsx';
 import { RunDialog, useAgentMenu } from '../components/AgentMenu.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
-import { Bot, ExternalLink, History, LibraryBig, Play, Plus, Sparkles, Trash2, Wallet } from 'lucide-react';
+import { Bot, BotOff, ExternalLink, History, LibraryBig, Play, Plus, Sparkles, Trash2, Wallet } from 'lucide-react';
 import { chatAboutAgent } from '../lib/chat.ts';
 import { useEffect, useState } from 'react';
 import YAML from 'yaml';
@@ -62,7 +62,7 @@ function AgentList() {
                 label: 'Agent',
                 cell: (a) => (
                   <span className="flex items-center gap-2 font-medium">
-                    <Bot className={cn('size-4', a.running ? 'text-info' : 'text-muted')} />
+                    {a.enabled ? <Bot className={cn('size-4', a.running ? 'text-info' : 'text-muted')} /> : <BotOff className="size-4 text-muted/70" />}
                     {a.name}
                     {!a.enabled && <Badge>disabled</Badge>}
                   </span>
@@ -105,7 +105,7 @@ function AgentList() {
           <a key={a.name} href={href('agents', a.name)} onContextMenu={(e) => cardMenu.open(e, rowMenu(a))}>
             <Card className="p-4 transition-colors hover:border-line-strong">
               <div className="flex items-center gap-2">
-                <Bot className={cn('size-4', a.running ? 'text-info' : 'text-muted')} />
+                {a.enabled ? <Bot className={cn('size-4', a.running ? 'text-info' : 'text-muted')} /> : <BotOff className="size-4 text-muted/70" />}
                 <span className="font-medium">{a.name}</span>
                 {!a.enabled && <Badge>disabled</Badge>}
                 {a.running ? <StatusBadge status="running" /> : null}
@@ -400,92 +400,125 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
           spellCheck={false}
         />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Name" hint="Lowercase letters, digits and dashes.">
-            <Input value={draft.name} onChange={(e) => set('name', e.target.value)} placeholder="social-scout" />
-          </Field>
-          <Field label="Allowed models" hint="From your LiteLLM proxy. Jobs run with the primary." group>
-            <ModelPicker value={draft.models} onChange={(v) => set('models', v)} />
-          </Field>
-          <Field label="Briefing" className="md:col-span-2">
-            <Textarea
-              className="min-h-48"
-              value={draft.briefing}
-              onChange={(e) => set('briefing', e.target.value)}
-              placeholder="What this agent is for, its loop, and its limits."
-            />
-          </Field>
-          <Field label="Budget (USD)" hint="What the agent may spend on itself.">
-            <Input type="number" min="0" step="0.5" value={draft.budget_usd} onChange={(e) => set('budget_usd', Number(e.target.value))} />
-          </Field>
-          <Field label="Max parallel jobs">
-            <Input type="number" min="1" value={draft.max_parallel} onChange={(e) => set('max_parallel', Number(e.target.value))} />
-          </Field>
-          <Field label="Schedule" className="md:col-span-2" group>
-            <SchedulePicker value={crons} onChange={(v) => setTriggers(v, inbox)} />
-          </Field>
-          <Field label="Inbox trigger" hint="A new message starts a job.">
-            <div className="flex h-9 items-center">
-              <Switch checked={inbox} onChange={(v) => setTriggers(crons, v)} label="Inbox trigger" />
-            </div>
-          </Field>
-          <Field label="Wait for me" hint="Skip scheduled runs while your inbox has unread messages from this agent.">
-            <div className="flex h-9 items-center">
-              <Switch
-                checked={!!draft.guardrails.wait_for_inbox}
-                onChange={(v) => set('guardrails', { ...draft.guardrails, wait_for_inbox: v || undefined })}
-                label="Wait for me"
-              />
-            </div>
-          </Field>
-          <Field label="Projects" group>
-            <MultiPicker
-              noun="Project"
-              emptyText="No projects"
-              options={projects.data?.map((p) => ({ value: p.name, label: p.title, hint: p.briefing.split('\n')[0] })) ?? []}
-              value={draft.projects}
-              onChange={(v) => set('projects', v)}
-            />
-          </Field>
-          <Field label="Resources" group>
-            <MultiPicker
-              noun="Resource"
-              emptyText="No resources"
-              options={resources.data?.map((r) => ({ value: r.name, hint: r.briefing.split('\n')[0] })) ?? []}
-              value={draft.resources}
-              onChange={(v) => set('resources', v)}
-            />
-          </Field>
-          <Field label="Guardrails: agent-triggered jobs per hour">
-            <Input
-              type="number"
-              min="0"
-              value={draft.guardrails.rate_per_hour ?? ''}
-              onChange={(e) =>
-                set('guardrails', { ...draft.guardrails, rate_per_hour: e.target.value === '' ? undefined : Number(e.target.value) })
-              }
-            />
-          </Field>
-          <Field label="Guardrails: cooldown (s) · hop limit">
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min="0"
-                value={draft.guardrails.cooldown_seconds ?? ''}
-                onChange={(e) =>
-                  set('guardrails', { ...draft.guardrails, cooldown_seconds: e.target.value === '' ? undefined : Number(e.target.value) })
-                }
-              />
-              <Input
-                type="number"
-                min="0"
-                value={draft.guardrails.hop_limit ?? ''}
-                onChange={(e) =>
-                  set('guardrails', { ...draft.guardrails, hop_limit: e.target.value === '' ? undefined : Number(e.target.value) })
-                }
-              />
-            </div>
-          </Field>
+        <div className="space-y-8">
+          <Section title="Basics">
+            <Card className="space-y-4 p-4">
+              <Field label="Name" hint="Lowercase letters, digits and dashes.">
+                <Input className="md:max-w-sm" value={draft.name} onChange={(e) => set('name', e.target.value)} placeholder="social-scout" />
+              </Field>
+              <Field label="Briefing" hint="What this agent is for, its loop, and its limits. It reads this at the start of every job.">
+                <Textarea
+                  className="min-h-48"
+                  value={draft.briefing}
+                  onChange={(e) => set('briefing', e.target.value)}
+                  placeholder="What this agent is for, its loop, and its limits."
+                />
+              </Field>
+            </Card>
+          </Section>
+
+          <Section title="Models and Budget">
+            <Card className="space-y-4 p-4">
+              <Field label="Allowed Models" hint="From your LiteLLM proxy. Jobs run with the primary." group>
+                <ModelPicker value={draft.models} onChange={(v) => set('models', v)} />
+              </Field>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Budget (USD)" hint="What the agent may spend on itself, in total.">
+                  <Input type="number" min="0" step="0.5" value={draft.budget_usd} onChange={(e) => set('budget_usd', Number(e.target.value))} />
+                </Field>
+                <Field label="Max Parallel Jobs" hint="How many of its jobs may run at once.">
+                  <Input type="number" min="1" value={draft.max_parallel} onChange={(e) => set('max_parallel', Number(e.target.value))} />
+                </Field>
+              </div>
+            </Card>
+          </Section>
+
+          <Section title="When It Runs">
+            <Card className="space-y-4 p-4">
+              <Field label="Schedule" group>
+                <SchedulePicker value={crons} onChange={(v) => setTriggers(v, inbox)} />
+              </Field>
+              <div className="grid gap-4 border-t border-line pt-4 md:grid-cols-2">
+                <Field label="Inbox Trigger" hint="A new message starts a job.">
+                  <div className="flex h-9 items-center">
+                    <Switch checked={inbox} onChange={(v) => setTriggers(crons, v)} label="Inbox Trigger" />
+                  </div>
+                </Field>
+                <Field label="Wait for Me" hint="Skip scheduled runs while your inbox has unread messages from this agent.">
+                  <div className="flex h-9 items-center">
+                    <Switch
+                      checked={!!draft.guardrails.wait_for_inbox}
+                      onChange={(v) => set('guardrails', { ...draft.guardrails, wait_for_inbox: v || undefined })}
+                      label="Wait for Me"
+                    />
+                  </div>
+                </Field>
+              </div>
+            </Card>
+          </Section>
+
+          <Section title="Access">
+            <Card className="grid gap-4 p-4 md:grid-cols-2">
+              <Field label="Projects" hint="Their briefings and files are in every job's context." group>
+                <MultiPicker
+                  noun="Project"
+                  emptyText="No projects"
+                  options={projects.data?.map((p) => ({ value: p.name, label: p.title, hint: p.briefing.split('\n')[0] })) ?? []}
+                  value={draft.projects}
+                  onChange={(v) => set('projects', v)}
+                />
+              </Field>
+              <Field label="Resources" hint="Keys and connected apps the agent may use." group>
+                <MultiPicker
+                  noun="Resource"
+                  emptyText="No resources"
+                  options={resources.data?.map((r) => ({ value: r.name, hint: r.briefing.split('\n')[0] })) ?? []}
+                  value={draft.resources}
+                  onChange={(v) => set('resources', v)}
+                />
+              </Field>
+            </Card>
+          </Section>
+
+          <Section title="Guardrails">
+            <Card className="space-y-3 p-4">
+              <p className="text-sm text-muted">
+                Limits on jobs started by other agents' messages, so agents cannot keep waking each other. Empty means no limit.
+              </p>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Jobs per Hour" hint="Agent-triggered jobs.">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={draft.guardrails.rate_per_hour ?? ''}
+                    onChange={(e) =>
+                      set('guardrails', { ...draft.guardrails, rate_per_hour: e.target.value === '' ? undefined : Number(e.target.value) })
+                    }
+                  />
+                </Field>
+                <Field label="Cooldown (Seconds)" hint="Between agent-triggered jobs.">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={draft.guardrails.cooldown_seconds ?? ''}
+                    onChange={(e) =>
+                      set('guardrails', { ...draft.guardrails, cooldown_seconds: e.target.value === '' ? undefined : Number(e.target.value) })
+                    }
+                  />
+                </Field>
+                <Field label="Hop Limit" hint="How long a chain of agent messages may get.">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={draft.guardrails.hop_limit ?? ''}
+                    onChange={(e) =>
+                      set('guardrails', { ...draft.guardrails, hop_limit: e.target.value === '' ? undefined : Number(e.target.value) })
+                    }
+                  />
+                </Field>
+              </div>
+            </Card>
+          </Section>
         </div>
       )}
       <div className="flex items-center gap-2">

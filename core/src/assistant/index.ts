@@ -238,10 +238,102 @@ function tools(ctx: Ctx): Record<string, Tool> {
         return { deleted: s.deleteArtifacts(ctx, ids) };
       },
     },
-    list_inbox: {
-      description: "List the human's inbox (messages from agents), unread first.",
-      parameters: obj({ unread_only: { type: 'boolean' } }),
-      run: (a) => s.listMessages(ctx, { to: 'human', unread: a.unread_only === true, limit: 50 }),
+    list_folders: {
+      description: 'List the sidebar folders that group agents, with the agents in each and the ungrouped ones.',
+      parameters: obj({}),
+      run: () => {
+        const agents = s.listAgents(ctx);
+        return {
+          folders: s.listFolders(ctx).map((f) => ({ name: f, agents: agents.filter((a) => a.folder === f).map((a) => a.name) })),
+          ungrouped: agents.filter((a) => !a.folder).map((a) => a.name),
+        };
+      },
+    },
+    move_agents_to_folder: {
+      description:
+        'Put agents in a sidebar folder (creating the folder if it does not exist), or take them out with folder: null. Folders are not part of an agent definition; this is the only way to change them.',
+      parameters: obj(
+        { agents: { type: 'array', items: { type: 'string' } }, folder: { type: ['string', 'null'], description: 'folder name, or null for no folder' } },
+        ['agents'],
+      ),
+      run: (a) => {
+        const folder = a.folder ? String(a.folder).trim() : null;
+        if (folder && !s.listFolders(ctx).includes(folder)) s.createFolder(ctx, folder);
+        const names = (a.agents as unknown[]).map(String);
+        for (const n of names) s.moveAgentToFolder(ctx, n, folder);
+        ctx.bus.emitEvent({ type: 'changed', entity: 'agents' });
+        return { moved: names, folder };
+      },
+    },
+    manage_folder: {
+      description:
+        'Rename a sidebar folder, or delete it. Deleting keeps its agents (they become ungrouped) unless delete_agents is true, which deletes them too: only after the human confirmed, with confirmed: true.',
+      parameters: obj(
+        {
+          folder: str('folder name'),
+          rename_to: str('new name'),
+          delete: { type: 'boolean' },
+          delete_agents: { type: 'boolean' },
+          confirmed: { type: 'boolean' },
+        },
+        ['folder'],
+      ),
+      run: (a) => {
+        const f = String(a.folder);
+        let out: string[];
+        if (a.delete === true) {
+          if (a.delete_agents === true && a.confirmed !== true) throw new HttpError(400, 'ask the human to confirm deleting the agents first');
+          out = s.deleteFolder(ctx, f, { agents: a.delete_agents === true });
+        } else if (a.rename_to) out = s.renameFolder(ctx, f, a.rename_to);
+        else throw new HttpError(400, 'pass rename_to or delete: true');
+        ctx.bus.emitEvent({ type: 'changed', entity: 'agents' });
+        return { folders: out };
+      },
+    },
+    query_messages: {
+      description:
+        "Search every message: the human's inbox, what the human sent, and messages between agents. Filters combine. Returns the total that matched and the newest matches with bodies cut to 600 characters; use read_message for a full message and its thread. For 'my inbox' use direction to_human.",
+      parameters: obj({
+        text: str('words that must all appear in the title or body'),
+        agent: str('agent name: messages it sent or received'),
+        direction: { type: 'string', enum: ['to_human', 'from_human', 'between_agents'] },
+        type: { type: 'string', enum: ['question', 'instruction', 'info', 'reply'] },
+        unread: { type: 'boolean', description: 'only unread messages' },
+        since: str('ISO date or datetime, inclusive, e.g. 2026-10-01'),
+        until: str('ISO date or datetime, inclusive'),
+        limit: { type: 'number', description: 'at most this many (default 30, max 200)' },
+      }),
+      run: (a) => {
+        const r = s.searchMessages(ctx, {
+          ...(a.text ? { text: String(a.text) } : {}),
+          ...(a.agent ? { agent: String(a.agent) } : {}),
+          ...(a.direction ? { direction: a.direction as s.MessageQuery['direction'] } : {}),
+          ...(a.type ? { type: a.type as s.Message['type'] } : {}),
+          ...(a.unread === true ? { unread: true } : {}),
+          ...(a.since ? { since: String(a.since) } : {}),
+          ...(a.until ? { until: String(a.until) } : {}),
+          ...(a.limit ? { limit: Number(a.limit) } : {}),
+        });
+        return {
+          total: r.total,
+          shown: r.messages.length,
+          messages: r.messages.map((m) => ({ ...m, body: m.body.length > 600 ? `${m.body.slice(0, 600)}…` : m.body })),
+        };
+      },
+    },
+    read_message: {
+      description: 'Read one message in full, with its whole thread (the message it answers and every reply).',
+      parameters: obj({ id: str('message id') }, ['id']),
+      run: (a) => ({ message: s.getMessage(ctx, String(a.id)), thread: s.thread(ctx, String(a.id)) }),
+    },
+    mark_messages_read: {
+      description: "Mark messages in the human's inbox read (or unread with read: false), e.g. after summarising them.",
+      parameters: obj({ ids: { type: 'array', items: { type: 'string' } }, read: { type: 'boolean' } }, ['ids']),
+      run: (a) => {
+        const ids = (a.ids as unknown[]).map(String);
+        for (const id of ids) s.markRead(ctx, id, a.read !== false, 'human');
+        return { marked: ids.length, read: a.read !== false };
+      },
     },
     message_agent: {
       description:
@@ -330,12 +422,13 @@ on schedules, work on projects, use resources whose secret key values live in Do
 
 You can do anything the UI can, with your tools: create and edit agents, projects and resources, read files on this
 computer and copy them into projects or agent workspaces, run and stop jobs, read
-the inbox and message agents, change non-secret settings, and open pages. Act; don't just describe. Prefer one tool
+search and read all messages (inbox, sent, between agents), message agents, change non-secret settings, and open pages. Act; don't just describe. Prefer one tool
 call that does the whole thing (a full YAML definition) over many small ones.
 
 - An agent definition is YAML. When creating one, write a real briefing: what it is for, its loop, its limits. Keep
   enabled: false unless the human asked to start it, and say so.
 - Models are LiteLLM model names; use the defaults from get_settings unless asked.
+- Sidebar folders group agents and are not in the agent YAML: use list_folders, move_agents_to_folder and manage_folder.
 - Migrating existing work into an agent (scripts, a SQLite database, data files): list_folder to see it, then
   copy_to_agent_workspace into the agent's workspace (scripts/, the database as agent.db), and adapt what must change
   with read_file and write_agent_file (keys from the resources' environment variables, paths to the workspace).

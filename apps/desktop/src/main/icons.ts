@@ -5,7 +5,6 @@ import { nativeImage, type NativeImage } from 'electron';
  * overlay Windows shows on the taskbar button.
  */
 const ACCENT = [0x8f, 0xbf, 0x5f]; // BGR of #5fbf8f, the loop
-const DOT = [0xc3, 0xe0, 0xa8]; // BGR of #a8e0c3
 const BG = [0x1e, 0x21, 0x1c]; // BGR of #1c211e
 const RED = [0x3a, 0x45, 0xd9];
 
@@ -37,22 +36,40 @@ function roundRect(x: number, y: number, size: number, r: number): number {
 }
 
 /**
- * The mark from assets/logo/mark.svg: a dark rounded square, the wordmark's green loop, and the dot riding it.
- * With unread messages the dot turns red, which doubles as the tray's badge.
+ * The mark from assets/logo/mark.svg: a dark rounded square and the wordmark's open loop, solid from its leading end
+ * and fading behind it (an agent at work). With unread messages a red dot sits in the loop's gap, which doubles as the
+ * tray's badge.
  */
 export function appIcon(size = 32, unread = false): NativeImage {
   const k = size / 64;
+  const c = 32 * k;
+  const r = 15 * k;
+  const half = 4 * k;
+  // Angles clockwise from the leading end at -20 degrees: solid, then two fading steps, then the gap.
+  const deg = (x: number, y: number) => ((((Math.atan2(y - c, x - c) * 180) / Math.PI + 20) % 360) + 360) % 360;
+  const at = (d: number) => [c + r * Math.cos((d * Math.PI) / 180), c + r * Math.sin((d * Math.PI) / 180)] as const;
+  const [hx, hy] = at(-20);
+  const [gx, gy] = at(-50);
   return draw(size, (x, y) => {
     const bg = roundRect(x, y, size, 14 * k);
     if (bg <= 0) return null;
-    const dot = Math.hypot(x - 44 * k, y - 20 * k);
-    const dotR = (unread ? 8 : 6) * k;
-    if (dot <= dotR + 0.5) return [unread ? RED : DOT, Math.min(bg, cover(dot, dotR))];
-    const ring = Math.abs(Math.hypot(x - 30 * k, y - 35 * k) - 14 * k);
-    if (ring <= 4 * k + 0.5) return [ACCENT, Math.min(bg, cover(ring, 4 * k))];
-    return [BG, bg];
+    if (unread) {
+      const d = Math.hypot(x - gx, y - gy);
+      if (d <= 7 * k + 0.5) return [RED, Math.min(bg, cover(d, 7 * k))];
+    }
+    const ring = Math.abs(Math.hypot(x - c, y - c) - r);
+    const t = deg(x, y);
+    const strength = t < 180 ? 1 : t < 240 ? 0.55 : t < 300 ? 0.22 : 0;
+    // The round leading end.
+    const head = cover(Math.hypot(x - hx, y - hy), half);
+    const a = Math.max(strength * cover(ring, half), head);
+    if (a <= 0) return [BG, bg];
+    return [mix(BG, ACCENT, a), bg];
   });
 }
+
+/** Blend two BGR colours: 0 is the first, 1 the second. */
+const mix = (from: number[], to: number[], t: number) => from.map((v, i) => v + (to[i]! - v) * t);
 
 /** 3x5 pixel digits (and a plus) for the badge count; each row is 3 bits, left to right. */
 const GLYPHS: Record<string, number[]> = {

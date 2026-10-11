@@ -4,6 +4,7 @@ import { Button } from '../components/ui/button.tsx';
 import { Card, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
 import { Field, Input, Switch } from '../components/ui/form.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
+import type { AppState } from '../App.tsx';
 import { api, useApi } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
 import { href } from '../lib/router.ts';
@@ -48,6 +49,7 @@ function Check({ label, run }: { label: string; run: () => Promise<string> }) {
 }
 
 export function SettingsView() {
+  const state = useApi<AppState>('/api/state');
   const saved = useApi<Settings>('/api/settings', (e) => e.type === 'changed' && e.entity === 'settings');
   const [s, setS] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,14 +99,14 @@ export function SettingsView() {
             <Field label="Proxy URL" className="md:col-span-2">
               <Input value={s.litellm.url} onChange={(e) => upd((d) => void (d.litellm.url = e.target.value))} />
             </Field>
-            <Field label="API key" hint="Used by jobs when no master key is set.">
+            <Field label="API Key" hint="Used by jobs when no master key is set.">
               <Input
                 type="password"
                 value={s.litellm.api_key ?? ''}
                 onChange={(e) => upd((d) => void (d.litellm.api_key = e.target.value || undefined))}
               />
             </Field>
-            <Field label="Master key (optional)" hint="Lets Yaho mint a budget-capped key per job, so LiteLLM enforces budgets.">
+            <Field label="Master Key (Optional)" hint="Lets Yaho mint a budget-capped key per job, so LiteLLM enforces budgets.">
               <Input
                 type="password"
                 value={s.litellm.master_key ?? ''}
@@ -125,7 +127,7 @@ export function SettingsView() {
         </Section>
         <Section title="Secrets (Dopbase)">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
-            <Field label="Where values live" className="md:col-span-2">
+            <Field label="Where Values Live" className="md:col-span-2">
               <div className="flex gap-1 rounded-lg bg-hover p-0.5 text-sm w-fit">
                 {(['bundled', 'external'] as const).map((m) => (
                   <button
@@ -140,7 +142,7 @@ export function SettingsView() {
               </div>
             </Field>
             {s.dopbase.mode === 'bundled' ? (
-              <Field label="Local port" hint="Yaho runs its own Dopbase on 127.0.0.1, with its data in the Yaho data directory.">
+              <Field label="Local Port" hint="Yaho runs its own Dopbase on 127.0.0.1, with its data in the Yaho data directory.">
                 <Input
                   type="number"
                   value={s.dopbase.local_port ?? 4702}
@@ -164,7 +166,7 @@ export function SettingsView() {
             <Field label="Environment">
               <Input value={s.dopbase.environment} onChange={(e) => upd((d) => void (d.dopbase.environment = e.target.value))} />
             </Field>
-            <Field label="Project prefix" hint="Each resource is the Dopbase project <prefix><resource>.">
+            <Field label="Project Prefix" hint="Each resource is the Dopbase project <prefix><resource>.">
               <Input value={s.dopbase.project_prefix} onChange={(e) => upd((d) => void (d.dopbase.project_prefix = e.target.value))} />
             </Field>
             <div className="md:col-span-2">
@@ -185,14 +187,14 @@ export function SettingsView() {
         <Section title="Apps (Composio)">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
             <ComposioKeyHelp />
-            <Field label="Composio API key" hint="Agents never see it: Yaho makes their calls.">
+            <Field label="Composio API Key" hint="Agents never see it: Yaho makes their calls.">
               <Input
                 type="password"
                 value={s.composio?.api_key ?? ''}
                 onChange={(e) => upd((d) => void (d.composio = { ...d.composio, api_key: e.target.value || undefined }))}
               />
             </Field>
-            <Field label="User id" hint="Whose connections Yaho uses in your Composio project.">
+            <Field label="User ID" hint="Whose connections Yaho uses in your Composio project.">
               <Input
                 value={s.composio?.user_id ?? 'yaho'}
                 onChange={(e) => upd((d) => void (d.composio = { ...d.composio, user_id: e.target.value || undefined }))}
@@ -212,37 +214,12 @@ export function SettingsView() {
         </Section>
         <Section title="Spending">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
-            <Field label="Global spend cap (USD)" hint="When total spend reaches it, no job starts and running jobs stop.">
+            <Field label="Global Spend Cap (USD)" hint="When total spend reaches it, no job starts and running jobs stop.">
               <Input
                 type="number"
                 min="0"
                 value={s.global_spend_cap_usd}
                 onChange={(e) => upd((d) => void (d.global_spend_cap_usd = Number(e.target.value)))}
-              />
-            </Field>
-          </Card>
-        </Section>
-        <Section title="Ideas for Yaho">
-          <Card className="grid gap-4 p-4 md:grid-cols-2">
-            <label className="flex items-start gap-3 text-sm md:col-span-2">
-              <Switch
-                checked={s.ideas?.enabled !== false}
-                label="Agents file ideas for Yaho"
-                onChange={(v) => upd((d) => void (d.ideas = { ...d.ideas, enabled: v }))}
-              />
-              <span>
-                Agents file ideas for Yaho itself as GitHub issues
-                <span className="block text-xs text-muted">
-                  When something about Yaho holds an agent back, it suggests a feature with <code>yaho idea</code>. Filed with your{' '}
-                  <code>gh</code> login; without it, the idea comes to your inbox with a link instead. At most 3 per agent a day.
-                </span>
-              </span>
-            </label>
-            <Field label="Repository" hint="owner/name on GitHub.">
-              <Input
-                value={s.ideas?.repo ?? ''}
-                placeholder="nielsbosma/yaho"
-                onChange={(e) => upd((d) => void (d.ideas = { ...d.ideas, repo: e.target.value || undefined }))}
               />
             </Field>
           </Card>
@@ -260,7 +237,7 @@ export function SettingsView() {
                 onChange={(e) => upd((d) => void (d.defaults.budget_usd = Number(e.target.value)))}
               />
             </Field>
-            <Field label="Max parallel jobs">
+            <Field label="Max Parallel Jobs">
               <Input
                 type="number"
                 min="1"
@@ -281,7 +258,7 @@ export function SettingsView() {
               <label className="flex items-start gap-3 pt-1 text-sm">
                 <Switch
                   checked={!!s.harnesses['claude-code'].args?.includes('--chrome')}
-                  label="Agents can use Chrome"
+                  label="Agents Can Use Chrome"
                   onChange={(v) =>
                     upd((d) => {
                       const h = d.harnesses['claude-code']!;
@@ -291,7 +268,7 @@ export function SettingsView() {
                   }
                 />
                 <span>
-                  Agents can use Chrome
+                  Agents Can Use Chrome
                   <span className="block text-xs text-muted">
                     Starts Claude Code with <code>--chrome</code>, so every agent gets the Claude in Chrome browser tools. Needs Chrome open
                     with the Claude extension signed in. Agents act in your real browser, with your logins.
@@ -301,6 +278,28 @@ export function SettingsView() {
             )}
           </Card>
         </Section>
+
+        {state.data?.debug && (
+          <Section title="Debug">
+            <Card className="space-y-4 p-4">
+              <p className="text-sm text-muted">Shown because Yaho runs in debug mode (the dev session, or YAHO_DEBUG=1).</p>
+              <label className="flex items-start gap-3 text-sm">
+                <Switch
+                  checked={s.ideas?.enabled !== false}
+                  label="Agents File Ideas for Yaho"
+                  onChange={(v) => upd((d) => void (d.ideas = { ...d.ideas, enabled: v }))}
+                />
+                <span>
+                  Agents File Ideas for Yaho as GitHub Issues
+                  <span className="block text-xs text-muted">
+                    When something about Yaho holds an agent back, it suggests a feature with <code>yaho idea</code>. Filed with your{' '}
+                    <code>gh</code> login; without it, the idea comes to your inbox with a link instead. At most 3 per agent a day.
+                  </span>
+                </span>
+              </label>
+            </Card>
+          </Section>
+        )}
       </div>
     </>
   );

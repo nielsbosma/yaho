@@ -53,6 +53,8 @@ export interface Message {
   body: string;
   choices?: string[];
   steps?: Array<{ open: string } | { copy: string }>;
+  /** The sender waits for an answer: the inbox shows Done (or the choices). Default: true for questions and instructions. */
+  expects_response: boolean;
   reply_to: string | null;
   read: boolean;
   /** false when the message was delivered with a job already started for it. */
@@ -487,6 +489,9 @@ function messageFromRow(r: Row): Message {
     body: r.body as string,
     ...(payload.choices ? { choices: payload.choices as string[] } : {}),
     ...(payload.steps ? { steps: payload.steps as Message['steps'] } : {}),
+    // Messages from before the field existed: questions and instructions waited for an answer.
+    expects_response:
+      typeof payload.expects_response === 'boolean' ? payload.expects_response : r.type === 'question' || r.type === 'instruction',
     ...(payload.no_wake ? { wake: false } : {}),
     ...(payload.artifacts ? { artifacts: payload.artifacts as string[] } : {}),
     reply_to: (r.reply_to as string) ?? null,
@@ -519,6 +524,59 @@ export function listMessages(ctx: Ctx, opts: { to?: string; involving?: string; 
   return (ctx.db.prepare(sql).all(...args) as Row[]).map(messageFromRow);
 }
 
+export interface MessageQuery {
+  /** Words that must all appear in the title or body (case-insensitive). */
+  text?: string;
+  /** An agent name: messages it sent or received. */
+  agent?: string;
+  /** 'from_human', 'to_human' or 'between_agents'. */
+  direction?: 'from_human' | 'to_human' | 'between_agents';
+  type?: Message['type'];
+  unread?: boolean;
+  /** ISO dates or datetimes, inclusive. */
+  since?: string;
+  until?: string;
+  limit?: number;
+}
+
+/** Search all messages, newest first, with the total that matched (the page may be shorter). */
+export function searchMessages(ctx: Ctx, q: MessageQuery = {}): { total: number; messages: Message[] } {
+  const where: string[] = [];
+  const args: string[] = [];
+  for (const word of (q.text ?? '').split(/\s+/).filter(Boolean)) {
+    where.push("(title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\')");
+    const like = `%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    args.push(like, like);
+  }
+  if (q.agent) {
+    where.push('(from_addr = ? OR to_addr = ?)');
+    args.push(`agent:${q.agent}`, `agent:${q.agent}`);
+  }
+  if (q.direction === 'from_human') where.push("from_addr = 'human'");
+  if (q.direction === 'to_human') where.push("to_addr = 'human'");
+  if (q.direction === 'between_agents') where.push("from_addr LIKE 'agent:%' AND to_addr LIKE 'agent:%'");
+  if (q.type) {
+    where.push('type = ?');
+    args.push(q.type);
+  }
+  if (q.unread) where.push('read = 0');
+  if (q.since) {
+    where.push('created >= ?');
+    args.push(new Date(q.since).toISOString());
+  }
+  if (q.until) {
+    // A bare date means the whole day.
+    const end = /^\d{4}-\d{2}-\d{2}$/.test(q.until) ? new Date(new Date(q.until).getTime() + 86_400_000) : new Date(q.until);
+    where.push('created < ?');
+    args.push(end.toISOString());
+  }
+  const filter = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const total = Number((ctx.db.prepare(`SELECT COUNT(*) n FROM messages ${filter}`).get(...args) as Row).n);
+  const limit = Math.min(200, Math.max(1, q.limit ?? 30));
+  const rows = ctx.db.prepare(`SELECT * FROM messages ${filter} ORDER BY created DESC LIMIT ${limit}`).all(...args) as Row[];
+  return { total, messages: rows.map(messageFromRow) };
+}
+
 export function thread(ctx: Ctx, id: string): Message[] {
   let root = getMessage(ctx, id);
   while (root.reply_to) root = getMessage(ctx, root.reply_to);
@@ -540,6 +598,8 @@ export interface SendInput {
   body?: string;
   choices?: string[];
   steps?: Message['steps'];
+  /** Defaults to true for question and instruction, false otherwise. */
+  expects_response?: boolean;
   reply_to?: string | null;
   job?: string | null;
   hop?: number;
@@ -576,6 +636,7 @@ export function sendMessage(ctx: Ctx, m: SendInput): Message {
       JSON.stringify({
         choices: m.choices,
         steps: m.steps,
+        expects_response: m.expects_response ?? (type === 'question' || type === 'instruction'),
         ...(m.wake === false ? { no_wake: true } : {}),
         ...(m.artifacts?.length ? { artifacts: m.artifacts } : {}),
       }),

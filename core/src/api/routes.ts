@@ -66,6 +66,8 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     queued: ctx.db.prepare("SELECT COUNT(*) n FROM jobs WHERE status = 'queued'").get()!.n,
     spent_usd: s.totalSpend(ctx),
     global_spend_cap_usd: ctx.settings.global_spend_cap_usd,
+    /** Debug mode (the dev session, or YAHO_DEBUG=1): the UI shows developer-only settings. */
+    debug: process.env.YAHO_DEBUG === '1',
   }));
 
   r.on('GET', '/api/stats', (req) => {

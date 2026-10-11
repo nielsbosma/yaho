@@ -30,7 +30,7 @@ export function yahoDev(repo: string): Plugin {
   };
 
   // Its own Dopbase port too, so an installed Yaho (4700, 4702) and dev (4701, 4703) never collide.
-  const env = { ...process.env, YAHO_DATA_DIR: dataDir, YAHO_PORT: corePort, YAHO_DOPBASE_PORT: process.env.YAHO_DOPBASE_PORT ?? '4703' };
+  const env = { ...process.env, YAHO_DEBUG: process.env.YAHO_DEBUG ?? '1', YAHO_DATA_DIR: dataDir, YAHO_PORT: corePort, YAHO_DOPBASE_PORT: process.env.YAHO_DOPBASE_PORT ?? '4703' };
 
   function startCore(): Promise<void> {
     core = spawn(process.execPath, ['--experimental-strip-types', '--no-warnings', join(repo, 'core/src/main.ts'), 'serve'], {

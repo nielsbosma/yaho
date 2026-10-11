@@ -50,3 +50,33 @@ describe('agent folders', () => {
     expect(listAgents(ctx).map((x) => x.name)).toEqual(['a']);
   });
 });
+
+describe('message search', () => {
+  it('filters by words, agent, direction, read state and date, and counts the total', async () => {
+    const { searchMessages, sendMessage } = await import('./store.ts');
+    sendMessage(ctx, { from: 'agent:a', to: 'human', type: 'info', title: 'Weekly report', body: 'Signups up 12% (100_000 visits)' });
+    sendMessage(ctx, { from: 'human', to: 'agent:a', type: 'info', title: 'Thanks', body: 'Keep the report weekly' });
+    sendMessage(ctx, { from: 'agent:a', to: 'human', type: 'question', title: 'Budget?', body: 'May I spend $5?' });
+
+    expect(searchMessages(ctx, { text: 'report' }).total).toBe(2);
+    expect(searchMessages(ctx, { text: 'weekly REPORT', direction: 'to_human' }).messages.map((m) => m.title)).toEqual(['Weekly report']);
+    expect(searchMessages(ctx, { text: '100_000' }).total).toBe(1); // _ is literal, not a wildcard
+    expect(searchMessages(ctx, { text: '12%' }).total).toBe(1);
+    expect(searchMessages(ctx, { agent: 'a', type: 'question' }).total).toBe(1);
+    expect(searchMessages(ctx, { direction: 'from_human' }).total).toBe(1);
+    expect(searchMessages(ctx, { since: '2999-01-01' }).total).toBe(0);
+    expect(searchMessages(ctx, { until: new Date().toISOString().slice(0, 10) }).total).toBe(3);
+    expect(searchMessages(ctx, { limit: 1 })).toMatchObject({ total: 3 });
+  });
+});
+
+describe('expects_response', () => {
+  it('defaults to true for questions and instructions, false for info, and can be set either way', async () => {
+    const { sendMessage } = await import('./store.ts');
+    const send = (type: 'question' | 'instruction' | 'info', expects_response?: boolean) =>
+      sendMessage(ctx, { from: 'agent:a', to: 'human', type, title: type, ...(expects_response === undefined ? {} : { expects_response }) })
+        .expects_response;
+    expect([send('question'), send('instruction'), send('info')]).toEqual([true, true, false]);
+    expect([send('info', true), send('instruction', false)]).toEqual([true, false]);
+  });
+});

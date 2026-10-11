@@ -15,6 +15,8 @@ export interface AppState {
   queued: number;
   spent_usd: number;
   global_spend_cap_usd: number;
+  /** The core runs in debug mode: developer-only settings show. */
+  debug?: boolean;
 }
 
 export function App() {

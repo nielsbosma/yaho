@@ -47,6 +47,7 @@ title: Short title
 body: |
   Markdown body. Be complete: the human reads this cold.
 choices: [Yes, No] # optional, for questions
+expects_response: true # optional: you wait for an answer (default true for question and instruction, false for info)
 steps: # optional, for instructions
   - open: https://example.com/page
   - copy: Text the human should paste
@@ -67,7 +68,9 @@ When a message is about something you made (a banner, a report), register it wit
 list its id under `artifacts`, so the human sees it right in the message.
 
 Use `question` for decisions, `instruction` for manual steps the human must do (they get an Open button and
-one-click copy for every value, and reply "Done"), and `info` for results.
+one-click copy for every value, and reply "Done"), and `info` for results. The human gets reply buttons only
+when `expects_response` is true; set it on an `info` message that needs a go-ahead, or to false on an instruction
+that needs no confirmation. Ask for a response only when you will act on it: every answer starts a job.
 
 ## Getting better
 

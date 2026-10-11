@@ -1,12 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 146 56">
   <title>Yaho: Wordmark</title>
-  <!-- Lowercase yaho; the o is a loop with a dot riding it: something always running. -->
+  <!-- Lowercase yaho; the o is an open loop that fades behind its leading end: an agent at work. -->
   <g fill="none" stroke="#1c211e" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
     <path d="M8 19 L20 35 M32 19 L14 49"/>
     <circle cx="53" cy="30" r="10.5"/>
     <path d="M63.5 19 V41"/>
     <path d="M78 6 V41 M78 29 a10 10 0 0 1 20 0 V41"/>
   </g>
-  <circle cx="120" cy="30" r="11" fill="none" stroke="#2f7a5b" stroke-width="7"/>
-  <circle cx="130.5" cy="18.5" r="4.5" fill="#5fbf8f"/>
+  <g fill="none" stroke="#2f7a5b" stroke-width="7">
+    <path d="M130.34 26.24 A11 11 0 0 1 109.66 33.76"/>
+    <path d="M109.66 33.76 A11 11 0 0 1 111.57 22.93" opacity="0.55"/>
+    <path d="M111.57 22.93 A11 11 0 0 1 121.91 19.17" opacity="0.22"/>
+  </g>
+  <circle cx="130.34" cy="26.24" r="3.5" fill="#2f7a5b"/>
 </svg>

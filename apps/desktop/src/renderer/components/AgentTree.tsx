@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, FolderPlus, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Bot, BotOff, ChevronRight, FolderPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState, type DragEvent } from 'react';
 import { api, useApi, type Agent } from '../lib/api.ts';
 import { href } from '../lib/router.ts';
@@ -85,6 +85,7 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
     <a
       key={a.name}
       href={href('agents', a.name)}
+      title={a.enabled ? undefined : `${a.name} is disabled: it only runs when started by hand`}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData(DRAG, a.name);
@@ -99,7 +100,12 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
         !a.enabled && 'text-muted',
       )}
     >
-      <Bot className={cn('size-4 shrink-0', a.running ? 'text-info' : 'text-muted')} />
+      {/* A crossed-out robot marks an agent that is switched off (it still runs when started by hand). */}
+      {a.enabled ? (
+        <Bot className={cn('size-4 shrink-0', a.running ? 'text-info' : 'text-muted')} />
+      ) : (
+        <BotOff className={cn('size-4 shrink-0', a.running ? 'text-info' : 'text-muted/70')} aria-label="Disabled" />
+      )}
       <span className="truncate">{a.name}</span>
       {a.running ? <span className="ml-auto size-1.5 animate-pulse rounded-full bg-info" /> : null}
     </a>

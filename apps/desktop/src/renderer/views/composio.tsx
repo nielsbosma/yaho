@@ -393,7 +393,7 @@ function AddDialog({ connection, onClose }: { connection: { id: string; toolkit:
     >
       <div className="space-y-3">
         <ErrorNote>{error}</ErrorNote>
-        <Field label="Resource name" hint="How agents refer to it, e.g. yaho tools gmail.">
+        <Field label="Resource Name" hint="How agents refer to it, e.g. yaho tools gmail.">
           <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </Field>
         <p className="text-xs text-muted">
