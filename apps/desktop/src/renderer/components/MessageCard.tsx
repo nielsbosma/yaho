@@ -49,13 +49,15 @@ export interface MessageCardProps {
   /** False when the sender no longer exists: replying is pointless, discarding is not. */
   canReply?: boolean;
   compact?: boolean;
+  /** Your answer, when you already replied (here or in Slack): shown in place of the choices and Done. */
+  answered?: string;
 }
 
 /**
  * One message, rendered for a human checkpoint: choices, steps with Open/Copy, and, when the agent waits for an answer
  * (expects_response), one-click Done and a feedback box. Other messages offer a Reply that opens the box on demand.
  */
-export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canReply = true, compact }: MessageCardProps) {
+export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canReply = true, compact, answered }: MessageCardProps) {
   const meta = typeMeta[m.type] ?? typeMeta.info;
   const [text, setText] = useState('');
   const [sending, setSending] = useState<string | null>(null);
@@ -63,6 +65,7 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
   const fromHuman = m.from === 'human';
   const expects = m.expects_response ?? (m.type === 'question' || m.type === 'instruction');
   const [replying, setReplying] = useState(false);
+  const longChoices = (m.choices ?? []).some((c) => c.length > 28);
 
   const reply = async (body: string) => {
     if (!onReply || !body.trim()) return;
@@ -147,14 +150,38 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
         )}
         {!compact && onReply && canReply && !fromHuman && (
           <div className="space-y-2 border-t border-line pt-3">
-            {sent ? (
+            {(sent ?? answered) ? (
               <div className="flex items-center gap-2 text-sm text-ok">
-                <Check className="size-4" /> Replied: <span className="truncate text-ink">{sent}</span>
+                <Check className="size-4" /> Replied: <span className="truncate text-ink">{sent ?? answered}</span>
               </div>
             ) : (
               <>
+                {/* Long choices read better as a list of options that wrap; short ones stay buttons. */}
+                {expects && longChoices && (
+                  <div className="space-y-1.5">
+                    {m.choices!.map((c, i) => (
+                      <button
+                        key={c}
+                        type="button"
+                        disabled={!!sending}
+                        onClick={() => void reply(c)}
+                        className={cn(
+                          'flex w-full cursor-pointer items-start gap-3 rounded-lg border border-line bg-panel px-3 py-2 text-left text-sm leading-snug transition-colors',
+                          'hover:border-accent/50 hover:bg-accent/5 disabled:cursor-default disabled:opacity-60',
+                          sending === c && 'border-accent bg-accent/10',
+                        )}
+                      >
+                        <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
+                          {String.fromCharCode(65 + i)}
+                        </span>
+                        <span className="min-w-0 flex-1">{c}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {expects &&
+                    !longChoices &&
                     m.choices?.map((c) => (
                       <Button key={c} variant="secondary" disabled={!!sending} onClick={() => void reply(c)}>
                         {c}

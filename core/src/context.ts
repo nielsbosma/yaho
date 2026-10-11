@@ -13,6 +13,8 @@ export interface Ctx {
   /** Set by the server once it listens. */
   apiUrl: string;
   localDopbase?: import('./secrets/localDopbase.ts').LocalDopbase;
+  /** The Slack bridge, when the core runs as a server. */
+  slack?: import('./slack/bridge.ts').SlackBridge;
   scheduler?: { upcoming(agent: string): Array<{ type: string; at: string; cron?: string }>; tick(at?: Date): void };
   /** Set by the job runner; lets the scheduler and API start and stop jobs without import cycles. */
   runner?: {

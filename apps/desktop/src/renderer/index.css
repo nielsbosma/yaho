@@ -150,6 +150,12 @@ pre {
   margin-top: max(0px, calc(env(titlebar-area-height, 0px) - 1.5rem));
 }
 /* A pane that reaches the top right without a page header (the inbox's message pane) starts below the window buttons. */
+.titlebar-strip {
+  height: env(titlebar-area-height, 0px);
+}
+:root[data-chat-open] .titlebar-strip {
+  display: none;
+}
 :root:not([data-chat-open]) .titlebar-below {
   padding-top: env(titlebar-area-height, 0px);
 }

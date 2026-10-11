@@ -1,4 +1,4 @@
-import { Bot, BotOff, ChevronRight, FolderPlus, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Bot, BotOff, ChevronRight, Folder, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState, type DragEvent } from 'react';
 import { api, useApi, type Agent } from '../lib/api.ts';
 import { href } from '../lib/router.ts';
@@ -7,7 +7,7 @@ import { useContextMenu } from './ContextMenu.tsx';
 import { Button } from './ui/button.tsx';
 import { cn } from './ui/cn.ts';
 import { Dialog } from './ui/dialog.tsx';
-import { ErrorNote } from './ui/display.tsx';
+import { CountPill, ErrorNote } from './ui/display.tsx';
 import { Field, Input } from './ui/form.tsx';
 
 const DRAG = 'application/x-yaho-agent';
@@ -127,7 +127,7 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
             onClick={() => setNaming({})}
             className="cursor-pointer rounded p-0.5 text-muted hover:bg-hover hover:text-ink"
           >
-            <FolderPlus className="size-3.5" />
+            <Folder className="size-3.5" />
           </button>
           <a href={href('agents', 'new')} title="New Agent" className="rounded p-0.5 text-muted hover:bg-hover hover:text-ink">
             <Plus className="size-3.5" />
@@ -161,9 +161,9 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
               >
                 <ChevronRight className={cn('size-4 shrink-0 text-muted transition-transform', open && 'rotate-90')} />
                 <span className="truncate">{f}</span>
-                <span className="ml-auto flex items-center gap-1.5 text-xs text-muted tabular-nums">
+                <span className="ml-auto flex items-center gap-1.5">
                   {!open && running && <span className="size-1.5 animate-pulse rounded-full bg-info" />}
-                  {inside.length}
+                  <CountPill n={inside.length} tone="muted" />
                 </span>
               </button>
               {open && inside.map((a) => row(a, true))}

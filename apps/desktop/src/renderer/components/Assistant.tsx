@@ -11,7 +11,7 @@ import { cn } from './ui/cn.ts';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'tool';
-  content: string | null;
+  content: string | null | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
   tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
 }
@@ -25,6 +25,7 @@ interface Step {
 interface Turn {
   role: 'user' | 'assistant';
   text: string;
+  images?: string[];
   steps?: Step[];
 }
 
@@ -32,6 +33,12 @@ interface Turn {
 const empty = (): { history: ChatMessage[]; turns: Turn[] } => ({ history: [], turns: [] });
 
 const label = (tool: string) => tool.replace(/_/g, ' ');
+
+/** A long path shows its last two parts (the full path is in the tooltip). */
+const short = (subject: string) => {
+  const parts = subject.split(/[\\/]/).filter(Boolean);
+  return parts.length > 2 && subject.length > 32 ? `…/${parts.slice(-2).join('/')}` : subject;
+};
 
 function StepRow({ step }: { step: Step }) {
   const [open, setOpen] = useState(false);
@@ -41,11 +48,16 @@ function StepRow({ step }: { step: Step }) {
   );
   return (
     <div className="text-xs">
-      <button type="button" onClick={() => setOpen(!open)} className="flex cursor-pointer items-center gap-1.5 text-muted hover:text-ink">
-        {step.ok ? <Check className="size-3.5 text-ok" /> : <XCircle className="size-3.5 text-danger" />}
-        <span>{label(step.tool)}</span>
-        {subject && <code className="text-ink/80">{subject}</code>}
-        <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} />
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        title={subject || undefined}
+        className="flex w-full min-w-0 cursor-pointer items-center gap-1.5 text-left whitespace-nowrap text-muted hover:text-ink"
+      >
+        {step.ok ? <Check className="size-3.5 shrink-0 text-ok" /> : <XCircle className="size-3.5 shrink-0 text-danger" />}
+        <span className="shrink-0">{label(step.tool)}</span>
+        {subject && <code className="min-w-0 truncate text-ink/80">{short(subject)}</code>}
+        <ChevronRight className={cn('size-3 shrink-0 transition-transform', open && 'rotate-90')} />
       </button>
       {open && (
         <pre className="mt-1 max-h-60 overflow-auto rounded-md bg-code p-2 whitespace-pre-wrap">
@@ -74,6 +86,7 @@ export function Assistant({
   const [state, setState] = useState(empty);
   const [width, setWidth] = usePanelWidth('assistant', 400, 320, 760);
   const [text, setText] = useState('');
+  const [images, setImages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -92,20 +105,34 @@ export function Assistant({
     bottom.current?.scrollIntoView({ block: 'end' });
   }, [state.turns.length, busy]);
 
+  /** Screenshots pasted into the box go along with the next message, so the model can see them. */
+  const paste = (e: React.ClipboardEvent) => {
+    const files = [...e.clipboardData.items].filter((i) => i.type.startsWith('image/')).map((i) => i.getAsFile()).filter((f): f is File => !!f);
+    if (!files.length) return;
+    e.preventDefault();
+    for (const f of files) void toDataUrl(f).then((url) => setImages((xs) => [...xs, url]));
+  };
+
   const send = async (msg: string) => {
     const content = msg.trim();
-    if (!content || busy) return;
+    if ((!content && !images.length) || busy) return;
     setError(null);
     setText('');
-    const history: ChatMessage[] = [...state.history, { role: 'user', content }];
-    const turns: Turn[] = [...state.turns, { role: 'user', text: content }];
+    const pics = images;
+    setImages([]);
+    const parts = pics.length
+      ? [...(content ? [{ type: 'text' as const, text: content }] : []), ...pics.map((url) => ({ type: 'image_url' as const, image_url: { url } }))]
+      : content;
+    const history: ChatMessage[] = [...state.history, { role: 'user', content: parts }];
+    const turns: Turn[] = [...state.turns, { role: 'user', text: content, images: pics }];
     setState({ history, turns });
     setBusy(true);
     try {
       const r = await api<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }>('/api/assistant', {
         body: { messages: history, focus: focus ? { [focus.kind]: focus.name } : undefined },
       });
-      const answer = r.messages.at(-1)?.content ?? '';
+      const last = r.messages.at(-1)?.content;
+      const answer = typeof last === 'string' ? last : '';
       const next = { history: r.messages, turns: [...turns, { role: 'assistant' as const, text: answer, steps: r.steps }] };
       setState(next);
       if (r.navigate?.length) go(...r.navigate);
@@ -126,9 +153,12 @@ export function Assistant({
     <aside className="relative flex shrink-0 flex-col border-l border-line bg-sidebar" style={{ width }}>
       <Resizer width={width} onChange={setWidth} side="left" initial={400} />
       <div className="app-drag titlebar-clear flex h-14 shrink-0 items-center gap-2 border-b border-line pl-4 [--titlebar-pad:1rem]">
-        <Sparkles className="size-4 text-accent" />
-        <span className="font-serif text-lg">Chat with Yaho</span>
-        <div className="ml-auto flex gap-1">
+        <Sparkles className="size-4 shrink-0 text-accent" />
+        {/* The title drops out, rather than wrapping, when the panel is too narrow for it. */}
+        <div className="@container min-w-0 flex-1">
+          <span className="hidden font-serif text-lg whitespace-nowrap @[8.5rem]:inline">Chat with Yaho</span>
+        </div>
+        <div className="ml-auto flex shrink-0 gap-1">
           <Button size="icon" variant="ghost" title="New Chat" onClick={() => {
             reset();
             onLeaveJob();
@@ -168,7 +198,14 @@ export function Assistant({
         )}
         {state.turns.map((t, i) =>
           t.role === 'user' ? (
-            <div key={i} className="ml-8 rounded-xl bg-hover px-3 py-2 text-sm whitespace-pre-wrap">
+            <div key={i} className="ml-8 space-y-2 rounded-xl bg-hover px-3 py-2 text-sm break-words whitespace-pre-wrap">
+              {t.images?.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {t.images.map((src, j) => (
+                    <img key={j} src={src} alt="Pasted screenshot" className="max-h-32 max-w-full rounded-md border border-line" />
+                  ))}
+                </div>
+              ) : null}
               {t.text}
             </div>
           ) : (
@@ -194,8 +231,27 @@ export function Assistant({
       </div>
 
       <div className="border-t border-line p-3">
-        <div className="flex items-end gap-2 rounded-xl border border-line bg-panel p-2 focus-within:border-accent/50">
+        <div className="rounded-xl border border-line bg-panel p-2 focus-within:border-accent/50">
+          {images.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {images.map((src, j) => (
+                <div key={j} className="group relative">
+                  <img src={src} alt="Pasted screenshot" className="h-14 rounded-md border border-line" />
+                  <button
+                    type="button"
+                    title="Remove"
+                    onClick={() => setImages((xs) => xs.filter((_, k) => k !== j))}
+                    className="absolute -top-1.5 -right-1.5 flex size-4 cursor-pointer items-center justify-center rounded-full bg-ink text-panel opacity-0 group-hover:opacity-100"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-end gap-2">
           <textarea
+            onPaste={paste}
             ref={input}
             rows={2}
             value={text}
@@ -209,14 +265,37 @@ export function Assistant({
             placeholder={focus ? `Ask about ${focus.name}…` : 'Ask Yaho to do something…'}
             className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 text-sm outline-none placeholder:text-muted/70"
           />
-          <Button size="icon" variant="primary" disabled={!text.trim() || busy} onClick={() => void send(text)} title="Send (Enter)">
+          <Button size="icon" variant="primary" disabled={(!text.trim() && !images.length) || busy} onClick={() => void send(text)} title="Send (Enter)">
             <ArrowUp />
           </Button>
+          </div>
         </div>
-        <p className="mt-1.5 px-1 text-[11px] text-muted">Never paste secret values here; set them on the resource page.</p>
+        <p className="mt-1.5 px-1 text-[11px] text-muted">Paste screenshots with Ctrl+V. Never paste secret values here; set them on the resource page.</p>
       </div>
         </>
       )}
     </aside>
   );
+}
+
+/** A pasted image as a data URL, scaled down to at most 1,600 pixels on its long side to keep requests small. */
+function toDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const src = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(src);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(src);
+      reject(new Error('could not read the pasted image'));
+    };
+    img.src = src;
+  });
 }

@@ -25,6 +25,8 @@ const devSession = !!process.env.YAHO_RENDERER_URL;
 const startHidden = process.argv.includes('--hidden');
 
 let win: BrowserWindow | null = null;
+/** The Yaho icon file: next to the app when packaged, in assets/logo in the repo. */
+const winIcon = packaged ? join(root, 'yaho.ico') : join(desktopRoot, '../../assets/logo/yaho.ico');
 /** Height of the window-button overlay on Windows and Linux; the renderer keeps its controls clear of it. */
 const TITLEBAR_HEIGHT = 40;
 let tray: Tray | null = null;
@@ -49,7 +51,8 @@ function createWindow(conn: CoreConnection): BrowserWindow {
     minWidth: 860,
     minHeight: 560,
     title: 'Yaho',
-    icon: appIcon(64),
+    // The .ico has every size Windows asks for (taskbar, Alt+Tab, title); the drawn icon is the fallback.
+    icon: existsSync(winIcon) ? winIcon : appIcon(64),
     show: !startHidden,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#171a18' : '#f8f9f8',
     autoHideMenuBar: true,
@@ -205,6 +208,8 @@ if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => show());
 
 app.whenReady().then(async () => {
+  // Taskbar grouping and notifications. Windows takes the taskbar icon from the program: the Yaho exe when installed,
+  // electron.exe (and its icon) in the dev session.
   app.setAppUserModelId('com.nielsbosma.yaho');
   try {
     core = await startCore(coreMain);

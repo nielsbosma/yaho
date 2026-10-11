@@ -487,7 +487,8 @@ function messageFromRow(r: Row): Message {
     type: r.type as Message['type'],
     title: r.title as string,
     body: r.body as string,
-    ...(payload.choices ? { choices: payload.choices as string[] } : {}),
+    // Choices are text; an agent writing choices: [1, 2, 3] in YAML sends numbers.
+    ...(Array.isArray(payload.choices) ? { choices: (payload.choices as unknown[]).map(String) } : {}),
     ...(payload.steps ? { steps: payload.steps as Message['steps'] } : {}),
     // Messages from before the field existed: questions and instructions waited for an answer.
     expects_response:
@@ -634,7 +635,7 @@ export function sendMessage(ctx: Ctx, m: SendInput): Message {
       m.title ?? '',
       m.body ?? '',
       JSON.stringify({
-        choices: m.choices,
+        choices: m.choices?.map(String),
         steps: m.steps,
         expects_response: m.expects_response ?? (type === 'question' || type === 'instruction'),
         ...(m.wake === false ? { no_wake: true } : {}),

@@ -147,4 +147,7 @@ export const migrations: string[] = [
   // 4: optional folders that group agents in the sidebar. An agent in no folder has folder NULL.
   `CREATE TABLE agent_folders (name TEXT PRIMARY KEY, position INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL);
    ALTER TABLE agents ADD COLUMN folder TEXT;`,
+  // 5: where each inbox message was posted in Slack, so answers and read state can update it.
+  `CREATE TABLE slack_posts (message TEXT PRIMARY KEY, channel TEXT NOT NULL, ts TEXT NOT NULL, created TEXT NOT NULL);
+   CREATE INDEX slack_posts_ts ON slack_posts(ts);`,
 ];

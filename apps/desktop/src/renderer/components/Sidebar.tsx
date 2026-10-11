@@ -121,6 +121,20 @@ export function Sidebar({
       {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
     </button>
   );
+  const chatButton = (
+    <button
+      type="button"
+      onClick={onAssistant}
+      title="Chat with Yaho (Ctrl+J)"
+      aria-pressed={assistantOpen}
+      className={cn(
+        'cursor-pointer rounded-md p-1 transition-colors [&_svg]:size-4',
+        assistantOpen ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-hover hover:text-ink',
+      )}
+    >
+      <Sparkles />
+    </button>
+  );
   return (
     <aside
       className={cn(
@@ -146,29 +160,13 @@ export function Sidebar({
             title={connected ? 'Connected to the core' : 'Reconnecting to the core…'}
             className={cn('ml-auto size-2 rounded-full', connected ? 'bg-ok' : 'animate-pulse bg-warn')}
           />
+          {chatButton}
           {toggle}
         </div>
       )}
 
-      <div className="px-2 pb-2">
-        <button
-          type="button"
-          onClick={onAssistant}
-          title="Chat with Yaho (Ctrl+J)"
-          className={cn(
-            'flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 text-sm transition-colors [&_svg]:size-4',
-            assistantOpen ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line bg-panel text-ink/85 hover:border-line-strong',
-          )}
-        >
-          <Sparkles />
-          {!c && (
-            <>
-              Chat with Yaho
-              <kbd className="ml-auto text-[10px] text-muted">Ctrl J</kbd>
-            </>
-          )}
-        </button>
-      </div>
+      {/* Collapsed, the chat sits in the rail with the pages; expanded, it is the small icon next to the collapse button. */}
+      {c && <div className="flex justify-center pb-2">{chatButton}</div>}
       <nav className="flex flex-col gap-0.5 px-2">
         <NavItem collapsed={c} to={href('inbox')} icon={<Inbox />} label="Inbox" active={at === 'inbox'} count={state?.unread} />
         <NavItem

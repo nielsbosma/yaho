@@ -18,6 +18,7 @@ interface Settings {
   dopbase: { mode: 'bundled' | 'external'; url: string; token?: string; local_port?: number; environment: string; project_prefix: string };
   global_spend_cap_usd: number;
   composio?: { api_key?: string; user_id?: string };
+  slack?: { bot_token?: string; app_token?: string; owner?: string; since?: string; post?: 'all' | 'expects_response' };
   ideas?: { enabled?: boolean; repo?: string };
   defaults: { harness: string; models: string[]; budget_usd: number; max_parallel: number; guardrails: Record<string, number | undefined> };
 }
@@ -183,6 +184,9 @@ export function SettingsView() {
               />
             </div>
           </Card>
+        </Section>
+        <Section title="Slack">
+          <SlackSettings value={s.slack ?? {}} onChange={(v) => upd((d) => void (d.slack = v))} />
         </Section>
         <Section title="Apps (Composio)">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
@@ -417,5 +421,148 @@ function Appearance() {
         </Field>
       </Card>
     </Section>
+  );
+}
+
+interface SlackStatus {
+  configured: boolean;
+  connected: boolean;
+  team?: string;
+  owner: boolean;
+  error?: string;
+  create_url: string;
+  manifest: string;
+}
+
+/**
+ * Your Yaho inbox as Slack DMs. Setup: create the app from Yaho's manifest, install it, paste its two tokens, then
+ * open Yaho in Slack once so it knows it is you. Tokens are saved with Save Settings, which reconnects.
+ */
+function SlackSettings({ value, onChange }: { value: NonNullable<Settings['slack']>; onChange: (v: NonNullable<Settings['slack']>) => void }) {
+  const status = useApi<SlackStatus>('/api/slack', (e) => e.type === 'changed' && (e.entity === 'slack' || e.entity === 'settings'));
+  const st = status.data;
+  const set = (patch: Partial<NonNullable<Settings['slack']>>) => onChange({ ...value, ...patch });
+  const line = !st
+    ? ''
+    : !st.configured
+      ? 'Not set up.'
+      : st.error
+        ? `Not connected: ${st.error}`
+        : !st.connected
+          ? 'Connecting…'
+          : !st.owner
+            ? `Connected to ${st.team ?? 'Slack'}. Open Yaho in Slack once (Apps → Yaho) so it knows it is you.`
+            : `Connected to ${st.team ?? 'Slack'}. Your inbox is posted to your DMs.`;
+  const tone = st?.connected && st.owner ? 'bg-ok' : st?.error ? 'bg-danger' : st?.configured ? 'bg-warn' : 'bg-line-strong';
+  return (
+    <Card className="space-y-4 p-4">
+      <div className="flex items-center gap-2 text-sm">
+        <span className={cn('size-2 shrink-0 rounded-full', tone)} />
+        <span className="min-w-0 flex-1">{line}</span>
+        {st?.configured && (
+          <Button size="sm" onClick={() => void api('/api/slack/reconnect', { method: 'POST' }).then(() => status.reload())}>
+            Reconnect
+          </Button>
+        )}
+      </div>
+      <ol className="space-y-3 text-sm">
+        {(
+          [
+            [
+              'Create the app',
+              <>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  <Button size="sm" variant="primary" onClick={() => st && platform.openExternal(st.create_url)}>
+                    Open Slack
+                  </Button>
+                  <Button size="sm" onClick={() => st && void navigator.clipboard.writeText(st.manifest)}>
+                    Copy Manifest
+                  </Button>
+                </div>
+                <p className="mt-1.5 text-muted">
+                  In Slack choose <b className="text-ink">Create New App → From a Manifest</b>, pick your workspace, switch to JSON, paste the
+                  manifest over what is there, and click <b className="text-ink">Create</b>.
+                </p>
+              </>,
+            ],
+            [
+              'Install it and copy the Bot Token',
+              <p className="mt-0.5 text-muted">
+                In the app's left menu open <b className="text-ink">OAuth &amp; Permissions</b>, click{' '}
+                <b className="text-ink">Install to Workspace</b> and allow it. Copy the <b className="text-ink">Bot User OAuth Token</b>{' '}
+                (starts with <code>xoxb-</code>) into Bot Token below.
+              </p>,
+            ],
+            [
+              'Make the App Token',
+              <p className="mt-0.5 text-muted">
+                Open <b className="text-ink">Basic Information</b>, scroll to <b className="text-ink">App-Level Tokens</b>, click{' '}
+                <b className="text-ink">Generate Token and Scopes</b>, name it Yaho, add the scope <code>connections:write</code>, and generate.
+                Copy the token (starts with <code>xapp-</code>) into App Token below. The other secrets on that page are not needed.
+              </p>,
+            ],
+            [
+              'Save and say hello',
+              <p className="mt-0.5 text-muted">
+                Click <b className="text-ink">Save Settings</b>. Then in Slack open <b className="text-ink">Apps → Yaho</b> once: the first
+                person to open it becomes its owner, and Yaho DMs you that it is connected.
+              </p>,
+            ],
+          ] as const
+        ).map(([title, body], i) => (
+          <li key={title} className="flex gap-3">
+            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
+              {i + 1}
+            </span>
+            <div className="min-w-0">
+              <div className="font-medium">{title}</div>
+              {body}
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Bot Token" hint="OAuth & Permissions → Bot User OAuth Token (xoxb-…).">
+          <Input type="password" value={value.bot_token ?? ''} placeholder="xoxb-…" onChange={(e) => set({ bot_token: e.target.value.trim() || undefined })} />
+        </Field>
+        <Field label="App Token" hint="Basic Information → App-Level Tokens (xapp-…).">
+          <Input type="password" value={value.app_token ?? ''} placeholder="xapp-…" onChange={(e) => set({ app_token: e.target.value.trim() || undefined })} />
+        </Field>
+      </div>
+      <Field label="Post to Slack">
+        <div className="flex w-fit rounded-lg bg-hover p-0.5 text-sm" role="radiogroup" aria-label="Post to Slack">
+          {(
+            [
+              ['all', 'All Messages'],
+              ['expects_response', 'Only Messages That Expect a Response'],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={(value.post ?? 'all') === v}
+              onClick={() => set({ post: v })}
+              className={cn('cursor-pointer rounded-md px-3 py-1', (value.post ?? 'all') === v ? 'bg-panel shadow-sm' : 'text-muted hover:text-ink')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </Field>
+      {st?.owner && (
+        <p className="text-xs text-muted">
+          Linked to one Slack user.{' '}
+          <button
+            type="button"
+            className="cursor-pointer text-accent hover:underline"
+            onClick={() => void api('/api/slack/forget-owner', { method: 'POST' }).then(() => status.reload())}
+          >
+            Forget it
+          </button>{' '}
+          to let whoever opens the app next become the owner.
+        </p>
+      )}
+    </Card>
   );
 }

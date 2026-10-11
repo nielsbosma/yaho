@@ -22,6 +22,12 @@ export interface Settings {
   composio?: { api_key?: string; user_id?: string; url?: string };
   /** Agents' ideas for Yaho itself, filed as GitHub issues with the gh CLI (yaho idea). */
   ideas?: { enabled?: boolean; repo?: string };
+  /**
+   * Slack: the inbox as DMs from the person's own Slack app, over Socket Mode. owner is the Slack user who first opened
+   * the app; since is when that happened (messages from then on are posted). post: every message, or only those that
+   * expect a response.
+   */
+  slack?: { bot_token?: string; app_token?: string; owner?: string; since?: string; post?: 'all' | 'expects_response' };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   defaults: {

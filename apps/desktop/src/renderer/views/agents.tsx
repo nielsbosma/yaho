@@ -15,6 +15,7 @@ import { ago, Badge, Card, Empty, ErrorNote, money, PageHeader, Section, StatusB
 import { Field, Input, Switch, Textarea } from '../components/ui/form.tsx';
 import { api, useApi, type Agent, type Artifact, type Job, type Project, type Resource, type TriggerSpec } from '../lib/api.ts';
 import { go, href } from '../lib/router.ts';
+import { AgentInbox } from './inbox.tsx';
 import type { ViewProps } from './index.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
 import { MultiPicker } from '../components/MultiPicker.tsx';
@@ -188,6 +189,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
           tabs={[
             { id: 'overview', label: 'Overview' },
             { id: 'edit', label: 'Definition' },
+            { id: 'inbox', label: 'Inbox' },
             { id: 'briefings', label: 'Briefing History' },
             { id: 'workspace', label: 'Workspace' },
             { id: 'artifacts', label: 'Artifacts' },
@@ -198,6 +200,7 @@ function AgentDetail({ name, tab }: { name: string; tab: string }) {
         <ErrorNote>{error}</ErrorNote>
         {tab === 'overview' && <AgentOverview agent={a} onError={setError} />}
         {tab === 'edit' && <AgentEditor existing={a} />}
+        {tab === 'inbox' && <AgentInbox agent={a.name} />}
         {tab === 'briefings' && <BriefingHistory agent={a} />}
         {tab === 'workspace' && <WorkspaceBrowser agent={a.name} />}
         {tab === 'artifacts' && <AgentArtifacts agent={a.name} />}

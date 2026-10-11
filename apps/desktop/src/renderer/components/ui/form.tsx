@@ -1,12 +1,32 @@
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { useState } from 'react';
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 import { cn } from './cn.ts';
 
 const field =
   'w-full rounded-lg border border-line bg-panel px-3 text-sm text-ink placeholder:text-muted/70 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50 disabled:opacity-60';
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(field, 'h-9', className)} {...props} />;
+/** Single-line inputs hold names, keys, URLs and tokens: no spell check, and Grammarly stays out. */
+const plain = { spellCheck: false, autoCorrect: 'off', autoCapitalize: 'off', 'data-gramm': 'false', 'data-gramm_editor': 'false', 'data-enable-grammarly': 'false' } as const;
+
+/** A text input. A password input gets an eye button that shows or hides what was typed. */
+export function Input({ className, type, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  const [shown, setShown] = useState(false);
+  if (type !== 'password') return <input type={type} className={cn(field, 'h-9', className)} {...plain} {...props} />;
+  return (
+    <div className="relative">
+      <input type={shown ? 'text' : 'password'} className={cn(field, 'h-9 pr-9', className)} {...plain} {...props} />
+      <button
+        type="button"
+        title={shown ? 'Hide' : 'Show'}
+        aria-label={shown ? 'Hide' : 'Show'}
+        onClick={() => setShown((v) => !v)}
+        className="absolute inset-y-0 right-0 flex w-9 cursor-pointer items-center justify-center text-muted hover:text-ink [&_svg]:size-4"
+      >
+        {shown ? <EyeOff /> : <Eye />}
+      </button>
+    </div>
+  );
 }
 
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {

@@ -12,9 +12,12 @@ import * as s from '../store.ts';
  * Runs through the LiteLLM proxy (OpenAI-style tool calling). Secret values never pass through it.
  */
 
+/** OpenAI-style content parts: a user turn may carry pasted screenshots as data URLs. */
+export type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
+  content: string | null | ContentPart[];
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
 }
@@ -119,7 +122,7 @@ function tools(ctx: Ctx): Record<string, Tool> {
     list_projects: { description: 'List projects.', parameters: obj({}), run: () => s.listProjects(ctx) },
     read_file: {
       description:
-        'Read a file on this computer by its full path, as text. PDFs are extracted to text; text formats (md, txt, csv, json, yaml, html...) are read as they are. Use it when the human points at a file, e.g. to write a briefing from a document.',
+        'Read a file on this computer by its full path. PDFs and Office files (docx, xlsx, pptx) are extracted to text; text formats (md, txt, csv, json, yaml, html, code...) are read as they are; images (png, jpg, gif, webp, such as screenshots) are shown to you to look at. Use it when the human points at a file, e.g. to write a briefing from a document or to see a screenshot.',
       parameters: obj({ path: str('full path, e.g. D:\\Docs\\plan.pdf') }, ['path']),
       run: (a) => readLocalFile(String(a.path)),
     },
@@ -527,6 +530,7 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
     const msg = j.choices[0]!.message;
     messages.push({ role: 'assistant', content: msg.content ?? '', ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}) });
     if (!msg.tool_calls?.length) break;
+    const images: Array<{ path: string; url: string }> = [];
     for (const call of msg.tool_calls) {
       const tool = t[call.function.name];
       let args: Record<string, unknown> = {};
@@ -540,11 +544,25 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
         ok = false;
         result = { error: (e as Error).message };
       }
+      // An image goes to the model as a picture after the tool results; the tool result itself only names it.
+      if (result && typeof result === 'object' && 'image' in result && typeof result.image === 'string') {
+        const { image, ...rest } = result as { image: string };
+        images.push({ path: String(args.path ?? ''), url: image });
+        result = { ...rest, shown: 'the image follows as a picture' };
+      }
       steps.push({ tool: call.function.name, args, ok, result });
       ctx.bus.emitEvent({ type: 'changed', entity: 'assistant' });
       const text = JSON.stringify(result ?? null);
       messages.push({ role: 'tool', tool_call_id: call.id, content: text.length > 12000 ? `${text.slice(0, 12000)}… (truncated)` : text });
     }
+    if (images.length)
+      messages.push({
+        role: 'user',
+        content: images.flatMap((i) => [
+          { type: 'text' as const, text: `(read_file) ${i.path}:` },
+          { type: 'image_url' as const, image_url: { url: i.url } },
+        ]),
+      });
   }
   return { messages: messages.slice(1), steps, navigate: out.navigate };
 }

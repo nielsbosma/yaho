@@ -66,6 +66,7 @@ if (!existsSync(join(repo, 'vendor/dopbase', dopbaseExe)))
   execFileSync(process.execPath, [join(repo, 'tools/build-dopbase.mjs')], { stdio: 'inherit' });
 cpSync(join(repo, 'vendor/dopbase'), join(stage, 'dopbase'), { recursive: true });
 cpSync(join(repo, 'examples'), join(stage, 'examples'), { recursive: true });
+cpSync(join(repo, 'assets/logo/yaho.ico'), join(stage, 'yaho.ico'));
 
 const electronVersion = require('electron/package.json').version;
 writeFileSync(
@@ -96,7 +97,8 @@ const config = {
   files: ['**/*', '!node_modules{,/**}'],
   // The core and the CLI run as plain Node scripts with ELECTRON_RUN_AS_NODE; keep them as real files.
   asar: false,
-  win: { target: dirOnly ? 'dir' : 'nsis' },
+  // The Yaho mark for the exe, the installer and the shortcuts (Windows takes the taskbar icon from these).
+  win: { target: dirOnly ? 'dir' : 'nsis', icon: join(repo, 'assets/logo/yaho.ico') },
   nsis: { oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true },
 };
 writeFileSync(join(desktop, 'build/electron-builder.json'), JSON.stringify(config, null, 2));

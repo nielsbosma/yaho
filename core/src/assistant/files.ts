@@ -17,13 +17,72 @@ function localFile(path: string): string {
   return p;
 }
 
-/** Read a file on this computer as text: PDFs are extracted, text formats read as they are. */
-export async function readLocalFile(path: string): Promise<{ path: string; pages?: number; text: string; truncated: boolean }> {
+const IMAGES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
+/** Vision models take images up to about 5 MB. */
+const MAX_IMAGE = 5 * 1024 * 1024;
+
+const unxml = (x: string) =>
+  x
+    .replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_m, n: string) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, '&');
+
+/** The text of a Word, PowerPoint or Excel file (Office Open XML is a zip of XML parts). */
+async function officeText(p: string, ext: string): Promise<string> {
+  const { unzipSync, strFromU8 } = await import('fflate');
+  const zip = unzipSync(new Uint8Array(readFileSync(p)));
+  const part = (name: string) => (zip[name] ? strFromU8(zip[name]) : '');
+  const byNumber = (re: RegExp) =>
+    Object.keys(zip)
+      .filter((n) => re.test(n))
+      .sort((a, b) => Number(/(\d+)\.xml$/.exec(a)?.[1]) - Number(/(\d+)\.xml$/.exec(b)?.[1]));
+  if (ext === '.docx')
+    return unxml(part('word/document.xml').replace(/<w:tab\/>/g, '\t').replace(/<\/w:p>/g, '\n')).replace(/\n{3,}/g, '\n\n');
+  if (ext === '.pptx')
+    return byNumber(/^ppt\/slides\/slide\d+\.xml$/)
+      .map((n, i) => `## Slide ${i + 1}\n` + unxml(part(n).replace(/<\/a:p>/g, '\n')).trim())
+      .join('\n\n');
+  // xlsx: each sheet as tab-separated rows, with shared strings resolved.
+  const shared = [...part('xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => unxml(m[1]!));
+  const names = [...part('xl/workbook.xml').matchAll(/<sheet [^>]*name="([^"]*)"/g)].map((m) => unxml(m[1]!));
+  return byNumber(/^xl\/worksheets\/sheet\d+\.xml$/)
+    .map((n, i) => {
+      const rows = [...part(n).matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)].map((r) =>
+        [...r[1]!.matchAll(/<c ([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)]
+          .map((c) => {
+            const v = /<v>([\s\S]*?)<\/v>/.exec(c[2] ?? '')?.[1] ?? /<t[^>]*>([\s\S]*?)<\/t>/.exec(c[2] ?? '')?.[1] ?? '';
+            return /t="s"/.test(c[1]!) ? (shared[Number(v)] ?? '') : unxml(v);
+          })
+          .join('\t'),
+      );
+      return `## ${names[i] ?? `Sheet ${i + 1}`}\n${rows.join('\n')}`;
+    })
+    .join('\n\n');
+}
+
+/**
+ * Read a file on this computer: PDFs and Office files (docx, xlsx, pptx) are extracted to text, text formats read as
+ * they are, and images come back as a data URL the chat hands to the model to look at.
+ */
+export async function readLocalFile(
+  path: string,
+): Promise<{ path: string; pages?: number; text: string; truncated: boolean } | { path: string; image: string; bytes: number }> {
   const p = localFile(path);
   const ext = extname(p).toLowerCase();
   let text: string;
   let pages: number | undefined;
-  if (ext === '.pdf') {
+  if (IMAGES[ext]) {
+    const buf = readFileSync(p);
+    if (buf.length > MAX_IMAGE) throw new HttpError(413, `${basename(p)} is over 5 MB, too large to look at`);
+    return { path: p, image: `data:${IMAGES[ext]};base64,${buf.toString('base64')}`, bytes: buf.length };
+  }
+  if (ext === '.docx' || ext === '.xlsx' || ext === '.pptx') {
+    text = await officeText(p, ext);
+  } else if (ext === '.pdf') {
     const { extractText, getDocumentProxy } = await import('unpdf');
     const doc = await getDocumentProxy(new Uint8Array(readFileSync(p)));
     const r = await extractText(doc, { mergePages: true });
@@ -31,7 +90,7 @@ export async function readLocalFile(path: string): Promise<{ path: string; pages
     pages = r.totalPages;
   } else if (TEXT.has(ext) || statSync(p).size < 1_000_000) {
     const buf = readFileSync(p);
-    if (buf.subarray(0, 8000).includes(0)) throw new HttpError(415, `${basename(p)} is not a text file or PDF`);
+    if (buf.subarray(0, 8000).includes(0)) throw new HttpError(415, `${basename(p)} is not a format Yaho can read (text, PDF, Office, image)`);
     text = buf.toString('utf8');
   } else throw new HttpError(415, `${basename(p)} is too large to read as text`);
   return { path: p, ...(pages ? { pages } : {}), text: text.slice(0, MAX_CHARS), truncated: text.length > MAX_CHARS };

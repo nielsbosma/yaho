@@ -13,6 +13,7 @@ import { Bus, type Ctx } from './context.ts';
 import { openDb } from './db/index.ts';
 import { JobRunner } from './jobs/runner.ts';
 import { Scheduler } from './scheduler/index.ts';
+import { SlackBridge } from './slack/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 
 // node:sqlite prints an ExperimentalWarning on Node 22; it is expected.
@@ -35,6 +36,7 @@ export async function serve(
   if (ctx.settings.dopbase.mode === 'bundled' && !process.env.YAHO_NO_DOPBASE) await ctx.localDopbase.start();
   const scheduler = new Scheduler(ctx);
   ctx.scheduler = scheduler;
+  ctx.slack = new SlackBridge(ctx);
 
   const router = new Router();
   humanRoutes(ctx, router);
@@ -54,8 +56,12 @@ export async function serve(
   ctx.apiUrl = `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${actualPort}`;
   writeFileSync(p.server, YAML.stringify({ url: ctx.apiUrl, pid: process.pid, started: new Date().toISOString() }));
 
+  // Slack connects in the background; a bad token shows in Settings, never blocks the core.
+  if (!opts.embedded) void ctx.slack.start();
+
   const close = async () => {
     scheduler.stop();
+    await ctx.slack?.stop();
     ctx.localDopbase?.stop();
     await runner.shutdown();
     rmSync(p.server, { force: true });

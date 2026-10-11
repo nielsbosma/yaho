@@ -11,6 +11,7 @@ import { Dopbase } from '../secrets/dopbase.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
 import { schedule } from '../schedule.ts';
+import { slackCreateUrl, slackManifest } from '../slack/manifest.ts';
 import { stats } from '../stats.ts';
 import { Router, type Req } from './http.ts';
 import { safeJoin, sendFile } from './server.ts';
@@ -81,12 +82,30 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('GET', '/api/settings', () => ctx.settings);
   r.on('PUT', '/api/settings', async (req) => {
     const next = await definition<Settings>(req);
+    const slackBefore = JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]);
     Object.assign(ctx.settings, next);
     saveSettings(ctx.settings);
     if (ctx.settings.dopbase.mode === 'bundled' && ctx.localDopbase && !ctx.localDopbase.child) await ctx.localDopbase.start();
     ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
     runner(ctx).pump();
+    if (JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]) !== slackBefore) void ctx.slack?.start();
     return ctx.settings;
+  });
+
+  // ---- Slack ----
+  r.on('GET', '/api/slack', () => ({ ...(ctx.slack?.status ?? { configured: false, connected: false, owner: false }), create_url: slackCreateUrl(), manifest: JSON.stringify(slackManifest(), null, 2) }));
+  r.on('POST', '/api/slack/reconnect', async () => {
+    await ctx.slack?.start();
+    return ctx.slack?.status;
+  });
+  r.on('POST', '/api/slack/forget-owner', () => {
+    // A new owner is whoever opens the app in Slack next.
+    if (ctx.settings.slack) {
+      delete ctx.settings.slack.owner;
+      delete ctx.settings.slack.since;
+      saveSettings(ctx.settings);
+    }
+    return ctx.slack?.start().then(() => ctx.slack?.status);
   });
   r.on('GET', '/api/settings/yaml', () => ({ yaml: YAML.stringify(ctx.settings) }));
   r.on('POST', '/api/settings/dopbase/test', async () => {
@@ -266,7 +285,16 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
 
   // ---- messages ----
   r.on('GET', '/api/messages', (req) =>
-    s.listMessages(ctx, {
+    // q: words that must all appear in the title or body (the inbox search).
+    req.query.get('q')?.trim()
+      ? s.searchMessages(ctx, {
+          text: req.query.get('q')!,
+          ...(req.query.get('to') === 'human' ? { direction: 'to_human' as const } : {}),
+          ...(req.query.get('involving')?.startsWith('agent:') ? { agent: req.query.get('involving')!.slice(6) } : {}),
+          unread: req.query.get('unread') === '1',
+          limit: 200,
+        }).messages
+      : s.listMessages(ctx, {
       to: req.query.get('to') ?? undefined,
       involving: req.query.get('involving') ?? undefined,
       unread: req.query.get('unread') === '1',
@@ -290,6 +318,17 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return msg;
   });
   r.on('DELETE', '/api/messages/:id', (req) => s.deleteMessage(ctx, req.params.id!));
+  /** Delete every message in the human's inbox (what agents sent you). Your own messages to agents stay. */
+  r.on('POST', '/api/inbox/delete-all', () => {
+    const ids = (ctx.db.prepare("SELECT id FROM messages WHERE to_addr = 'human'").all() as Array<{ id: string }>).map((r) => r.id);
+    for (const id of ids) s.deleteMessage(ctx, id);
+    return { deleted: ids.length };
+  });
+  r.on('POST', '/api/inbox/read-all', () => {
+    const ids = (ctx.db.prepare("SELECT id FROM messages WHERE to_addr = 'human' AND read = 0").all() as Array<{ id: string }>).map((r) => r.id);
+    for (const id of ids) s.markRead(ctx, id, true);
+    return { marked: ids.length };
+  });
   r.on('POST', '/api/messages/:id/read', async (req) => {
     const b = await req.body<{ read?: boolean }>();
     s.markRead(ctx, req.params.id!, b.read ?? true);
@@ -380,12 +419,49 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return s.saveResource(ctx, x);
   });
   r.on('GET', '/api/resources/:name', (req) => s.getResource(ctx, req.params.name!));
+  /**
+   * Rename a resource. Its values live in a Dopbase project named after it, so they are copied to the new project
+   * first and removed from the old one after; agents keep their access through the cascade.
+   */
+  const renameResource = async (from: string, to: string) => {
+    const res = s.getResource(ctx, from);
+    if (from === to) return res;
+    if (ctx.db.prepare('SELECT 1 FROM resources WHERE name = ?').get(to)) throw new HttpError(409, `a resource named ${to} already exists`);
+    const dop = new Dopbase(ctx);
+    const set = res.keys.filter((k) => k.has_value).map((k) => k.name);
+    const values = set.length && dop.configured ? await dop.runtimeValues(from) : {};
+    s.saveResource(ctx, { name: to }, from);
+    try {
+      for (const [k, v] of Object.entries(values)) await dop.setValue(to, k, v);
+    } catch (e) {
+      s.saveResource(ctx, { name: from }, to);
+      throw e;
+    }
+    for (const k of Object.keys(values)) await dop.deleteValue(from, k).catch(() => undefined);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'resources', name: from });
+    ctx.bus.emitEvent({ type: 'changed', entity: 'agents' });
+    return s.getResource(ctx, to);
+  };
+  r.on('POST', '/api/resources/:name/rename', async (req) => {
+    const { to } = await req.body<{ to?: string }>();
+    if (typeof to !== 'string' || !to.trim()) throw new HttpError(400, 'to is required');
+    return renameResource(req.params.name!, to.trim());
+  });
   r.on('PUT', '/api/resources/:name', async (req) => {
     const x = await definition<s.Resource & { agents?: string[] }>(req);
     s.getResource(ctx, req.params.name!);
-    return s.saveResource(ctx, { ...x, name: x.name ?? req.params.name! }, req.params.name!);
+    const name = x.name ?? req.params.name!;
+    if (name !== req.params.name) await renameResource(req.params.name!, name);
+    return s.saveResource(ctx, { ...x, name });
   });
   r.on('DELETE', '/api/resources/:name', (req) => s.deleteResource(ctx, req.params.name!));
+  /** The values of the keys that are not secret (agents see them anyway). Secret values never leave Dopbase this way. */
+  r.on('GET', '/api/resources/:name/values', async (req) => {
+    const open = s.getResource(ctx, req.params.name!).keys.filter((k) => !k.secret && k.has_value).map((k) => k.name);
+    if (!open.length) return {};
+    const all = await new Dopbase(ctx).runtimeValues(req.params.name!);
+    return Object.fromEntries(open.filter((k) => k in all).map((k) => [k, all[k]!]));
+  });
   r.on('PUT', '/api/resources/:name/keys/:key/value', async (req) => {
     const { value } = await req.body<{ value?: string }>();
     if (typeof value !== 'string') throw new HttpError(400, 'value is required');

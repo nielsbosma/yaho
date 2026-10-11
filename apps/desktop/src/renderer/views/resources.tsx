@@ -4,7 +4,7 @@ import { useContextMenu } from '../components/ContextMenu.tsx';
 import { DataTable, LayoutSwitch, openDeleteMenu, useLayout } from '../components/ListLayout.tsx';
 import { MultiPicker } from '../components/MultiPicker.tsx';
 import { AppLogo, ComposioExplorer, ComposioTools } from './composio.tsx';
-import { Blocks, KeyRound, Lock, Plus, Trash2, Unlock } from 'lucide-react';
+import { Blocks, KeyRound, Lock, Pencil, Plus, Trash2, Unlock } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
@@ -33,11 +33,14 @@ function ResourceList() {
     'Agents lose access. Values stay in Dopbase until you remove them there; a Composio connection stays in Composio.',
   );
   const cardMenu = useContextMenu();
-  const rowMenu = (name: string) =>
-    openDeleteMenu(
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const rowMenu = (name: string) => {
+    const [open, remove] = openDeleteMenu(
       () => go('resources', name),
       () => del.ask(name),
     );
+    return [open!, { label: 'Rename', icon: <Pencil />, onSelect: () => setRenaming(name) }, remove!];
+  };
   const [layout, setLayout] = useLayout('resources');
   return (
     <>
@@ -56,6 +59,7 @@ function ResourceList() {
           </>
         }
       />
+      {renaming && <RenameResource name={renaming} onClose={() => setRenaming(null)} />}
       {layout === 'table' && !!list.data?.length && (
         <div className="p-8">
           <DataTable
@@ -190,6 +194,7 @@ function ResourceEditor({ existing, onDone }: { existing?: Resource; onDone?: ()
 function ResourceDetail({ name }: { name: string }) {
   const res = useApi<Resource>(`/api/resources/${name}`, changed);
   const agents = useApi<Agent[]>('/api/agents', changed);
+  const values = useApi<Record<string, string>>(`/api/resources/${name}/values`, changed);
   const [editing, setEditing] = useState(false);
   const [setting, setSetting] = useState<string | null>(null);
   const [value, setValue] = useState('');
@@ -254,13 +259,19 @@ function ResourceDetail({ name }: { name: string }) {
                       {k.secret ? <Lock className="size-4 text-warn" /> : <Unlock className="size-4 text-muted" />}
                       <code>{k.name}</code>
                       <Badge tone={k.secret ? 'warn' : 'neutral'}>{k.secret ? 'secret' : 'visible to agents'}</Badge>
-                      <span className={cn('ml-auto text-xs', k.has_value ? 'text-ok' : 'text-muted')}>
-                        {k.has_value ? 'value set' : 'no value'}
-                      </span>
+                      {!k.secret && values.data?.[k.name] !== undefined ? (
+                        <code className="ml-auto min-w-0 truncate text-xs text-ink" title={values.data[k.name]}>
+                          {values.data[k.name]}
+                        </code>
+                      ) : (
+                        <span className={cn('ml-auto text-xs', k.has_value ? 'text-ok' : 'text-muted')}>
+                          {k.has_value ? 'value set' : 'no value'}
+                        </span>
+                      )}
                       <Button
                         size="sm"
                         onClick={() => {
-                          setValue('');
+                          setValue(k.secret ? '' : (values.data?.[k.name] ?? ''));
                           setSetting(k.name);
                         }}
                       >
@@ -316,8 +327,18 @@ function ResourceDetail({ name }: { name: string }) {
           </>
         }
       >
-        <Field label="Value" hint="Sent straight to Dopbase. Yaho does not store it and cannot show it again.">
-          <Input type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
+        <Field
+          label="Value"
+          hint={
+            r.keys.find((k) => k.name === setting)?.secret === false
+              ? 'Stored in Dopbase. Not secret: agents and this page can read it.'
+              : 'Sent straight to Dopbase. Yaho does not store it and cannot show it again.'
+          }
+        >
+          <Input
+            type={r.keys.find((k) => k.name === setting)?.secret === false ? 'text' : 'password'}
+            autoComplete="off"
+            value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
         </Field>
       </Dialog>
       <Dialog
@@ -364,5 +385,48 @@ function ComposioConnection({ resource }: { resource: Resource }) {
         <Badge tone={conn.data.status === 'ACTIVE' ? 'ok' : 'danger'}>{conn.data.status.toLowerCase()}</Badge>
       ) : null}
     </Card>
+  );
+}
+
+/** Rename a resource; its Dopbase values move with it. */
+export function RenameResource({ name, onClose, onRenamed }: { name: string; onClose: () => void; onRenamed?: (to: string) => void }) {
+  const [to, setTo] = useState(name);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    if (!to.trim() || to.trim() === name) return onClose();
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<Resource>(`/api/resources/${encodeURIComponent(name)}/rename`, { body: { to: to.trim() } });
+      onClose();
+      onRenamed?.(r.name);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Rename ${name}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!to.trim() || busy} onClick={() => void save()}>
+            Rename
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-2">
+        <ErrorNote>{error}</ErrorNote>
+        <Field label="Name" hint="Agents keep their access, and its values move to the new name in Dopbase.">
+          <Input autoFocus value={to} onChange={(e) => setTo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void save()} />
+        </Field>
+      </div>
+    </Dialog>
   );
 }

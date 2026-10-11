@@ -61,7 +61,7 @@ export function CountPill({ n, tone = 'accent' }: { n: number; tone?: 'accent' |
   return (
     <span
       className={cn(
-        'ml-auto min-w-5 rounded-full px-1.5 text-center text-[11px] leading-5 font-semibold',
+        'ml-auto min-w-[18px] rounded-full px-1 text-center text-[10.5px] leading-[18px] font-semibold tabular-nums',
         tone === 'accent' ? 'bg-accent text-white' : 'bg-hover text-muted',
       )}
     >
