@@ -53,7 +53,7 @@ export function LibraryView({ route }: ViewProps) {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        title="Example Library"
+        title="Library"
         sub="Ready-made agents to start from. They install disabled, with the projects and resources they need."
       />
       <div className="flex min-h-0 flex-1">

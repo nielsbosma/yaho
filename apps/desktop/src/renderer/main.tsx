@@ -6,6 +6,7 @@ import { platform } from './lib/platform.ts';
 import { applyPalette, applyTheme, savedPalette, savedTheme } from './lib/theme.ts';
 
 // Before the first paint, so a dark choice never flashes light.
+if (platform.os) document.documentElement.dataset.os = platform.os;
 applyTheme(savedTheme());
 applyPalette(savedPalette());
 

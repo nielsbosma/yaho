@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { syncTitleBar } from './lib/theme.ts';
 import { Assistant } from './components/Assistant.tsx';
 import type { ChatFocus } from './lib/chat.ts';
 import { Sidebar } from './components/Sidebar.tsx';
@@ -22,6 +23,12 @@ export function App() {
   // The chat starts closed on every launch; Ctrl+J or the sidebar button opens it.
   const [assistant, setAssistant] = useState(false);
   const toggleAssistant = (open = !assistant) => setAssistant(open);
+  // With the chat open it is the right-most panel: it clears the window buttons, and they take its color.
+  useEffect(() => {
+    if (assistant) document.documentElement.dataset.chatOpen = '';
+    else delete document.documentElement.dataset.chatOpen;
+    syncTitleBar(assistant ? 'sidebar' : 'bg');
+  }, [assistant]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {

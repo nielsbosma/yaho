@@ -85,7 +85,7 @@ export type Crumb = { label: string; to: string };
 
 export function PageHeader({ title, sub, actions, crumbs }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode; crumbs?: Crumb[] }) {
   return (
-    <div className="sticky top-0 z-20 flex flex-wrap items-start justify-between gap-3 border-b border-line bg-bg px-8 pt-7 pb-5">
+    <div className="app-drag page-header sticky top-0 z-20 flex flex-wrap items-start justify-between gap-3 border-b border-line bg-bg px-8 pt-7 pb-5">
       <div className="min-w-0">
         {crumbs?.length ? (
           <nav aria-label="Breadcrumb" className="-mt-3 mb-1.5 flex items-center gap-1 text-xs text-muted">

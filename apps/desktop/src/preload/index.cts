@@ -14,5 +14,7 @@ contextBridge.exposeInMainWorld('yahoDesktop', {
   reveal: (path: string) => ipcRenderer.send('yaho:reveal', path),
   openExternal: (url: string) => ipcRenderer.send('yaho:open', url),
   setTheme: (theme: string) => ipcRenderer.send('yaho:theme', theme),
+  setTitleBar: (color: string, symbolColor: string) => ipcRenderer.send('yaho:titlebar', color, symbolColor),
+  os: process.platform,
   onNavigate: (cb: (route: string) => void) => ipcRenderer.on('yaho:navigate', (_e: unknown, route: string) => cb(route)),
 });

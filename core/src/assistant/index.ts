@@ -4,7 +4,7 @@ import YAML from 'yaml';
 import { saveSettings } from '../config.ts';
 import type { Ctx } from '../context.ts';
 import { HttpError } from '../store.ts';
-import { addProjectFile, readLocalFile } from './files.ts';
+import { addProjectFile, copyToAgentWorkspace, listLocalFolder, readLocalFile, writeAgentFile } from './files.ts';
 import * as s from '../store.ts';
 
 /**
@@ -130,6 +130,34 @@ function tools(ctx: Ctx): Record<string, Tool> {
         ['project', 'path'],
       ),
       run: (a) => addProjectFile(ctx, String(a.project), String(a.path), a.name ? String(a.name) : undefined),
+    },
+    list_folder: {
+      description: 'List a folder on this computer by its full path (names, sizes, subfolders; one level). Use it to see what a folder holds before reading or copying.',
+      parameters: obj({ path: str('full path, e.g. D:\\Workspaces\\Jobs') }, ['path']),
+      run: (a) => listLocalFolder(String(a.path)),
+    },
+    copy_to_agent_workspace: {
+      description:
+        "Copy a file or a whole folder on this computer into an agent's workspace (its working directory), e.g. scripts into scripts/ or a SQLite database to agent.db. This is how an existing script or database becomes the agent's own; project files are only context. Caches like __pycache__ are skipped.",
+      parameters: obj(
+        {
+          agent: str('agent name'),
+          path: str('full path of the file or folder'),
+          dest: str('where in the workspace, relative to its root: e.g. scripts/ or agent.db (default: same name at the root; a folder copies its contents into the root)'),
+        },
+        ['agent', 'path'],
+      ),
+      run: (a) => copyToAgentWorkspace(ctx, String(a.agent), String(a.path), a.dest ? String(a.dest) : undefined),
+    },
+    write_agent_file: {
+      description:
+        "Create or overwrite a text file in an agent's workspace, e.g. a script adapted to Yaho (keys from environment variables, the database at agent.db) or a memory/ note. Read the original first and write the whole file.",
+      parameters: obj({ agent: str('agent name'), path: str('path relative to the workspace root, e.g. scripts/run.py'), content: str('the full file content') }, [
+        'agent',
+        'path',
+        'content',
+      ]),
+      run: (a) => writeAgentFile(ctx, String(a.agent), String(a.path), String(a.content)),
     },
     save_project: {
       description: 'Create or update a project from YAML (name, title, briefing, agents).',
@@ -301,13 +329,17 @@ const SYSTEM = `You are the assistant inside Yaho (Yet Another Harness Orchestra
 on schedules, work on projects, use resources whose secret key values live in Dopbase, and talk to the human through an inbox.
 
 You can do anything the UI can, with your tools: create and edit agents, projects and resources, read files on this
-computer and copy them into projects, run and stop jobs, read
+computer and copy them into projects or agent workspaces, run and stop jobs, read
 the inbox and message agents, change non-secret settings, and open pages. Act; don't just describe. Prefer one tool
 call that does the whole thing (a full YAML definition) over many small ones.
 
 - An agent definition is YAML. When creating one, write a real briefing: what it is for, its loop, its limits. Keep
   enabled: false unless the human asked to start it, and say so.
 - Models are LiteLLM model names; use the defaults from get_settings unless asked.
+- Migrating existing work into an agent (scripts, a SQLite database, data files): list_folder to see it, then
+  copy_to_agent_workspace into the agent's workspace (scripts/, the database as agent.db), and adapt what must change
+  with read_file and write_agent_file (keys from the resources' environment variables, paths to the workspace).
+  Finish the migration yourself; do not leave it to the agent's first run. Project files are context for reading only.
 - Never ask for, accept or repeat secret values (API keys, tokens, passwords). Create the key names and tell the human
   to enter the values with Set Value on the resource page.
 - Delete only after the human confirmed in this conversation; then pass confirmed: true.

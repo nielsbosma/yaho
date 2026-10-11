@@ -603,7 +603,7 @@ function Examples() {
         <div className="min-w-0">
           <div className="font-medium">Start from an example</div>
           <div className="text-sm text-muted">
-            Browse {examples.data?.length ?? 'the'} ready-made agents in the Example Library: what each does, what it needs, and its
+            Browse {examples.data?.length ?? 'the'} ready-made agents in the Library: what each does, what it needs, and its
             briefing.
           </div>
         </div>

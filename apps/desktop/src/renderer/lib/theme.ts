@@ -18,6 +18,29 @@ export function applyTheme(t: Theme): void {
   if (t === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
   platform.setTheme?.(t);
+  syncTitleBar();
+}
+
+let surface: 'bg' | 'sidebar' = 'bg';
+
+/**
+ * Recolor the window buttons (Windows, Linux) to the surface they sit on: the page, or the chat panel when it is
+ * open on the right. Runs after theme, palette and system changes, once the new colors are computed.
+ */
+export function syncTitleBar(on?: 'bg' | 'sidebar'): void {
+  if (on) surface = on;
+  if (!platform.setTitleBar) return;
+  requestAnimationFrame(() => {
+    const css = getComputedStyle(document.documentElement);
+    const hex = (v: string) => css.getPropertyValue(v).trim();
+    const bg = hex(surface === 'sidebar' ? '--c-sidebar' : '--c-bg');
+    const ink = hex('--c-ink');
+    if (bg && ink) platform.setTitleBar!(bg, ink);
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => syncTitleBar());
 }
 
 export function useTheme(): [Theme, (t: Theme) => void] {
@@ -63,6 +86,7 @@ export function savedPalette(): Palette {
 export function applyPalette(p: Palette): void {
   if (p === 'forest') delete document.documentElement.dataset.palette;
   else document.documentElement.dataset.palette = p;
+  syncTitleBar();
 }
 
 export function usePalette(): [Palette, (p: Palette) => void] {

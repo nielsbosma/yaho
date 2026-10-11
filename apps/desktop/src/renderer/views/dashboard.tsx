@@ -33,7 +33,14 @@ interface Stats {
 
 const PERIODS = [7, 30, 90];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const TRIGGERS: Record<string, string> = { cron: 'Schedule', inbox: 'Inbox', manual: 'Run Now', delay: 'Sleep / continue' };
+const TRIGGERS: Record<string, string> = {
+  cron: 'Schedule',
+  inbox: 'Inbox',
+  manual: 'Run Now',
+  delay: 'Woke From Sleep',
+  continue: 'Continue',
+  followup: 'Follow Up',
+};
 
 const seconds = (s: number) => (!s ? '–' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`);
 const shortDay = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -247,46 +254,38 @@ function Bars({ data, tip, money: isMoney }: { data: Bar[]; tip: (b: Bar) => str
   );
 }
 
-/** Jobs by weekday and hour, Monday first, in this computer's time zone. */
+/** Jobs by weekday and hour. HTML, not a scaled SVG, so the labels keep the dashboard's 11px at any width. */
 function Heatmap({ cells }: { cells: Stats['heatmap'] }) {
   const max = Math.max(1, ...cells.map((c) => c.jobs));
   const at = new Map(cells.map((c) => [`${c.dow}-${c.hour}`, c.jobs]));
-  const cw = 22;
-  const ch = 18;
-  const left = 34;
+  const cols = { gridTemplateColumns: '2.25rem repeat(24, minmax(0, 1fr))' };
   return (
-    <svg viewBox={`0 0 ${left + 24 * cw} ${7 * ch + 16}`} className="w-full">
-      <title>Jobs by weekday and hour</title>
-      {[1, 2, 3, 4, 5, 6, 0].map((dow, row) => (
-        <g key={dow}>
-          <text x={0} y={row * ch + 13} fontSize={11} fill="var(--c-muted)">
-            {DAYS[dow]}
-          </text>
+    <div role="img" aria-label="Jobs by weekday and hour" className="text-[11px] text-muted">
+      {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
+        <div key={dow} className="grid items-center gap-[3px] pb-[3px]" style={cols}>
+          <span>{DAYS[dow]}</span>
           {Array.from({ length: 24 }, (_, hour) => {
             const n = at.get(`${dow}-${hour}`) ?? 0;
             return (
-              <rect
+              <div
                 key={hour}
-                x={left + hour * cw + 1}
-                y={row * ch + 1}
-                width={cw - 2}
-                height={ch - 2}
-                rx={3}
-                fill={n ? 'var(--c-accent)' : 'var(--c-hover)'}
-                fillOpacity={n ? 0.25 + 0.75 * (n / max) : 1}
-              >
-                <title>{`${DAYS[dow]} ${String(hour).padStart(2, '0')}:00: ${n} jobs`}</title>
-              </rect>
+                title={`${DAYS[dow]} ${String(hour).padStart(2, '0')}:00: ${n} jobs`}
+                className={cn('h-4 rounded-[3px]', n ? 'bg-accent' : 'bg-hover')}
+                style={n ? { opacity: 0.25 + 0.75 * (n / max) } : undefined}
+              />
             );
           })}
-        </g>
+        </div>
       ))}
-      {[0, 6, 12, 18, 23].map((hour) => (
-        <text key={hour} x={left + hour * cw + cw / 2} y={7 * ch + 13} fontSize={11} fill="var(--c-muted)" textAnchor="middle">
-          {String(hour).padStart(2, '0')}
-        </text>
-      ))}
-    </svg>
+      <div className="grid gap-[3px] pt-1 tabular-nums" style={cols}>
+        <span />
+        {Array.from({ length: 24 }, (_, hour) => (
+          <span key={hour} className="text-center">
+            {hour % 6 === 0 || hour === 23 ? String(hour).padStart(2, '0') : ''}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

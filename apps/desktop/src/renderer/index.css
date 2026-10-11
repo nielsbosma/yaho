@@ -125,3 +125,24 @@ pre {
   font-family: var(--font-mono);
   font-size: 12.5px;
 }
+
+/* Window chrome (desktop): no title bar, so the sidebar top and page headers are where the window is dragged.
+   Controls inside them stay clickable. */
+.app-drag {
+  -webkit-app-region: drag;
+}
+.app-drag :is(a, button, input, select, textarea, label, [role='button'], [role='radio'], [role='tab']) {
+  -webkit-app-region: no-drag;
+}
+/* Windows and Linux draw minimize/maximize/close over the top right: keep the right-most header clear of them.
+   env(titlebar-area-*) only exists there; elsewhere this is the normal padding. */
+.titlebar-clear {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + var(--titlebar-pad, 2rem));
+}
+/* macOS: the traffic lights sit at the top left, over the sidebar's logo row. */
+:root[data-os='darwin'] .titlebar-left {
+  padding-top: 1.75rem;
+}
+:root:not([data-chat-open]) .page-header {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 2rem);
+}

@@ -25,6 +25,8 @@ const devSession = !!process.env.YAHO_RENDERER_URL;
 const startHidden = process.argv.includes('--hidden');
 
 let win: BrowserWindow | null = null;
+/** Height of the window-button overlay on Windows and Linux; the renderer keeps its controls clear of it. */
+const TITLEBAR_HEIGHT = 40;
 let tray: Tray | null = null;
 let core: CoreConnection | null = null;
 let quitting = false;
@@ -51,6 +53,17 @@ function createWindow(conn: CoreConnection): BrowserWindow {
     show: !startHidden,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#171a18' : '#f8f9f8',
     autoHideMenuBar: true,
+    // The page runs to the top edge. The renderer marks its drag areas and recolors the buttons with the theme.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 18 } }
+      : {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: {
+            color: nativeTheme.shouldUseDarkColors ? '#171a18' : '#f8f9f8',
+            symbolColor: nativeTheme.shouldUseDarkColors ? '#e6e9e7' : '#1c211e',
+            height: TITLEBAR_HEIGHT,
+          },
+        }),
     webPreferences: {
       preload,
       sandbox: false,
@@ -179,6 +192,10 @@ ipcMain.on('yaho:reveal', (_e, path: string) => {
 });
 ipcMain.on('yaho:theme', (_e, theme: string) => {
   if (theme === 'light' || theme === 'dark' || theme === 'system') nativeTheme.themeSource = theme;
+});
+ipcMain.on('yaho:titlebar', (_e, color: string, symbolColor: string) => {
+  if (process.platform === 'darwin' || !/^#[0-9a-f]{6}$/i.test(color) || !/^#[0-9a-f]{6}$/i.test(symbolColor)) return;
+  win?.setTitleBarOverlay({ color, symbolColor, height: TITLEBAR_HEIGHT });
 });
 ipcMain.on('yaho:open', (_e, url: string) => {
   if (/^https?:\/\//.test(url)) void shell.openExternal(url);

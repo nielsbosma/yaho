@@ -1,5 +1,6 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, extname, isAbsolute, join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, extname, isAbsolute, join, relative } from 'node:path';
+import { safeJoin } from '../api/server.ts';
 import type { Ctx } from '../context.ts';
 import { HttpError } from '../store.ts';
 import * as s from '../store.ts';
@@ -46,4 +47,57 @@ export function addProjectFile(ctx: Ctx, project: string, path: string, name?: s
   copyFileSync(p, join(dir, file));
   ctx.bus.emitEvent({ type: 'changed', entity: 'projects', name: project });
   return { project, name: file };
+}
+
+/** Folders that are build output or caches, never worth copying into a workspace. */
+const SKIP = new Set(['__pycache__', 'node_modules', '.git', '.venv', 'venv', '.pytest_cache']);
+
+/** List a folder on this computer: names, sizes and subfolders, one level deep. */
+export function listLocalFolder(path: string): Array<{ name: string; dir: boolean; size?: number }> {
+  const p = path.trim().replace(/^"(.*)"$/, '$1');
+  if (!isAbsolute(p)) throw new HttpError(400, 'give the full path of the folder, e.g. D:\Workspaces\Jobs');
+  if (!existsSync(p) || !statSync(p).isDirectory()) throw new HttpError(404, `no folder at ${p}`);
+  return readdirSync(p, { withFileTypes: true }).map((d) =>
+    d.isDirectory() ? { name: d.name, dir: true } : { name: d.name, dir: false, size: statSync(join(p, d.name)).size },
+  );
+}
+
+/**
+ * Copy a file or a whole folder on this computer into an agent's workspace (scripts, databases, data), at `dest`
+ * relative to the workspace root. Caches and build folders are skipped; existing files are overwritten.
+ */
+export function copyToAgentWorkspace(ctx: Ctx, agent: string, path: string, dest = ''): { agent: string; dest: string; files: number } {
+  s.getAgent(ctx, agent);
+  const src = path.trim().replace(/^"(.*)"$/, '$1');
+  if (!isAbsolute(src) || !existsSync(src)) throw new HttpError(404, `no file or folder at ${src}`);
+  const root = ctx.paths.agent(agent);
+  const isDir = statSync(src).isDirectory();
+  const target = safeJoin(root, dest.replaceAll('\\', '/') || (isDir ? '' : basename(src)));
+  let files = 0;
+  const copy = (from: string, to: string) => {
+    if (statSync(from).isDirectory()) {
+      mkdirSync(to, { recursive: true });
+      for (const d of readdirSync(from)) if (!SKIP.has(d)) copy(join(from, d), join(to, d));
+    } else {
+      mkdirSync(dirname(to), { recursive: true });
+      copyFileSync(from, to);
+      files++;
+    }
+  };
+  // A file copied onto an existing folder lands inside it.
+  copy(src, !isDir && existsSync(target) && statSync(target).isDirectory() ? join(target, basename(src)) : target);
+  ctx.bus.emitEvent({ type: 'changed', entity: 'workspace', name: agent });
+  return { agent, dest: relative(root, target) || '.', files };
+}
+
+/** Write a text file in an agent's workspace, e.g. a script rewritten for Yaho or a memory note. */
+export function writeAgentFile(ctx: Ctx, agent: string, path: string, content: string): { agent: string; path: string; bytes: number } {
+  s.getAgent(ctx, agent);
+  const root = ctx.paths.agent(agent);
+  const target = safeJoin(root, path.replaceAll('\\', '/'));
+  if (target === root) throw new HttpError(400, 'give a file path inside the workspace, e.g. scripts/run.py');
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, content);
+  ctx.bus.emitEvent({ type: 'changed', entity: 'workspace', name: agent });
+  return { agent, path: relative(root, target).replaceAll('\\', '/'), bytes: Buffer.byteLength(content) };
 }

@@ -125,7 +125,7 @@ export function Assistant({
   return (
     <aside className="relative flex shrink-0 flex-col border-l border-line bg-sidebar" style={{ width }}>
       <Resizer width={width} onChange={setWidth} side="left" initial={400} />
-      <div className="flex h-14 items-center gap-2 border-b border-line px-4">
+      <div className="app-drag titlebar-clear flex h-14 shrink-0 items-center gap-2 border-b border-line pl-4 [--titlebar-pad:1rem]">
         <Sparkles className="size-4 text-accent" />
         <span className="font-serif text-lg">Chat with Yaho</span>
         <div className="ml-auto flex gap-1">

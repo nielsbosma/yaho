@@ -14,6 +14,10 @@ export interface Platform {
   openExternal(url: string): void;
   /** Desktop: match native chrome (title bar, menus) to the chosen theme. */
   setTheme?(theme: 'system' | 'light' | 'dark'): void;
+  /** Desktop: colors of the window buttons drawn over the page (Windows, Linux). */
+  setTitleBar?(color: string, symbolColor: string): void;
+  /** Desktop: the OS, for where the window buttons sit. */
+  os?: string;
 }
 
 interface DesktopBridge {
@@ -25,6 +29,8 @@ interface DesktopBridge {
   openExternal(url: string): void;
   onNavigate(cb: (route: string) => void): void;
   setTheme(theme: string): void;
+  setTitleBar?(color: string, symbolColor: string): void;
+  os?: string;
 }
 
 declare global {
@@ -57,6 +63,8 @@ function makePlatform(): Platform {
       reveal: (p) => d.reveal(p),
       openExternal: (u) => d.openExternal(u),
       setTheme: (t) => d.setTheme(t),
+      setTitleBar: (c, s) => d.setTitleBar?.(c, s),
+      os: d.os,
     };
   }
   const baseTitle = document.title;
