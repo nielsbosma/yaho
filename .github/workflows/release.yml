@@ -212,8 +212,11 @@ jobs:
     steps:
       - uses: actions/setup-node@v5
         with: { node-version: 22, registry-url: 'https://registry.npmjs.org' }
+      # Only our own artifacts: the Docker steps add build records that cannot be downloaded this way.
       - uses: actions/download-artifact@v5
-        with: { path: dist }
+        with: { path: dist, pattern: npm-* }
+      - uses: actions/download-artifact@v5
+        with: { path: dist, pattern: installer-* }
       - name: Publish to npm (the five apps, then the launcher)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -238,6 +241,9 @@ jobs:
   # ---- Yaho Server: the Docker image, built natively per architecture, then joined into one multi-arch image ----
   image:
     needs: check
+    env:
+      # docker/build-push-action uploads a build record as an artifact; the publish job does not want it.
+      DOCKER_BUILD_RECORD_UPLOAD: false
     strategy:
       fail-fast: false
       matrix:
