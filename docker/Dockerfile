@@ -1,7 +1,8 @@
 # Yaho Server: the core, the web UI, the yaho CLI, Dopbase, Claude Code and Codex in one image.
 #   docker build -f docker/Dockerfile -t yaho .
 #   docker run -d -p 4700:4700 -v yaho-data:/data -e YAHO_PASSWORD='a long password' yaho
-# Everything Yaho keeps is in the /data volume, the home folder included (Claude Code's sessions, gh and git sign-ins).
+# Everything Yaho keeps is in the /data volume, the agents' home included (Claude Code's sessions, gh and git sign-ins:
+# docker exec -it -u yaho-agent <container> gh auth login).
 
 # ---- Dopbase, from its pinned tag (it publishes no binary for every platform we build) ----
 FROM rust:1-bookworm AS dopbase
@@ -33,8 +34,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" \
  && npm cache clean --force \
- # The node image's user 1000 becomes yaho, with its home on the volume.
- && usermod -l yaho -d /data/home node && groupmod -n yaho node
+ # The node image's user 1000 becomes yaho, which runs the core. Agents run as yaho-agent (1001), which cannot read
+ # the core's files; what both use (workspaces, projects, the agents' home) belongs to the group yaho-agents.
+ && usermod -l yaho -d /data/.core node && groupmod -n yaho node \
+ && groupadd -g 1001 yaho-agents && useradd -u 1001 -g 1001 -d /data/home -s /bin/sh -M yaho-agent \
+ && usermod -aG yaho-agents yaho
 
 COPY --from=build /src/apps/desktop/build/app /opt/yaho
 COPY --from=dopbase /src/app/target/release/dopbase /opt/yaho/dopbase/dopbase
@@ -48,6 +52,9 @@ ENV YAHO_SERVER=1 \
     YAHO_CLI_MAIN=/opt/yaho/cli/main.mjs \
     YAHO_DOPBASE_BIN=/opt/yaho/dopbase/dopbase \
     YAHO_TRUST_PROXY=1 \
+    YAHO_AGENT_UID=1001 \
+    YAHO_AGENT_GID=1001 \
+    YAHO_AGENT_HOME=/data/home \
     HOME=/data/home \
     CLAUDE_CONFIG_DIR=/data/home/.claude \
     XDG_CACHE_HOME=/tmp/cache \

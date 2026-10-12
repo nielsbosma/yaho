@@ -1,11 +1,10 @@
-import { litellmProvider } from '../providers.ts';
-import type { Settings } from '../config.ts';
+import type { ProviderConfig } from '../config.ts';
 
-/** LiteLLM admin calls. Used only when the LiteLLM provider has a master key. */
-async function admin<T>(s: Settings, method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${litellmProvider(s).url.replace(/\/$/, '')}${path}`, {
+/** LiteLLM admin calls, to the given LiteLLM provider. Used only when it has a master key. */
+async function admin<T>(p: ProviderConfig, method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${(p.url ?? '').replace(/\/$/, '')}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${litellmProvider(s).master_key}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${p.master_key}`, 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`LiteLLM ${method} ${path}: ${res.status} ${(await res.text()).slice(0, 300)}`);
@@ -14,10 +13,10 @@ async function admin<T>(s: Settings, method: string, path: string, body?: unknow
 
 /** One virtual key per job, capped at what the agent has left, so LiteLLM itself enforces the budget. */
 export async function createLitellmKey(
-  s: Settings,
+  p: ProviderConfig,
   o: { maxBudget: number; models: string[]; agent: string; job: string },
 ): Promise<string> {
-  const r = await admin<{ key: string }>(s, 'POST', '/key/generate', {
+  const r = await admin<{ key: string }>(p, 'POST', '/key/generate', {
     max_budget: Math.max(0.0001, o.maxBudget),
     models: o.models,
     key_alias: `yaho-${o.agent}-${o.job}`,
@@ -27,18 +26,18 @@ export async function createLitellmKey(
   return r.key;
 }
 
-export async function litellmKeySpend(s: Settings, key: string): Promise<number> {
-  const r = await admin<{ info?: { spend?: number } }>(s, 'GET', `/key/info?key=${encodeURIComponent(key)}`);
+export async function litellmKeySpend(p: ProviderConfig, key: string): Promise<number> {
+  const r = await admin<{ info?: { spend?: number } }>(p, 'GET', `/key/info?key=${encodeURIComponent(key)}`);
   return Number(r.info?.spend ?? 0);
 }
 
-export async function deleteLitellmKey(s: Settings, key: string): Promise<void> {
-  await admin(s, 'POST', '/key/delete', { keys: [key] });
+export async function deleteLitellmKey(p: ProviderConfig, key: string): Promise<void> {
+  await admin(p, 'POST', '/key/delete', { keys: [key] });
 }
 
-export async function litellmModels(s: Settings): Promise<string[]> {
-  const key = litellmProvider(s).master_key ?? litellmProvider(s).api_key;
-  const res = await fetch(`${litellmProvider(s).url.replace(/\/$/, '')}/v1/models`, { headers: key ? { Authorization: `Bearer ${key}` } : {} });
+export async function litellmModels(p: ProviderConfig): Promise<string[]> {
+  const key = p.master_key ?? p.api_key;
+  const res = await fetch(`${(p.url ?? '').replace(/\/$/, '')}/v1/models`, { headers: key ? { Authorization: `Bearer ${key}` } : {} });
   if (!res.ok) throw new Error(`LiteLLM /v1/models: ${res.status}`);
   const j = (await res.json()) as { data?: Array<{ id: string }> };
   return (j.data ?? []).map((m) => m.id);
@@ -54,13 +53,13 @@ export interface ModelPrice {
 const prices = new Map<string, { at: number; price: ModelPrice | null }>();
 
 /** Per-token prices from LiteLLM's /model/info, cached for an hour. Null when the proxy does not say. */
-export async function modelPrice(s: Settings, model: string): Promise<ModelPrice | null> {
-  const hit = prices.get(model);
+export async function modelPrice(p: ProviderConfig, model: string): Promise<ModelPrice | null> {
+  const hit = prices.get(`${p.id}|${model}`);
   if (hit && Date.now() - hit.at < 3600_000) return hit.price;
   let price: ModelPrice | null = null;
   try {
-    const key = litellmProvider(s).master_key ?? litellmProvider(s).api_key;
-    const res = await fetch(`${litellmProvider(s).url.replace(/\/$/, '')}/model/info`, {
+    const key = p.master_key ?? p.api_key;
+    const res = await fetch(`${(p.url ?? '').replace(/\/$/, '')}/model/info`, {
       headers: key ? { Authorization: `Bearer ${key}` } : {},
       signal: AbortSignal.timeout(10_000),
     });
@@ -78,6 +77,6 @@ export async function modelPrice(s: Settings, model: string): Promise<ModelPrice
   } catch {
     /* no estimate; the final total still arrives with the result */
   }
-  prices.set(model, { at: Date.now(), price });
+  prices.set(`${p.id}|${model}`, { at: Date.now(), price });
   return price;
 }

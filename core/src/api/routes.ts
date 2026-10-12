@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
 import { checkClaude, checkCodex, lastClaudeCheck, lastCodexCheck } from '../checks.ts';
-import { PROVIDERS, defaultProvider } from '../providers.ts';
+import { PROVIDERS, defaultProvider, litellmProvider } from '../providers.ts';
 import { allModels, listModels } from '../providerApi.ts';
 import { revealToken, serverMode } from './session.ts';
 import { applySettingsUpdate, publicSettings, storeSecrets } from '../secrets/settingsSecrets.ts';
@@ -133,16 +133,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
       throw new HttpError(400, (e as Error).message);
     }
   });
-  // One check per harness (claude-code, codex); /api/checks/claude is kept for older clients.
+  // One check per harness: codex, and claude-code (also answered as claude, as older clients ask).
   r.on('GET', '/api/checks/:harness', (req) => (req.params.harness === 'codex' ? lastCodexCheck() : lastClaudeCheck()));
   r.on('POST', '/api/checks/:harness', async (req) => {
     const r = req.params.harness === 'codex' ? await checkCodex(ctx) : await checkClaude(ctx);
-    ctx.bus.emitEvent({ type: 'changed', entity: 'checks' });
-    return r;
-  });
-  r.on('GET', '/api/checks/claude', () => lastClaudeCheck());
-  r.on('POST', '/api/checks/claude', async () => {
-    const r = await checkClaude(ctx);
     ctx.bus.emitEvent({ type: 'changed', entity: 'checks' });
     return r;
   });
@@ -170,7 +164,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     await d.call('GET', '/projects');
     return { ok: true, health };
   });
-  r.on('GET', '/api/settings/litellm/models', async () => ({ models: await litellmModels(ctx.settings) }));
+  r.on('GET', '/api/settings/litellm/models', async () => ({ models: await litellmModels(litellmProvider(ctx.settings)) }));
   r.on('GET', '/api/models', async () => allModels(ctx.settings, defaultProvider(ctx.settings).id));
   r.on('GET', '/api/providers/:id/models', async (req) => {
     const p = ctx.settings.providers.find((x) => x.id === req.params.id);

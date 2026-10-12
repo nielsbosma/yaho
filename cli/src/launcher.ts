@@ -156,7 +156,15 @@ export async function launcher(cmd: string | undefined, args: string[]): Promise
       return spawnSync(findApp(), appArgs(['--serve']), { stdio: 'inherit', env: { ...process.env, YAHO_HEADLESS: '1' } }).status ?? 1;
     case 'update': {
       const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-      const r = spawnSync(npm, ['install', '-g', '@bosmainteractive/yaho@latest'], { stdio: 'inherit', shell: process.platform === 'win32' });
+      // The channel chosen in Settings (latest or next); only those two names reach the shell.
+      let channel = 'latest';
+      try {
+        const s = YAML.parse(readFileSync(paths().settings, 'utf8')) as { updates?: { channel?: string } } | null;
+        if (s?.updates?.channel === 'next') channel = 'next';
+      } catch {
+        /* no settings yet */
+      }
+      const r = spawnSync(npm, ['install', '-g', `@bosmainteractive/yaho@${channel}`], { stdio: 'inherit', shell: process.platform === 'win32' });
       return r.status ?? 1;
     }
     case 'doctor': {

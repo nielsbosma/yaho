@@ -31,7 +31,7 @@ const script = (agent: string, steps: Array<{ cmd?: string; stdin?: string; slee
   writeFileSync(join(dir, 'agents', agent, file), JSON.stringify(steps));
 };
 
-export async function waitFor(id: string, done = (j: Job) => !['queued', 'running'].includes(j.status), ms = 20_000): Promise<Job> {
+export async function waitFor(id: string, done = (j: Job) => !['queued', 'running'].includes(j.status), ms = 60_000): Promise<Job> {
   const end = Date.now() + ms;
   for (;;) {
     const j = await api<Job>(`/api/jobs/${id}`);

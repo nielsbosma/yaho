@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProviderConfig } from './config.ts';
 import type { Ctx } from './context.ts';
-import { forProvider } from './providerApi.ts';
+import { forProvider, safeJson } from './providerApi.ts';
 import { HttpError } from './store.ts';
 
 /**
@@ -94,13 +94,6 @@ export function fromChatCompletion(model: string, j: { choices?: Array<{ message
   };
 }
 
-const safeJson = (s: string) => {
-  try {
-    return s ? JSON.parse(s) : {};
-  } catch {
-    return {};
-  }
-};
 
 /** A streamed Chat Completions reply, re-emitted as Messages events. */
 async function streamBack(model: string, upstream: Response, res: ServerResponse): Promise<void> {
@@ -119,6 +112,7 @@ async function streamBack(model: string, upstream: Response, res: ServerResponse
   const reader = upstream.body!.getReader();
   const decoder = new TextDecoder();
   let buf = '';
+  try {
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -159,13 +153,20 @@ async function streamBack(model: string, upstream: Response, res: ServerResponse
       if (choice.finish_reason) finish = choice.finish_reason;
     }
   }
+  } catch (e) {
+    // The provider dropped the stream, timed out, or Claude Code went away: end with an error Claude Code can retry.
+    if (!res.writableEnded) {
+      send('error', { error: { type: 'api_error', message: `stream broke: ${(e as Error).message}` } });
+      res.end();
+    }
+    return;
+  }
   close();
   send('message_delta', { delta: { stop_reason: stopReason(finish), stop_sequence: null }, usage: { output_tokens: usage.output_tokens, input_tokens: usage.input_tokens } });
   send('message_stop', {});
   res.end();
 }
 
-/** Who may use the bridge: a running job, by the token it was given as its Anthropic key (or the core itself). */
 /** A running job's token for this very provider (or the core's own token, for checks). */
 function jobFromToken(ctx: Ctx, req: IncomingMessage, providerId: string): boolean {
   const h = req.headers;
@@ -193,8 +194,14 @@ export async function handleBridge(ctx: Ctx, req: IncomingMessage, res: ServerRe
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ input_tokens: Math.ceil(JSON.stringify(request.messages ?? []).length / 4) }));
     return true;
   }
+  // Stop the provider's work when Claude Code goes away, and never wait forever on it.
+  const gone = new AbortController();
+  res.on('close', () => {
+    if (!res.writableFinished) gone.abort();
+  });
   const upstream = await fetch(`${base}/chat/completions`, {
     method: 'POST',
+    signal: AbortSignal.any([gone.signal, AbortSignal.timeout(15 * 60_000)]),
     headers: { Authorization: `Bearer ${provider.api_key ?? ''}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(forProvider(provider.kind, toChatCompletions(request) as { max_tokens?: number })),
   });

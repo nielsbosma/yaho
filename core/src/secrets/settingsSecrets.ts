@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import YAML from 'yaml';
 import { migrateSettingsShape, saveSettings, secretSlots, secretsStored, type SecretSlot, type Settings } from '../config.ts';
 import type { Ctx } from '../context.ts';
+import { HttpError } from '../store.ts';
 import { Dopbase } from './dopbase.ts';
 
 /**
@@ -90,6 +91,13 @@ export async function storeSecrets(ctx: Ctx): Promise<void> {
       else known.delete(slot.key);
       secretsStored.add(slot.path);
     }
+    // A removed provider's keys go with it.
+    const current = new Set(secretSlots(ctx.settings).map((slot) => slot.key));
+    for (const key of [...known.keys()])
+      if (!current.has(key)) {
+        await dop.deleteProjectValue(SETTINGS_PROJECT, key);
+        known.delete(key);
+      }
   }
   saveSettings(ctx.settings);
 }
@@ -125,6 +133,14 @@ export function applySettingsUpdate(current: Settings, next: Settings & { secret
     since: current.slack?.since,
   };
   const { secrets_set: _, ...rest } = next;
+  // Provider ids name their keys in Dopbase (PROVIDER_<ID>_API_KEY): two ids must not give the same name.
+  const seen = new Map<string, string>();
+  for (const p of rest.providers ?? []) {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(p.id)) throw new HttpError(400, `provider id "${p.id}": use lower-case letters, digits and dashes`);
+    const k = p.id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+    if (seen.has(k)) throw new HttpError(400, `provider ids "${seen.get(k)}" and "${p.id}" are too alike; rename one`);
+    seen.set(k, p.id);
+  }
   Object.assign(current, rest);
   current.server = { ...current.server, session_epoch: kept.epoch };
   if (kept.epoch === undefined) delete current.server.session_epoch;

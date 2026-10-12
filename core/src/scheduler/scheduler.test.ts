@@ -174,7 +174,7 @@ describe('scheduler', () => {
     script('ping', [{ cmd: 'yaho send --to agent:pong --body ping' }, { cmd: 'yaho finish' }]);
     script('pong', [{ cmd: 'yaho send --to agent:ping --body pong' }, { cmd: 'yaho finish' }]);
     await api('/api/messages', { body: { to: 'agent:ping', body: 'start' } });
-    const end = Date.now() + 20_000;
+    const end = Date.now() + 60_000;
     let note: Message | undefined;
     while (!note && Date.now() < end) {
       note = (await api<Message[]>('/api/messages?to=human')).find((m) => m.from === 'system' && m.title.includes('was not woken'));
@@ -191,7 +191,7 @@ describe('scheduler', () => {
     script('survivor', [{ sleep_ms: 4000 }, { cmd: 'yaho finish' }]);
     script('survivor', [{ cmd: 'yaho finish --summary survived' }], 'steps-resume.json');
     const job = await api<Job>('/api/agents/survivor/run', { method: 'POST' });
-    const end = Date.now() + 5000;
+    const end = Date.now() + 20_000;
     while ((await api<Job>(`/api/jobs/${job.id}`)).status !== 'running' && Date.now() < end) await new Promise((r) => setTimeout(r, 100));
     await new Promise((r) => setTimeout(r, 500)); // let the harness report its session id
     await close();

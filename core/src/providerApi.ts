@@ -28,12 +28,16 @@ const chatBase = (p: ProviderConfig) => (p.kind === 'litellm' ? `${(p.url ?? '')
 
 /** Model names this provider offers. */
 export async function listModels(s: Settings, p: ProviderConfig): Promise<string[]> {
-  if (p.kind === 'litellm') return litellmModels(s);
+  if (p.kind === 'litellm') return litellmModels(p);
   const ep = ENDPOINTS[p.kind];
   if (!ep) throw new HttpError(400, `unknown provider kind ${p.kind}`);
-  const key = needKey(p);
-  const headers: Record<string, string> =
-    p.kind === 'anthropic' ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' } : { Authorization: `Bearer ${key}` };
+  // OpenRouter's list is public: a provider with only a management key still lists its models.
+  const key = p.kind === 'openrouter' ? keyOf(p) : needKey(p);
+  const headers: Record<string, string> = !key
+    ? {}
+    : p.kind === 'anthropic'
+      ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+      : { Authorization: `Bearer ${key}` };
   const res = await fetch(ep.models, { headers, signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new HttpError(502, `${p.id}: listing models answered ${res.status} ${(await res.text()).slice(0, 200)}`);
   const j = (await res.json()) as { data?: Array<{ id: string; capabilities?: { function_calling?: boolean }; model_type?: string }> };
@@ -44,6 +48,15 @@ export async function listModels(s: Settings, p: ProviderConfig): Promise<string
   if (p.kind === 'openai') list = list.filter((m) => /^(gpt-|o\d|chatgpt-)/.test(m.id) && !/(audio|realtime|transcribe|tts|image|search|embedding)/.test(m.id));
   return list.map((m) => m.id).sort();
 }
+
+/** Tool-call arguments as an object; a cut-off or broken one becomes {}. */
+export const safeJson = (s: string | undefined): Record<string, unknown> => {
+  try {
+    return s ? JSON.parse(s) : {};
+  } catch {
+    return {};
+  }
+};
 
 const modelCache = new Map<string, { at: number; models: string[] }>();
 
@@ -64,7 +77,10 @@ export async function allModels(s: Settings, defaultId: string): Promise<{ model
         if (!list || Date.now() - list.at > 600_000) modelCache.set(key, (list = { at: Date.now(), models: await listModels(s, p) }));
         for (const m of list.models) {
           if (p.kind === 'openrouter' && !m.startsWith('anthropic/')) continue;
-          const name = p.id === defaultId ? m : `${p.id}/${m}`;
+          // The default provider's models go unprefixed, unless the name starts like another provider's id
+          // ("openai/gpt-5-mini" on LiteLLM), which would send it to that provider.
+          const clash = s.providers.some((x) => m.startsWith(`${x.id}/`));
+          const name = p.id === defaultId && !clash ? m : `${p.id}/${m}`;
           models.push(name);
           provider_of[name] = p.id;
         }
@@ -152,7 +168,7 @@ async function anthropicChat(base: string, key: string, body: { model: string; m
     if (m.role === 'system') continue;
     if (m.role === 'tool') push('user', [{ type: 'tool_result', tool_use_id: m.tool_call_id, content: typeof m.content === 'string' ? m.content : '' }]);
     else if (m.role === 'assistant') {
-      const calls = (m.tool_calls ?? []).map((t) => ({ type: 'tool_use', id: t.id, name: t.function.name, input: t.function.arguments ? JSON.parse(t.function.arguments) : {} }));
+      const calls = (m.tool_calls ?? []).map((t) => ({ type: 'tool_use', id: t.id, name: t.function.name, input: safeJson(t.function.arguments) }));
       const blocks = [...blocksOf(m.content), ...calls];
       if (blocks.length) push('assistant', blocks);
     } else push('user', blocksOf(m.content));
@@ -209,9 +225,9 @@ export function harnessFits(p: ProviderConfig, harness: string): boolean {
 export async function jobAccess(
   s: Settings,
   p: ProviderConfig,
-  o: { models: string[]; remaining: number; agent: string; job: string; bridge?: { apiUrl: string; token: string } },
+  o: { models: string[]; remaining: number; agent: string; job: string; harness: string; bridge?: { apiUrl: string; token: string } },
 ): Promise<JobAccess> {
-  const base = responsesBase(p);
+  const base = o.harness === 'codex' ? responsesBase(p) : undefined;
   // Codex needs only the Responses address and a key; a provider Claude Code cannot reach here (OpenAI without the
   // bridge) still serves Codex.
   const access = await claudeAccess(s, p, o).catch((e: Error) => {
@@ -232,15 +248,16 @@ async function claudeAccess(
   o: { models: string[]; remaining: number; agent: string; job: string; bridge?: { apiUrl: string; token: string } },
 ): Promise<JobAccess> {
   if (p.kind === 'litellm') {
-    if (p.master_key) {
-      const jobKey = await createLitellmKey(s, { maxBudget: o.remaining, models: o.models, agent: o.agent, job: o.job });
+    // A capped key per job; a check (no job) uses the plain key and mints nothing.
+    if (p.master_key && o.job) {
+      const jobKey = await createLitellmKey(p, { maxBudget: o.remaining, models: o.models, agent: o.agent, job: o.job });
       return {
         env: { ANTHROPIC_BASE_URL: p.url ?? '', ANTHROPIC_AUTH_TOKEN: jobKey },
-        capped: { spend: () => litellmKeySpend(s, jobKey), release: () => deleteLitellmKey(s, jobKey) },
+        capped: { spend: () => litellmKeySpend(p, jobKey), release: () => deleteLitellmKey(p, jobKey) },
         budget: 'capped',
       };
     }
-    return { env: { ANTHROPIC_BASE_URL: p.url ?? '', ANTHROPIC_AUTH_TOKEN: p.api_key ?? '' }, budget: 'counted' };
+    return { env: { ANTHROPIC_BASE_URL: p.url ?? '', ANTHROPIC_AUTH_TOKEN: p.api_key ?? p.master_key ?? '' }, budget: 'counted' };
   }
   // OpenRouter with a management key: a key per job with a credit limit, as LiteLLM's master key does.
   if (p.kind === 'openrouter' && p.master_key && o.job) {
@@ -296,19 +313,31 @@ async function openRouterCatalog(): Promise<Map<string, ModelPrice>> {
   return prices;
 }
 
-/** One spelling for the same model across providers: no provider prefix, lower case, dots as dashes. */
-const normalize = (id: string) => id.toLowerCase().replace(/^[^/]+\//, '').replace(/\./g, '-').replace(/:.*$/, '');
+/** One spelling for the same model across providers: no provider prefix, lower case, dots as dashes, no date suffix. */
+const normalize = (id: string) =>
+  id
+    .toLowerCase()
+    .replace(/^[^/]+\//, '')
+    .replace(/\./g, '-')
+    .replace(/:.*$/, '')
+    .replace(/-\d{8}$/, '');
+
+type BergetModel = { id: string; pricing?: { input?: number; output?: number; currency?: string } };
+/** Berget's model list with prices, fetched at most every six hours (prices are asked for on every usage event). */
+let bergetList: { at: number; data: BergetModel[] } | null = null;
 
 /** Per-token prices for a model on this provider, or null when nobody says. */
 export async function priceFor(s: Settings, p: ProviderConfig, model: string): Promise<ModelPrice | null> {
   // LiteLLM knows prices for the models it is configured with; for the rest, OpenRouter's list (Codex reports only
   // tokens, so without a price a job would count as free and its budget never stop it).
-  if (p.kind === 'litellm') return (await modelPrice(s, model)) ?? (await openRouterCatalog()).get(normalize(model)) ?? null;
+  if (p.kind === 'litellm') return (await modelPrice(p, model)) ?? (await openRouterCatalog()).get(normalize(model)) ?? null;
   if (p.kind === 'berget') {
     try {
-      const res = await fetch(ENDPOINTS.berget!.models, { signal: AbortSignal.timeout(15_000) });
-      const j = (await res.json()) as { data?: Array<{ id: string; pricing?: { input?: number; output?: number; currency?: string } }> };
-      const m = j.data?.find((x) => x.id === model)?.pricing;
+      if (!bergetList || Date.now() - bergetList.at > 6 * 3600_000) {
+        const res = await fetch(ENDPOINTS.berget!.models, { signal: AbortSignal.timeout(15_000) });
+        bergetList = { at: Date.now(), data: ((await res.json()) as { data?: BergetModel[] }).data ?? [] };
+      }
+      const m = bergetList.data.find((x) => x.id === model)?.pricing;
       if (m?.input == null || m.output == null) return null;
       const rate = (m.currency === 'EUR' ? EUR_TO_USD : 1) / 1e6;
       return { input: m.input * rate, output: m.output * rate, cache_read: m.input * rate, cache_write: m.input * rate };

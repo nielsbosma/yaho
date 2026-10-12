@@ -20,12 +20,29 @@ export interface UpdateState {
   error?: string;
 }
 
-const newer = (a: string, b: string) => {
-  const [pa, pb] = [a, b].map((v) => v.replace(/-.*/, '').split('.').map(Number));
-  for (let i = 0; i < 3; i++) if ((pa![i] ?? 0) !== (pb![i] ?? 0)) return (pa![i] ?? 0) > (pb![i] ?? 0);
-  // Same numbers: a release is newer than its own pre-release.
-  return !a.includes('-') && b.includes('-');
-};
+/** Compare two versions (semver order): above 0 when a is newer. 1.2.0-rc.3 is newer than 1.2.0-rc.2, older than 1.2.0. */
+export function compareVersions(a: string, b: string): number {
+  const parse = (v: string) => {
+    const [core = '', pre] = v.trim().replace(/^v/, '').split(/\s/)[0]!.split(/-(.*)/);
+    return { nums: core.split('.').map((n) => Number(n) || 0), pre: pre ? pre.split('.') : [] };
+  };
+  const [x, y] = [parse(a), parse(b)];
+  for (let i = 0; i < 3; i++) if ((x.nums[i] ?? 0) !== (y.nums[i] ?? 0)) return (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
+  // Same numbers: a release is newer than any of its pre-releases.
+  if (!x.pre.length || !y.pre.length) return y.pre.length - x.pre.length;
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const [p, q] = [x.pre[i], y.pre[i]];
+    if (p === q) continue;
+    if (p === undefined) return -1;
+    if (q === undefined) return 1;
+    const [np, nq] = [Number(p), Number(q)];
+    if (!Number.isNaN(np) && !Number.isNaN(nq)) return np - nq;
+    return p < q ? -1 : 1;
+  }
+  return 0;
+}
+
+const newer = (a: string, b: string) => compareVersions(a, b) > 0;
 
 /**
  * Checks npm for a newer Yaho at start and every six hours (unless turned off), and installs it on request. The app

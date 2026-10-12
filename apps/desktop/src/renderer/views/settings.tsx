@@ -55,18 +55,37 @@ function Check({ label, run }: { label: string; run: () => Promise<string> }) {
   );
 }
 
+/** Equal settings, whatever order their keys were set in; an empty value counts as absent. */
+const canon = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(canon)
+    : v && typeof v === 'object'
+      ? Object.fromEntries(
+          Object.entries(v)
+            .filter(([, x]) => x !== undefined && x !== '')
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([k, x]) => [k, canon(x)]),
+        )
+      : v;
+const same = (a: unknown, b: unknown) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+
 export function SettingsView({ route }: { route: string[] }) {
   const state = useApi<AppState>('/api/state');
   const saved = useApi<Settings>('/api/settings', (e) => e.type === 'changed' && e.entity === 'settings');
   const [s, setS] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
+  /** What the page last loaded: a change elsewhere (the chat, another window) replaces the page only when it has no edits. */
+  const [base, setBase] = useState<Settings | null>(null);
   useEffect(() => {
-    if (saved.data) setS(structuredClone(saved.data));
+    if (!saved.data) return;
+    setS((prev) => (prev && base && !same(prev, base) ? prev : structuredClone(saved.data!)));
+    setBase(saved.data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saved.data]);
   if (!s) return null;
   /** Something differs from what was last loaded or saved. */
-  const dirty = !!saved.data && JSON.stringify(s) !== JSON.stringify(saved.data);
+  const dirty = !!base && same(s, base) === false;
 
   const upd = (fn: (d: Settings) => void) =>
     setS((prev) => {
@@ -75,15 +94,19 @@ export function SettingsView({ route }: { route: string[] }) {
       return next;
     });
 
-  const save = async () => {
+  /** Save; false when it failed (the error shows at the top), so a Test after it stops. */
+  const save = async (): Promise<boolean> => {
     setError(null);
     setOk(false);
     try {
       await api('/api/settings', { method: 'PUT', body: s });
+      setBase(s);
       setOk(true);
       setTimeout(() => setOk(false), 2000);
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     }
   };
 
@@ -140,7 +163,7 @@ export function SettingsView({ route }: { route: string[] }) {
               <Check
                 label="Test Composio"
                 run={async () => {
-                  await save();
+                  if (!(await save())) throw new Error('could not save the settings');
                   const r = await api<Array<{ toolkit: string }>>('/api/composio/connections');
                   return `connected · ${r.length} connection${r.length === 1 ? '' : 's'}`;
                 }}
@@ -262,7 +285,7 @@ export function SettingsView({ route }: { route: string[] }) {
               <Check
                 label="Test Connection"
                 run={async () => {
-                  await save();
+                  if (!(await save())) throw new Error('could not save the settings');
                   const r = await api<{ ok: boolean; error?: string; health?: { version?: string } }>('/api/settings/dopbase/test', {
                     method: 'POST',
                   });
@@ -678,7 +701,7 @@ interface ProviderKind {
  * The model providers: each with its key (kept in Dopbase), a test that lists its models, and which one is the default
  * (model names without a provider prefix go there). Add one per kind; LiteLLM also takes its URL and a master key.
  */
-function ModelProviders({ settings: s, upd, save }: { settings: Settings; upd: (fn: (d: Settings) => void) => void; save: () => Promise<void> }) {
+function ModelProviders({ settings: s, upd, save }: { settings: Settings; upd: (fn: (d: Settings) => void) => void; save: () => Promise<boolean> }) {
   const kinds = useApi<ProviderKind[]>('/api/providers');
   const [adding, setAdding] = useState('');
   const defaultId = s.default_provider ?? s.providers[0]?.id;
@@ -760,7 +783,7 @@ function ModelProviders({ settings: s, upd, save }: { settings: Settings; upd: (
               <Check
                 label="Test"
                 run={async () => {
-                  await save();
+                  if (!(await save())) throw new Error('could not save the settings');
                   const r = await api<{ models: string[] }>(`/api/providers/${p.id}/models`);
                   return `${r.models.length} models: ${r.models.slice(0, 4).join(', ')}${r.models.length > 4 ? '…' : ''}`;
                 }}

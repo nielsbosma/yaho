@@ -69,9 +69,9 @@ export function UpdateBanner() {
           <RotateCw /> Restart Yaho
         </Button>
       )}
-      {!s.status && s.mode === 'npm' && (
+      {(!s.status || s.status === 'failed') && s.mode === 'npm' && (
         <Button size="sm" variant="primary" onClick={() => void install()}>
-          Update Now
+          {s.status === 'failed' ? 'Try Again' : 'Update Now'}
         </Button>
       )}
       {(s.mode === 'manual' || s.status === 'failed') && (

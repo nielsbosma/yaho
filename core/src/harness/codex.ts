@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { asAgent } from './asAgent.ts';
 import { killTree, resolveCommand } from './claudeCode.ts';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
 
@@ -46,7 +47,7 @@ export const codex: HarnessAdapter = {
     const args = [...(run.args ?? []), 'exec', ...(run.resumeSessionId ? ['resume', ...common, run.resumeSessionId] : [...common, '-C', run.cwd]), '-'];
     if (run.env.CODEX_HOME) mkdirSync(run.env.CODEX_HOME, { recursive: true });
     const [command, prefix] = direct(resolveCommand(run.command, run.env));
-    const child = spawn(command, [...prefix, ...args], {
+    const child = spawn(...asAgent(command, [...prefix, ...args]), {
       cwd: run.cwd,
       env: run.env,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -104,8 +105,11 @@ export const codex: HarnessAdapter = {
             });
           break;
         }
-        case 'turn.failed':
-        case 'error': {
+        case 'error':
+          // Codex reports retries ("reconnecting…") this way and carries on; turn.failed is the end.
+          onEvent({ kind: 'stderr', text: String(m.message ?? 'Codex error') });
+          break;
+        case 'turn.failed': {
           gotResult = true;
           const err = (m.error as { message?: string } | undefined)?.message ?? String(m.message ?? 'Codex failed');
           onEvent({ kind: 'result', ok: false, error: err });

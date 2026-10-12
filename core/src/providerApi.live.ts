@@ -42,7 +42,7 @@ for (const [p, model] of providers) {
     line.push(`chat: ${(e as Error).message.replace(/\s+/g, ' ').slice(0, 110)}`);
   }
   try {
-    const a = await jobAccess(s, p, { models: [model], remaining: 1, agent: 'x', job: 'x' });
+    const a = await jobAccess(s, p, { models: [model], remaining: 1, agent: 'x', job: 'x', harness: 'codex' });
     line.push(`jobs: ${a.budget}, ${Object.keys(a.env).join('+')}`);
   } catch (e) {
     line.push(`jobs: ${(e as Error).message.slice(0, 60)}`);

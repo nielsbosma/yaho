@@ -186,14 +186,21 @@ export class JobRunner {
       remaining,
       agent: agent.name,
       job: job.id,
+      harness: agent.harness,
       bridge: { apiUrl: ctx.apiUrl, token },
     });
     r.capped = access.capped;
     const secrets = await envForAgent(ctx, agent.resources);
     for (const w of secrets.warnings) addJobEvent(ctx, job.id, 'system', { text: w });
 
+    // Background calls (titles, summaries) go to the same provider: the agent's last model served by it.
+    const background =
+      agent.models
+        .map((m) => resolveModel(settings, m))
+        .filter((x) => x.provider.id === provider.id)
+        .at(-1)?.model ?? providerModel;
     const env: Record<string, string> = {};
-    // Never inherit another Claude session's identity or credentials: the harness talks to LiteLLM only.
+    // Never inherit another Claude session's identity or credentials: the harness talks only to the provider Yaho gives it.
     // The server password and other model credentials never reach a job.
     const skip = /^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|YAHO_PASSWORD|YAHO_SERVER)$/;
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !skip.test(k)) env[k] = v;
@@ -206,12 +213,12 @@ export class JobRunner {
       YAHO_JOB: job.id,
       YAHO_AGENT_DB: join(cwd, 'agent.db'),
       ...access.env,
-      // Codex keeps its sessions and settings here, apart from the person's own ~/.codex.
-      // Per agent: Codex keeps its sessions there, and one agent must not read another's.
+      // Codex keeps its sessions and settings here, apart from the person's own ~/.codex; one folder per agent, so one
+      // agent cannot read another's.
       CODEX_HOME: join(ctx.paths.root, 'codex', agent.name),
       // Background calls (titles, summaries) must also use a model the provider knows.
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,
-      ANTHROPIC_SMALL_FAST_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: background,
+      ANTHROPIC_SMALL_FAST_MODEL: background,
       DISABLE_TELEMETRY: '1',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     });
@@ -273,8 +280,8 @@ export class JobRunner {
       case 'result':
         if (e.summary)
           ctx.db.prepare('UPDATE sessions SET last_state = ?, updated = ? WHERE id = ?').run(e.summary.slice(0, 4000), now(), sessionId);
-        // The harness's own total. With a capped key it only raises the cost: the provider's usage can lag behind (OpenRouter).
-        if (typeof e.cost_usd === 'number' && (!r.capped || r.baseCost + e.cost_usd > getJob(this.ctx, r.job).cost_usd)) this.setCost(r, r.baseCost + e.cost_usd);
+        // The harness's own total only ever raises the cost: the provider's usage and the estimate from tokens may be higher.
+        if (typeof e.cost_usd === 'number' && r.baseCost + e.cost_usd > getJob(this.ctx, r.job).cost_usd) this.setCost(r, r.baseCost + e.cost_usd);
         if (!e.ok && !r.ending) {
           const budget = /budget/i.test(e.error ?? '');
           r.ending = { status: budget ? 'budget_exhausted' : 'failed', reason: e.error };

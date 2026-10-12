@@ -42,7 +42,7 @@ export function resolveModel(s: Settings, name: string): { provider: ProviderCon
   return { provider: defaultProvider(s), model: name };
 }
 
-/** The LiteLLM provider, the only kind that works today. */
+/** The first LiteLLM provider, for what needs one when no provider is named. */
 export function litellmProvider(s: Settings): ProviderConfig & { url: string } {
   const p = s.providers.find((x) => x.kind === 'litellm');
   if (!p) throw new Error('no LiteLLM provider is set up; add one in Settings');

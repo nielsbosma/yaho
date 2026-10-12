@@ -1,11 +1,14 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Ctx } from './context.ts';
 import { resolveModel } from './providers.ts';
 import { harnessFits, jobAccess, listModels } from './providerApi.ts';
 import { codex } from './harness/codex.ts';
+import { asAgent } from './harness/asAgent.ts';
+import { resolveCommand } from './harness/claudeCode.ts';
+import { compareVersions } from './updates.ts';
 import type { HarnessEvent } from './harness/types.ts';
 
 /** The oldest Claude Code Yaho is known to work with. */
@@ -29,14 +32,17 @@ export interface ClaudeCheck {
 let last: ClaudeCheck | null = null;
 export const lastClaudeCheck = () => last;
 
-function run(cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, timeoutMs: number): Promise<{ code: number | null; out: string; err: string }> {
+function run(cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, timeoutMs: number, input = ''): Promise<{ code: number | null; out: string; err: string }> {
   return new Promise((resolve) => {
     let out = '';
     let err = '';
     let child: ReturnType<typeof spawn>;
     try {
-      // On Windows a command may be a .cmd shim, which only a shell can start.
-      child = spawn(cmd, args, { env, cwd, shell: process.platform === 'win32', windowsHide: true });
+      // Only a .cmd shim needs a shell (which splits arguments on spaces): keep its arguments to single words and send
+      // anything longer over stdin.
+      const full = resolveCommand(cmd, env);
+      const shell = /\.(cmd|bat)$/i.test(full);
+      child = spawn(...asAgent(shell && full.includes(' ') ? `"${full}"` : full, args), { env, cwd, shell, windowsHide: true });
     } catch (e) {
       return resolve({ code: -1, out: '', err: (e as Error).message });
     }
@@ -46,7 +52,7 @@ function run(cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, t
     }, timeoutMs);
     child.stdout?.on('data', (d) => (out += d));
     child.stderr?.on('data', (d) => (err += d));
-    child.stdin?.end();
+    child.stdin?.end(input);
     child.on('error', (e) => (err += e.message));
     child.on('close', (code) => {
       clearTimeout(timer);
@@ -55,12 +61,8 @@ function run(cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, t
   });
 }
 
-const newer = (a: string, b: string) => {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
-  return true;
-};
+/** At least the minimum version. */
+const newer = (a: string, min: string) => compareVersions(a, min) >= 0;
 
 /**
  * Is Claude Code installed, recent enough, and able to answer through Yaho's provider? The last step is a real run,
@@ -73,6 +75,8 @@ export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
   const skip = /^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|YAHO_PASSWORD|YAHO_SERVER)$/;
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !skip.test(k)) env[k] = v;
   const dir = mkdtempSync(join(tmpdir(), 'yaho-check-'));
+  // On the server the check runs as the agents' user, who must be able to work in it.
+  if (process.env.YAHO_AGENT_UID) chmodSync(dir, 0o777);
   try {
     const v = await run(cmd, ['--version'], env, dir, 20_000);
     if (v.code !== 0) {
@@ -92,7 +96,7 @@ export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
     const chosen = ctx.settings.defaults.models[0];
     const resolved = chosen ? resolveModel(ctx.settings, chosen) : undefined;
     const model = resolved?.model;
-    const access = resolved ? await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '', bridge: { apiUrl: ctx.apiUrl, token: ctx.apiToken } }).catch(() => null) : null;
+    const access = resolved ? await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '', harness: 'claude-code', bridge: { apiUrl: ctx.apiUrl, token: ctx.apiToken } }).catch(() => null) : null;
     if (!model || !access) {
       r.failed = 'provider';
       r.error = 'Set the model provider (URL, key and a default model) first.';
@@ -108,7 +112,7 @@ export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
       DISABLE_TELEMETRY: '1',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     });
-    const t = await run(cmd, ['-p', 'Reply with the single word OK.', '--model', model], env, dir, 90_000);
+    const t = await run(cmd, ['-p', '--model', model], env, dir, 90_000, 'Reply with the single word OK.');
     // Any answer counts: the model may phrase it its own way. Notices Claude Code prints on stderr are not errors.
     r.works = t.code === 0 && t.out.length > 0;
     if (!r.works) {
@@ -144,6 +148,8 @@ export async function checkCodex(ctx: Ctx): Promise<ClaudeCheck> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/^(YAHO_PASSWORD|YAHO_SERVER)$/.test(k)) env[k] = v;
   const dir = mkdtempSync(join(tmpdir(), 'yaho-check-'));
+  // On the server the check runs as the agents' user, who must be able to work in it.
+  if (process.env.YAHO_AGENT_UID) chmodSync(dir, 0o777);
   try {
     const v = await run(cmd, ['--version'], env, dir, 20_000);
     if (v.code !== 0) {
@@ -180,7 +186,7 @@ export async function checkCodex(ctx: Ctx): Promise<ClaudeCheck> {
       model = fromDefaults?.model ?? (await listModels(ctx.settings, resolved.provider).catch(() => [] as string[])).find(gpt) ?? model;
     }
     r.model = model;
-    const access = await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '' });
+    const access = await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '', harness: 'codex' });
     const events: HarnessEvent[] = [];
     const proc = codex.start(
       {

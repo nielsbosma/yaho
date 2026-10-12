@@ -3,6 +3,7 @@ import { appendFileSync, existsSync } from 'node:fs';
 import { delimiter, extname, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
+import { asAgent } from './asAgent.ts';
 
 const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more chars)` : s);
 
@@ -68,7 +69,7 @@ export const claudeCode: HarnessAdapter = {
     // Claude Code stops itself once its own spend estimate reaches this; Yaho passes what the agent has left.
     if (run.maxBudgetUsd !== undefined) args.push('--max-budget-usd', run.maxBudgetUsd.toFixed(4));
     const command = resolveCommand(run.command, run.env);
-    const child = spawn(command, args, {
+    const child = spawn(...asAgent(command, args), {
       cwd: run.cwd,
       env: run.env,
       stdio: ['pipe', 'pipe', 'pipe'],

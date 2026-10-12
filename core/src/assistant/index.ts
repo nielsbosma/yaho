@@ -539,6 +539,8 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
     const msg = j.choices[0]!.message;
     /** The reply hit the output limit: its tool calls are incomplete and must not run. */
     const cut = j.choices[0]!.finish_reason === 'length';
+    // A cut-off call's arguments are half a JSON object: keep '{}' in the history, or the next round's request breaks.
+    if (cut) for (const c of msg.tool_calls ?? []) c.function.arguments = '{}';
     messages.push({ role: 'assistant', content: msg.content ?? '', ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}) });
     if (!msg.tool_calls?.length) {
       answered = true;

@@ -20,8 +20,8 @@ export const providerOf = (model: string) => PROVIDERS.find(([re]) => re.test(mo
 
 /**
  * Pick the models an agent may use, from what the model providers offer (models on providers other than the default
- * are named "<provider>/<model>"). Order matters: the first is the one jobs
- * run with, the last also serves Claude Code's small background calls.
+ * are named "<provider>/<model>"). Order matters: the first is the one jobs run with; the last on the same provider
+ * also serves Claude Code's small background calls.
  */
 export function ModelPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
   const available = useApi<{ models: string[]; provider_of: Record<string, string> }>('/api/models');
@@ -52,7 +52,7 @@ export function ModelPicker({ value, onChange }: { value: string[]; onChange: (v
     const g = new Map<string, string[]>();
     for (const m of matches) g.set(groupOf(m), [...(g.get(groupOf(m)) ?? []), m]);
     return [...g.entries()].sort(([a], [b]) => (a === 'Other' ? 1 : b === 'Other' ? -1 : a.localeCompare(b)));
-  }, [matches]);
+  }, [matches, available.data]);
   const flat = groups.flatMap(([, ms]) => ms);
   // Typing a name the proxy did not list still works: LiteLLM may route names it does not advertise.
   const custom = q && !models.some((m) => m.toLowerCase() === q) && !value.includes(query.trim()) ? query.trim() : null;
