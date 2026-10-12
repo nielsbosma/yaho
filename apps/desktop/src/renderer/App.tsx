@@ -8,6 +8,7 @@ import { platform } from './lib/platform.ts';
 import { go, useRoute } from './lib/router.ts';
 import { views } from './views/index.tsx';
 import { Onboarding } from './views/onboarding.tsx';
+import { SignIn } from './views/signin.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 
 export interface AppState {
@@ -21,9 +22,37 @@ export interface AppState {
   debug?: boolean;
   /** The first-run setup is done; until then the app shows it instead of the pages. */
   onboarded?: boolean;
+  /** The server version (Docker): password sign-in, no desktop features. */
+  server?: boolean;
 }
 
+/**
+ * In front of the app. The desktop has its token; a browser without one asks the core whether it is the server version
+ * (Docker) and shows Sign In until a session cookie exists.
+ */
 export function App() {
+  const [session, setSession] = useState<{ server: boolean; signed_in: boolean } | null>(null);
+  const check = () =>
+    void fetch(new URL('/api/session', platform.apiUrl))
+      .then((r) => r.json())
+      .then(setSession)
+      .catch(() => setSession({ server: false, signed_in: false }));
+  useEffect(() => {
+    if (!platform.token) check();
+  }, []);
+  if (platform.token) return <Main />;
+  if (!session) return null;
+  if (session.server && !session.signed_in) return <SignIn onSignedIn={check} />;
+  if (session.server) return <Main />;
+  return (
+    <div className="flex h-full items-center justify-center p-8 text-center text-muted">
+      Open this page with <code className="mx-1">?token=…</code> (the token is in the data directory's{' '}
+      <code className="mx-1">api-token</code> file).
+    </div>
+  );
+}
+
+function Main() {
   const route = useRoute();
   const [connected, setConnected] = useState(true);
   // The chat starts closed on every launch; Ctrl+J or the sidebar button opens it.
@@ -80,15 +109,6 @@ export function App() {
   useEffect(() => {
     platform.setBadge(state.data?.unread ?? 0);
   }, [state.data?.unread]);
-
-  if (!platform.token) {
-    return (
-      <div className="flex h-full items-center justify-center p-8 text-center text-muted">
-        Open this page with <code className="mx-1">?token=…</code> (the token is in the data directory's{' '}
-        <code className="mx-1">api-token</code> file).
-      </div>
-    );
-  }
 
   if (state.data && state.data.onboarded === false) return <Onboarding onDone={() => void state.reload()} />;
 

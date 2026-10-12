@@ -271,6 +271,7 @@ export function SettingsView() {
             </Field>
           </Card>
         </Section>
+        {state.data?.server && <ServerAccess />}
         <Section title="Updates">
           <Card className="space-y-4 p-4">
             <Switch
@@ -611,5 +612,56 @@ function SlackSettings({
         </p>
       )}
     </Card>
+  );
+}
+
+/** Server version: sign out, end every session, and the API token for the CLI and scripts (after the password). */
+function ServerAccess() {
+  const [password, setPassword] = useState('');
+  const [token, setToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const signOut = async (everywhere: boolean) => {
+    if (everywhere) await api('/api/session/revoke-all', { method: 'POST' });
+    await fetch('/api/session', { method: 'DELETE' });
+    location.reload();
+  };
+  return (
+    <Section title="Server Access">
+      <Card className="space-y-4 p-4">
+        <p className="text-sm text-muted">
+          The password is YAHO_PASSWORD in this server's deploy settings. Change it there and redeploy; that also signs everyone out.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => void signOut(false)}>Sign Out</Button>
+          <Button onClick={() => void signOut(true)}>Sign Out Everywhere</Button>
+        </div>
+        <Field label="API Token" hint="For the yaho CLI and scripts. Enter the password to show it.">
+          {token ? (
+            <code className="block rounded-lg bg-code px-3 py-2 text-xs break-all select-all">{token}</code>
+          ) : (
+            <form
+              className="flex gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setError(null);
+                try {
+                  setToken((await api<{ token: string }>('/api/session/token', { body: { password } })).token);
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              }}
+            >
+              <div className="flex-1">
+                <Input type="password" value={password} placeholder="Password" onChange={(e) => setPassword(e.target.value)} />
+              </div>
+              <Button type="submit" disabled={!password}>
+                Show Token
+              </Button>
+            </form>
+          )}
+        </Field>
+        <ErrorNote>{error}</ErrorNote>
+      </Card>
+    </Section>
   );
 }

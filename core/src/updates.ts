@@ -3,6 +3,8 @@ import type { Ctx } from './context.ts';
 
 export const PACKAGE = '@bosmainteractive/yaho';
 const SIX_HOURS = 6 * 3600_000;
+/** The server version updates by pulling the new image; Sliplane does that on a redeploy. */
+const SERVER_UPDATE = 'On Sliplane: redeploy the service. With Docker: docker compose pull && docker compose up -d (or docker pull ghcr.io/nielsbosma/yaho:latest and start the container again).';
 
 export interface UpdateState {
   current: string;
@@ -40,7 +42,7 @@ export class Updates {
       current,
       available: false,
       mode: process.env.YAHO_INSTALL === 'npm' ? 'npm' : 'manual',
-      command: `npm i -g ${PACKAGE}@${channel}`,
+      command: process.env.YAHO_SERVER === '1' ? SERVER_UPDATE : `npm i -g ${PACKAGE}@${channel}`,
     };
   }
 
@@ -69,7 +71,7 @@ export class Updates {
       Object.assign(this.state, {
         latest,
         available: !!latest && newer(latest, this.state.current),
-        command: `npm i -g ${PACKAGE}@${channel}`,
+        command: process.env.YAHO_SERVER === '1' ? SERVER_UPDATE : `npm i -g ${PACKAGE}@${channel}`,
         notes_url: latest ? `https://github.com/nielsbosma/yaho/releases/tag/v${latest}` : undefined,
         checked_at: new Date().toISOString(),
       });

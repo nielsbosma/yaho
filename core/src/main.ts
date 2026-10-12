@@ -17,6 +17,7 @@ serve({
   dataDir: values['data-dir'],
   webRoot: values['web-root'],
 }).catch((e) => {
-  console.error(e);
+  // A start-up refusal (no YAHO_PASSWORD on a server) reads best as one line.
+  console.error(e instanceof Error ? `yaho: ${e.message}` : e);
   process.exit(1);
 });

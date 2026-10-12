@@ -161,7 +161,8 @@ export async function launcher(cmd: string | undefined, args: string[]): Promise
     }
     case 'doctor': {
       console.log(`yaho ${version()} (${process.platform}-${process.arch}, Node ${process.versions.node})`);
-      let ok = check('app', () => findApp());
+      // The server version (Docker) has no desktop app to find.
+      let ok = process.env.YAHO_SERVER === '1' ? true : check('app', () => findApp());
       ok = check('Node 22.17 or later', () => {
         const [maj, min] = process.versions.node.split('.').map(Number);
         if (maj! < 22 || (maj === 22 && min! < 17)) throw new Error(`Node ${process.versions.node} is too old`);

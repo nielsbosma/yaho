@@ -1,0 +1,12 @@
+# Only what the image build needs: sources, the lockfile and the tools.
+node_modules
+**/node_modules
+apps/desktop/build
+apps/desktop/release
+apps/desktop/dist
+vendor
+.plan
+.git
+.github
+.claude
+*.log

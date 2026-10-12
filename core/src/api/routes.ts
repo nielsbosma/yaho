@@ -6,6 +6,7 @@ import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
 import { checkClaude, lastClaudeCheck } from '../checks.ts';
 import { PROVIDERS } from '../providers.ts';
+import { revealToken, serverMode } from './session.ts';
 import { applySettingsUpdate, publicSettings, storeSecrets } from '../secrets/settingsSecrets.ts';
 import type { Ctx } from '../context.ts';
 import { chat, type ChatFocus, type ChatMessage } from '../assistant/index.ts';
@@ -66,6 +67,8 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('GET', '/api/state', () => ({
     version: yahoVersion(),
     onboarded: !!ctx.settings.onboarded_at,
+    /** The server version (Docker): signs in with a password, has no desktop features. */
+    server: serverMode(),
     unread: s.unreadCount(ctx),
     running: ctx.db.prepare("SELECT COUNT(*) n FROM jobs WHERE status = 'running'").get()!.n,
     queued: ctx.db.prepare("SELECT COUNT(*) n FROM jobs WHERE status = 'queued'").get()!.n,
@@ -111,6 +114,13 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return { onboarded: false };
   });
   r.on('GET', '/api/providers', () => PROVIDERS);
+  // Server version: end every session (the current one too), and show the API token after the password.
+  r.on('POST', '/api/session/revoke-all', () => {
+    ctx.settings.server.session_epoch = (ctx.settings.server.session_epoch ?? 0) + 1;
+    saveSettings(ctx.settings);
+    return { revoked: true };
+  });
+  r.on('POST', '/api/session/token', async (req) => revealToken(ctx, req.raw, (await req.body<{ password?: string }>()).password));
   r.on('GET', '/api/update', () => ctx.updates?.state ?? null);
   r.on('POST', '/api/update/check', () => ctx.updates?.check());
   r.on('POST', '/api/update/install', () => {

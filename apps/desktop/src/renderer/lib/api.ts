@@ -11,7 +11,7 @@ export class ApiError extends Error {
 
 export const url = (path: string, params: Record<string, string> = {}) => {
   const u = new URL(path, platform.apiUrl);
-  u.searchParams.set('token', platform.token);
+  if (platform.token) u.searchParams.set('token', platform.token);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   return u.toString();
 };
@@ -20,7 +20,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   const res = await fetch(new URL(path, platform.apiUrl), {
     method: init.method ?? (init.body !== undefined || init.raw !== undefined ? 'POST' : 'GET'),
     headers: {
-      Authorization: `Bearer ${platform.token}`,
+      ...(platform.token ? { Authorization: `Bearer ${platform.token}` } : {}),
       ...(init.raw !== undefined ? { 'Content-Type': 'application/octet-stream' } : { 'Content-Type': 'application/json' }),
     },
     body: init.raw ?? (init.body === undefined ? undefined : JSON.stringify(init.body)),

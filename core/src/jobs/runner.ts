@@ -188,7 +188,8 @@ export class JobRunner {
 
     const env: Record<string, string> = {};
     // Never inherit another Claude session's identity or credentials: the harness talks to LiteLLM only.
-    const skip = /^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL)$/;
+    // The server password and other model credentials never reach a job.
+    const skip = /^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|YAHO_PASSWORD|YAHO_SERVER)$/;
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !skip.test(k)) env[k] = v;
     const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
     Object.assign(env, secrets.env, {

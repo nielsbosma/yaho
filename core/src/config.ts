@@ -6,7 +6,8 @@ import YAML from 'yaml';
 
 /** Global settings, stored as settings.yaml in the data directory. */
 export interface Settings {
-  server: { host: string; port: number };
+  /** session_epoch: raised by Sign Out Everywhere (server version), which ends every session. */
+  server: { host: string; port: number; session_epoch?: number };
   harnesses: Record<string, { command: string; args?: string[] }>;
   /**
    * Where models come from. Only kind litellm works today (see providers.ts for the ones coming). A model name may name

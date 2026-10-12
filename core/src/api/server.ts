@@ -6,6 +6,7 @@ import type { Ctx, BusEvent } from '../context.ts';
 import { HttpError } from '../store.ts';
 import { OPEN_PATHS } from './fonts.ts';
 import { Router, parseBody, readBytes, send, type Req } from './http.ts';
+import { serverMode, sessionRoute, sessionValid } from './session.ts';
 
 export const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -86,9 +87,12 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
     const url = new URL(raw.url ?? '/', 'http://local');
     const path = url.pathname;
     const wantsYaml = !!raw.headers.accept?.includes('yaml');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    // The desktop's UI runs on another origin in development; a server only answers its own pages.
+    if (!serverMode()) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    }
     if (raw.method === 'OPTIONS') {
       res.writeHead(204).end();
       return;
@@ -97,9 +101,13 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
       if (path === '/api/health') return send(res, 200, { ok: true, name: 'yaho', pid: process.pid }, wantsYaml);
 
       if (path.startsWith('/api/')) {
-        // Font files are the only open routes: CSS url() cannot carry a token.
+        // Sign in and out (server version) are open, like health.
+        const session = await sessionRoute(ctx, raw, res, path, async () => (parseBody(await readBytes(raw), raw.headers['content-type']) ?? {}) as Record<string, unknown>);
+        if (session !== undefined) return send(res, 200, session, wantsYaml);
+        // Font files are the only other open routes: CSS url() cannot carry a token.
         const caller =
           authenticate(ctx, bearer(raw, url.searchParams)) ??
+          (sessionValid(ctx, raw, res) ? { kind: 'human' as const } : null) ??
           (OPEN_PATHS.test(path) && raw.method === 'GET' ? { kind: 'human' as const } : null);
         if (!caller) throw new HttpError(401, 'missing or invalid token');
 

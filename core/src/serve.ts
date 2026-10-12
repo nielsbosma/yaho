@@ -17,6 +17,7 @@ import { SlackBridge } from './slack/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
+import { checkServerPassword, serverMode } from './api/session.ts';
 
 // node:sqlite prints an ExperimentalWarning on Node 22; it is expected.
 process.removeAllListeners('warning');
@@ -28,6 +29,7 @@ export async function serve(
   if (opts.dataDir) process.env.YAHO_DATA_DIR = opts.dataDir;
   const p = paths();
   mkdirSync(p.root, { recursive: true });
+  checkServerPassword();
   const settings = loadSettings();
   const ctx: Ctx = { db: openDb(p.db), settings, paths: p, apiToken: apiToken(), bus: new Bus(), apiUrl: '' };
 
@@ -55,7 +57,8 @@ export async function serve(
   composioRoutes(ctx, router);
   writeShims(ctx);
 
-  const host = opts.host ?? settings.server.host;
+  // In a container the port must be reachable from outside it; the password guards it.
+  const host = opts.host ?? (serverMode() ? '0.0.0.0' : settings.server.host);
   const port = opts.port ?? Number(process.env.YAHO_PORT ?? settings.server.port);
   const here = dirname(fileURLToPath(import.meta.url));
   const webRoot = opts.webRoot ?? process.env.YAHO_WEB_ROOT ?? join(here, '../../apps/desktop/dist/renderer');

@@ -1,6 +1,7 @@
 // Build Yaho for the OS this runs on: bundle every process, stage them side by side, run electron-builder.
 //   node tools/package.mjs            -> the installer: Yaho Setup <version>.exe, Yaho-<version>.dmg or an AppImage
 //   node tools/package.mjs --dir      -> the unpacked app only (faster, for testing)
+//   node tools/package.mjs --stage    -> only the bundles in apps/desktop/build/app (core, cli, renderer), for the server image
 //   node tools/package.mjs --npm      -> also the two npm packages, from the unpacked app, in apps/desktop/release/npm:
 //                                        @bosmainteractive/yaho (launcher + CLI) and @bosmainteractive/yaho-<os>-<arch>
 // Signing happens inside electron-builder when CI provides the identity (see .github/workflows/release.yml).
@@ -64,6 +65,15 @@ for (const [dir, want] of [
 }
 
 cpSync(join(repo, 'briefings'), join(stage, 'briefings'), { recursive: true });
+
+// --stage: the bundles only, for the server image (docker/Dockerfile), which adds Node, Dopbase and Claude Code itself.
+if (process.argv.includes('--stage')) {
+  cpSync(join(repo, 'examples'), join(stage, 'examples'), { recursive: true });
+  // The version the core and the CLI report.
+  writeFileSync(join(stage, 'package.json'), JSON.stringify({ name: 'yaho', version, private: true, type: 'module' }, null, 2));
+  console.log(`\nStaged: ${stage}`);
+  process.exit(0);
+}
 
 console.log('\n== dopbase');
 const dopbaseExe = process.platform === 'win32' ? 'dopbase.exe' : 'dopbase';

@@ -67,7 +67,7 @@ export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
   const cmd = ctx.settings.harnesses['claude-code']?.command ?? 'claude';
   const r: ClaudeCheck = { checked_at: new Date().toISOString(), installed: false };
   const env: NodeJS.ProcessEnv = {};
-  const skip = /^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL)$/;
+  const skip = /^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|YAHO_PASSWORD|YAHO_SERVER)$/;
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !skip.test(k)) env[k] = v;
   const dir = mkdtempSync(join(tmpdir(), 'yaho-check-'));
   try {

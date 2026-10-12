@@ -3,6 +3,7 @@
 #   A GitHub release (tag vX.Y.Z)  -> builds, signs, publishes to npm, attaches the installers to the release.
 #                                     A pre-release tag (v0.2.0-rc.1) publishes under the npm tag "next".
 #   Run by hand (publish: false)   -> builds and signs everything, publishes nothing: a dry run.
+#   Both also build Yaho Server (docker/Dockerfile) for amd64 and arm64; a release pushes it to ghcr.io/nielsbosma/yaho.
 #
 # Signing: Windows with Azure Artifact Signing (OIDC, no secret; tools/setup-signing.ps1 sets it up), macOS with the
 # Developer ID certificate and notarization (secrets MACOS_CERTIFICATE, MACOS_CERTIFICATE_PWD, APPLE_API_KEY_P8,
@@ -233,3 +234,110 @@ jobs:
           find dist -maxdepth 2 -path 'dist/installer-*' -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \) -exec cp {} out/ \;
           (cd out && sha256sum * > SHA256SUMS)
           gh release upload "${{ github.ref_name }}" out/* --repo "${{ github.repository }}" --clobber
+
+  # ---- Yaho Server: the Docker image, built natively per architecture, then joined into one multi-arch image ----
+  image:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, platform: linux/amd64, arch: amd64 }
+          - { os: ubuntu-24.04-arm, platform: linux/arm64, arch: arm64 }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set the version
+        run: node -e "const f='package.json',p=require('./'+f);p.version='${{ needs.check.outputs.version }}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: yaho:smoke
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+      # The server refuses to run without a password or a volume, signs in with the password, and keeps its data
+      # through a restart.
+      - name: Smoke test
+        run: |
+          set -e
+          ! docker run --rm -v yaho-smoke:/data yaho:smoke 2>err.txt; grep -q YAHO_PASSWORD err.txt
+          ! docker run --rm -e YAHO_PASSWORD=smoke-password-1234 yaho:smoke 2>err.txt; grep -q 'No volume on /data' err.txt
+          docker run -d --name y -p 4700:4700 -v yaho-smoke:/data -e YAHO_PASSWORD=smoke-password-1234 yaho:smoke
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:4700/api/health && break; sleep 2; done; echo
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4700/api/agents)" = 401
+          curl -fsS -c jar -H 'Content-Type: application/json' -d '{"password":"smoke-password-1234"}' http://127.0.0.1:4700/api/session
+          curl -fsS -b jar -X POST -H 'Content-Type: application/json' -d '{"name":"smoke","briefing":"Smoke test.","enabled":false}' http://127.0.0.1:4700/api/agents > /dev/null
+          docker exec y sh -c 'echo kept > /data/home/.claude-smoke'
+          docker restart y
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:4700/api/health && break; sleep 2; done; echo
+          curl -fsS -b jar http://127.0.0.1:4700/api/agents | grep -q '"smoke"'
+          docker exec y cat /data/home/.claude-smoke | grep -q kept
+          docker exec y yaho doctor || true
+          docker exec y claude --version
+          docker logs y | tail -20
+      - name: Push by digest
+        id: push
+        if: github.event_name == 'release' || inputs.publish
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+      - if: github.event_name == 'release' || inputs.publish
+        run: |
+          mkdir -p digests
+          d="${{ steps.push.outputs.digest }}"
+          touch "digests/${d#sha256:}"
+      - if: github.event_name == 'release' || inputs.publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: digests/*
+          retention-days: 1
+
+  image-publish:
+    needs: [check, image, publish]
+    if: github.event_name == 'release' || inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: digests
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag the multi-arch image
+        working-directory: digests
+        env:
+          V: ${{ needs.check.outputs.version }}
+          TAG: ${{ needs.check.outputs.npm_tag }}
+        run: |
+          repo="ghcr.io/${{ github.repository }}"
+          tags="-t $repo:$V -t $repo:$TAG"
+          case "$V" in *-*) ;; *) tags="$tags -t $repo:${V%.*}" ;; esac
+          docker buildx imagetools create $tags $(printf "$repo@sha256:%s " *)
+          docker buildx imagetools inspect "$repo:$V"
