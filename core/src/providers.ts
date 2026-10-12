@@ -17,7 +17,7 @@ export const PROVIDERS: ProviderInfo[] = [
   { kind: 'anthropic', label: 'Anthropic', available: true, description: 'Claude models with an Anthropic API key.' },
   { kind: 'openrouter', label: 'OpenRouter', available: true, description: 'Claude models through your OpenRouter key; more models in the chat.' },
   { kind: 'opper', label: 'Opper.AI', available: true, description: 'Hundreds of models through Opper, hosted in the EU.' },
-  { kind: 'berget', label: 'Berget.AI', available: false, description: 'Open models hosted in the EU by Berget.' },
+  { kind: 'berget', label: 'Berget.AI', available: true, description: 'Open models hosted in the EU by Berget.' },
 ];
 
 /** The provider for model names without one: default_provider, or the first. */

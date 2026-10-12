@@ -183,6 +183,7 @@ export class JobRunner {
       remaining,
       agent: agent.name,
       job: job.id,
+      bridge: { apiUrl: ctx.apiUrl, token },
     });
     if (provider.kind === 'litellm') r.liteKey = access.jobKey;
     const secrets = await envForAgent(ctx, agent.resources);

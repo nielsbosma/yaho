@@ -150,7 +150,11 @@ export interface JobAccess {
 }
 
 /** How a job's Claude Code reaches this provider, with the agent's remaining budget. */
-export async function jobAccess(s: Settings, p: ProviderConfig, o: { models: string[]; remaining: number; agent: string; job: string }): Promise<JobAccess> {
+export async function jobAccess(
+  s: Settings,
+  p: ProviderConfig,
+  o: { models: string[]; remaining: number; agent: string; job: string; bridge?: { apiUrl: string; token: string } },
+): Promise<JobAccess> {
   if (p.kind === 'litellm') {
     if (p.master_key) {
       const jobKey = await createLitellmKey(s, { maxBudget: o.remaining, models: o.models, agent: o.agent, job: o.job });
@@ -162,6 +166,9 @@ export async function jobAccess(s: Settings, p: ProviderConfig, o: { models: str
   if (p.kind === 'anthropic') return { env: { ANTHROPIC_API_KEY: key }, budget: 'counted' };
   const claude = ENDPOINTS[p.kind]?.claude;
   if (claude) return { env: { ANTHROPIC_BASE_URL: p.url ?? claude, ANTHROPIC_AUTH_TOKEN: key, ANTHROPIC_API_KEY: '' }, budget: 'counted' };
+  // Chat Completions only (Berget): Claude Code talks to the core's bridge with its job token; the key stays in the core.
+  if (ENDPOINTS[p.kind] && o.bridge)
+    return { env: { ANTHROPIC_BASE_URL: `${o.bridge.apiUrl}/bridge/${p.id}`, ANTHROPIC_AUTH_TOKEN: o.bridge.token, ANTHROPIC_API_KEY: '' }, budget: 'counted' };
   throw new Error(`provider ${p.id} (${p.kind}) cannot run jobs yet`);
 }
 

@@ -7,6 +7,7 @@ import { HttpError } from '../store.ts';
 import { OPEN_PATHS } from './fonts.ts';
 import { Router, parseBody, readBytes, send, type Req } from './http.ts';
 import { serverMode, sessionRoute, sessionValid } from './session.ts';
+import { handleBridge } from '../bridge.ts';
 
 export const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -99,6 +100,8 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
     }
     try {
       if (path === '/api/health') return send(res, 200, { ok: true, name: 'yaho', pid: process.pid }, wantsYaml);
+      // Claude Code to Chat Completions providers (bridge.ts); it checks the job token itself.
+      if (path.startsWith('/bridge/') && (await handleBridge(ctx, raw, res, path, () => readBytes(raw)))) return;
 
       if (path.startsWith('/api/')) {
         // Sign in and out (server version) are open, like health.

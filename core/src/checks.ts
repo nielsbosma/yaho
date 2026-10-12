@@ -90,7 +90,7 @@ export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
     const chosen = ctx.settings.defaults.models[0];
     const resolved = chosen ? resolveModel(ctx.settings, chosen) : undefined;
     const model = resolved?.model;
-    const access = resolved ? await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '' }).catch(() => null) : null;
+    const access = resolved ? await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '', bridge: { apiUrl: ctx.apiUrl, token: ctx.apiToken } }).catch(() => null) : null;
     if (!model || !access) {
       r.failed = 'provider';
       r.error = 'Set the model provider (URL, key and a default model) first.';
