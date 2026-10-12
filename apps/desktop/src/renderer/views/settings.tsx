@@ -299,7 +299,8 @@ export function SettingsView() {
                 <Input value={h.command} onChange={(e) => upd((d) => void (d.harnesses[name]!.command = e.target.value))} />
               </Field>
             ))}
-            {s.harnesses['claude-code'] && (
+            {/* Needs Chrome on the same machine: not on the server version. */}
+            {s.harnesses['claude-code'] && !state.data?.server && (
               <label className="flex items-start gap-3 pt-1 text-sm">
                 <Switch
                   checked={!!s.harnesses['claude-code'].args?.includes('--chrome')}

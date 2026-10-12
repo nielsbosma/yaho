@@ -254,10 +254,6 @@ function ModelsStep({ settings }: { settings: SetupSettings }) {
           </Field>
         </div>
       )}
-      <p className="text-xs text-muted">
-        No LiteLLM yet? Run one locally with Docker:{' '}
-        <code className="break-all">docker run -p 4000:4000 ghcr.io/berriai/litellm:main-latest</code>, then add your Anthropic or OpenAI key to it.
-      </p>
     </div>
   );
 }
