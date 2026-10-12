@@ -10,6 +10,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lost, setLost] = useState(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -30,15 +31,24 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
     <div className="flex h-full items-center justify-center bg-sidebar p-4">
       <form onSubmit={(e) => void submit(e)} className="w-full max-w-sm space-y-4 rounded-2xl border border-line bg-panel p-6 shadow-sm">
         <Wordmark className="h-8" />
-        <div>
-          <h1 className="font-serif text-2xl">Sign In</h1>
-          <p className="mt-1 text-sm text-muted">The password is the one set as YAHO_PASSWORD when this server was deployed.</p>
-        </div>
+        <h1 className="font-serif text-2xl">Sign In</h1>
         <ErrorNote>{error}</ErrorNote>
         <Input type="password" autoFocus autoComplete="current-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         <Button type="submit" variant="primary" className="w-full" disabled={!password || busy}>
           {busy ? <Loader2 className="animate-spin" /> : null} Sign In <ArrowRight />
         </Button>
+        <div className="text-center text-xs">
+          {lost ? (
+            <p className="text-muted">
+              The password is YAHO_PASSWORD in this server's deploy settings (on Sliplane: the service's environment variables). Change it
+              there and redeploy to set a new one.
+            </p>
+          ) : (
+            <button type="button" onClick={() => setLost(true)} className="cursor-pointer text-muted hover:text-ink hover:underline">
+              Lost Your Password?
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );
