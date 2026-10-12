@@ -1,9 +1,5 @@
 import { ArrowLeft, ArrowRight, Check, Cpu, Loader2, X } from 'lucide-react';
-import anthropicLogo from '../assets/providers/anthropic.svg';
-import bergetLogo from '../assets/providers/berget.svg';
-import litellmLogo from '../assets/providers/litellm.svg';
-import openrouterLogo from '../assets/providers/openrouter.svg';
-import opperLogo from '../assets/providers/opper.svg';
+import { BRAND_LOGOS, BrandLogo } from '../components/BrandLogo.tsx';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Wordmark } from '../components/Wordmark.tsx';
 import { Button } from '../components/ui/button.tsx';
@@ -42,14 +38,6 @@ export interface ClaudeCheck {
   failed?: 'install' | 'version' | 'provider' | 'harness';
 }
 
-/** Each provider's own mark (assets/providers): Anthropic and OpenRouter from Simple Icons, the rest from their sites. */
-const PROVIDER_LOGOS: Record<string, string> = {
-  litellm: litellmLogo,
-  anthropic: anthropicLogo,
-  openrouter: openrouterLogo,
-  opper: opperLogo,
-  berget: bergetLogo,
-};
 
 const STEPS = ['Welcome', 'Secrets Store', 'Models', 'Claude Code', 'Budget', 'Connections', 'Finish'] as const;
 
@@ -228,13 +216,13 @@ function ModelsStep({ settings }: { settings: SetupSettings }) {
             className={cn('flex gap-3 rounded-xl border p-3 text-sm', p.available ? 'border-accent/60 bg-accent/5' : 'border-line opacity-60')}
             aria-disabled={!p.available}
           >
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-white">
-              {PROVIDER_LOGOS[p.kind] ? (
-                <img src={PROVIDER_LOGOS[p.kind]} alt="" className="size-5 object-contain" />
-              ) : (
+            {p.kind in BRAND_LOGOS ? (
+              <BrandLogo brand={p.kind} />
+            ) : (
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-white">
                 <Cpu className="size-4 text-muted" />
-              )}
-            </span>
+              </span>
+            )}
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-x-2 font-medium">
                 {p.label}
@@ -301,7 +289,8 @@ export function ClaudeCheckPanel({ auto = true }: { auto?: boolean }) {
   useEffect(() => {
     if (auto) void run();
   }, []);
-  const c = busy ? null : last.data;
+  // Before the first check the API has no result (it answers {ok: true}); only a real check has a time.
+  const c = busy || !last.data?.checked_at ? null : last.data;
   const state = (ok: boolean | undefined, reached: boolean): 'ok' | 'fail' | 'busy' | 'idle' =>
     busy ? 'busy' : !c ? 'idle' : ok ? 'ok' : reached ? 'fail' : 'idle';
   return (
@@ -376,11 +365,17 @@ function ConnectionsStep({ settings }: { settings: SetupSettings }) {
     <div className="space-y-4 text-sm">
       <p>Optional. You can connect these later in Settings.</p>
       <div className="rounded-xl border border-line p-4">
-        <div className="font-medium">Slack</div>
+        <div className="flex items-center gap-2 font-medium">
+          <BrandLogo brand="slack" size="sm" />
+          Slack
+        </div>
         <p className="mt-1 text-xs text-muted">Get your inbox as Slack messages and answer from there. Set it up in Settings → Slack; it takes about five minutes.</p>
       </div>
       <div className="space-y-3 rounded-xl border border-line p-4">
-        <div className="font-medium">Composio</div>
+        <div className="flex items-center gap-2 font-medium">
+          <BrandLogo brand="composio" size="sm" />
+          Composio
+        </div>
         <p className="text-xs text-muted">Gives agents access to Gmail, Google Calendar, GitHub and hundreds of other apps.</p>
         <Field label="Composio API Key" hint={settings.secrets_set?.['composio.api_key'] ? 'A key is stored. Type a new one to replace it.' : 'From composio.dev → Settings → API Keys.'}>
           <div className="flex gap-2">

@@ -109,11 +109,14 @@ export function PageHeader({ title, sub, actions, crumbs }: { title: ReactNode; 
 
 export function Section({
   title,
+  icon,
   actions,
   children,
   className,
 }: {
   title: string;
+  /** Shown before the title, e.g. a service's logo. */
+  icon?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -121,7 +124,10 @@ export function Section({
   return (
     <section className={cn('space-y-3', className)}>
       <div className="flex items-center justify-between">
-        <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">{title}</h2>
+        <h2 className="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted uppercase">
+          {icon}
+          {title}
+        </h2>
         {actions}
       </div>
       {children}

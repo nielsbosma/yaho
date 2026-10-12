@@ -6,6 +6,7 @@ import { Field, Input, Select, Switch } from '../components/ui/form.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
 import type { AppState } from '../App.tsx';
 import { ClaudeCheckPanel } from './onboarding.tsx';
+import { BrandLogo } from '../components/BrandLogo.tsx';
 import { api, useApi } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
 import { href } from '../lib/router.ts';
@@ -109,7 +110,7 @@ export function SettingsView() {
       <div className="max-w-3xl space-y-8 p-8">
         <ErrorNote>{error}</ErrorNote>
         <Appearance />
-        <Section title="Models (LiteLLM)">
+        <Section title="Models (LiteLLM)" icon={<BrandLogo brand="litellm" size="sm" />}>
           <Card className="grid gap-4 p-4 md:grid-cols-2">
             <p className="text-xs text-muted md:col-span-2">
               LiteLLM is the model provider today. OpenAI, Anthropic, your Claude Code subscription, OpenRouter, Opper.AI and Berget.AI are coming.
@@ -204,10 +205,10 @@ export function SettingsView() {
             </div>
           </Card>
         </Section>
-        <Section title="Slack">
+        <Section title="Slack" icon={<BrandLogo brand="slack" size="sm" />}>
           <SlackSettings value={s.slack ?? {}} stored={s.secrets_set ?? {}} onChange={(v) => upd((d) => void (d.slack = v))} />
         </Section>
-        <Section title="Apps (Composio)">
+        <Section title="Apps (Composio)" icon={<BrandLogo brand="composio" size="sm" />}>
           <Card className="grid gap-4 p-4 md:grid-cols-2">
             <ComposioKeyHelp />
             <Field label="Composio API Key" hint="Agents never see it: Yaho makes their calls.">
