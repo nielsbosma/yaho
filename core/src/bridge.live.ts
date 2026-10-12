@@ -1,4 +1,4 @@
-// Claude Code on Berget through the core's bridge, with the key from .plan/secrets.env (spends a little; not in the
+// Claude Code on Berget or OpenAI through the core's bridge, with the key from .plan/secrets.env (spends a little; not in the
 // test suite).   node --experimental-strip-types core/src/bridge.live.ts [model]
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -13,9 +13,10 @@ const env = Object.fromEntries(
     .filter((l) => /^[A-Z_]+=/.test(l))
     .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]),
 );
+const kind = process.argv[3] ?? 'berget';
 const model = process.argv[2] ?? 'moonshotai/Kimi-K3';
 const dir = mkdtempSync(join(tmpdir(), 'yaho-bridge-'));
-writeFileSync(join(dir, 'settings.yaml'), YAML.stringify({ providers: [{ id: 'berget', kind: 'berget', api_key: env.BERGET_API_KEY }] }));
+writeFileSync(join(dir, 'settings.yaml'), YAML.stringify({ providers: [{ id: kind, kind, api_key: env[`${kind.toUpperCase()}_API_KEY`] }] }));
 process.env.YAHO_NO_DOPBASE = '1';
 const { ctx, close } = await serve({ dataDir: dir, port: 0, host: '127.0.0.1', embedded: true });
 
@@ -23,7 +24,7 @@ const work = mkdtempSync(join(tmpdir(), 'yaho-bridge-work-'));
 const childEnv: Record<string, string> = {};
 for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_.*)$/.test(k)) childEnv[k] = v;
 Object.assign(childEnv, {
-  ANTHROPIC_BASE_URL: `${ctx.apiUrl}/bridge/berget`,
+  ANTHROPIC_BASE_URL: `${ctx.apiUrl}/bridge/${kind}`,
   ANTHROPIC_AUTH_TOKEN: ctx.apiToken,
   ANTHROPIC_API_KEY: '',
   ANTHROPIC_DEFAULT_HAIKU_MODEL: model,

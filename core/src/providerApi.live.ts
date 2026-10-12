@@ -16,6 +16,7 @@ const providers: Array<[ProviderConfig, string]> = [
   [{ id: 'openrouter', kind: 'openrouter', api_key: env.OPENROUTER_API_KEY }, 'anthropic/claude-haiku-5.5'],
   [{ id: 'opper', kind: 'opper', api_key: env.OPPER_API_KEY }, 'anthropic/claude-haiku-4-5'],
   [{ id: 'berget', kind: 'berget', api_key: env.BERGET_API_KEY }, 'mistralai/Mistral-Small-3.2-24B-Instruct-2506'],
+  [{ id: 'openai', kind: 'openai', api_key: env.OPENAI_API_KEY }, 'gpt-5-mini'],
 ];
 const s = { providers: providers.map(([p]) => p) } as unknown as Settings;
 const tools = [{ type: 'function' as const, function: { name: 'get_weather', description: 'Weather for a city', parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] } } }];
