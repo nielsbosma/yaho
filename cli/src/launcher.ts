@@ -90,6 +90,12 @@ export function findApp(): string {
   return exe;
 }
 
+/**
+ * Linux: Chromium's setuid sandbox helper only works when root owns it with the setuid bit, which an npm install never
+ * gives it, and Chromium then aborts before Yaho's code runs. The switch has to be on the command line.
+ */
+const appArgs = (args: string[]) => (process.platform === 'linux' ? ['--no-sandbox', ...args] : args);
+
 /** Wait until a process has exited (the old Yaho, when an update restarts it). */
 async function waitForExit(pid: number, timeoutMs = 60_000): Promise<void> {
   const until = Date.now() + timeoutMs;
@@ -109,7 +115,7 @@ async function waitForExit(pid: number, timeoutMs = 60_000): Promise<void> {
  */
 function launch(args: string[] = [], env: NodeJS.ProcessEnv = {}): void {
   const exe = findApp();
-  const child = spawn(exe, args, {
+  const child = spawn(exe, appArgs(args), {
     detached: true,
     stdio: 'ignore',
     env: { ...process.env, YAHO_LAUNCHER: fileURLToPath(import.meta.url), YAHO_NODE: process.execPath, YAHO_INSTALL: 'npm', ...env },
@@ -118,7 +124,7 @@ function launch(args: string[] = [], env: NodeJS.ProcessEnv = {}): void {
 }
 
 function runAndWait(args: string[]): number {
-  return spawnSync(findApp(), args, { stdio: 'inherit' }).status ?? 1;
+  return spawnSync(findApp(), appArgs(args), { stdio: 'inherit' }).status ?? 1;
 }
 
 function check(label: string, fn: () => string): boolean {
@@ -147,7 +153,7 @@ export async function launcher(cmd: string | undefined, args: string[]): Promise
       return runAndWait([args.includes('--remove') ? '--remove-shortcut' : '--create-shortcut']);
     case 'serve':
       // The core without a window: the app's own Node runs it (Electron as Node).
-      return spawnSync(findApp(), ['--serve'], { stdio: 'inherit', env: { ...process.env, YAHO_HEADLESS: '1' } }).status ?? 1;
+      return spawnSync(findApp(), appArgs(['--serve']), { stdio: 'inherit', env: { ...process.env, YAHO_HEADLESS: '1' } }).status ?? 1;
     case 'update': {
       const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
       const r = spawnSync(npm, ['install', '-g', '@bosmainteractive/yaho@latest'], { stdio: 'inherit', shell: process.platform === 'win32' });

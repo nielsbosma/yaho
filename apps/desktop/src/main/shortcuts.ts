@@ -32,7 +32,7 @@ export function createShortcuts(icon: string, pngIcon: string): string[] {
     } else {
       writeFileSync(
         file,
-        ['[Desktop Entry]', 'Type=Application', 'Name=Yaho', 'Comment=Yet Another Harness Orchestrator', `Exec="${process.execPath}"`, `Icon=${pngIcon}`, 'Terminal=false', 'Categories=Development;Utility;', `StartupWMClass=Yaho`, ''].join('\n'),
+        ['[Desktop Entry]', 'Type=Application', 'Name=Yaho', 'Comment=Yet Another Harness Orchestrator', `Exec="${process.execPath}" --no-sandbox`, `Icon=${pngIcon}`, 'Terminal=false', 'Categories=Development;Utility;', `StartupWMClass=Yaho`, ''].join('\n'),
         { mode: 0o755 },
       );
     }

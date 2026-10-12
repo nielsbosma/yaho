@@ -176,8 +176,9 @@ jobs:
             macOS) exe="$(ls -d apps/desktop/release/mac*/Yaho.app | head -1)/Contents/MacOS/Yaho" ;;
             Linux) exe="$(ls -d apps/desktop/release/linux*-unpacked | head -1)/yaho" ;;
           esac
-          if [ "${{ runner.os }}" = "Linux" ]; then run="xvfb-run -a"; else run=""; fi
-          $run "$exe" --serve &
+          # Linux: as the yaho launcher starts it (the sandbox helper cannot be setuid root in an npm install).
+          if [ "${{ runner.os }}" = "Linux" ]; then run="xvfb-run -a"; flags="--no-sandbox"; else run=""; flags=""; fi
+          $run "$exe" $flags --serve &
           for i in $(seq 1 60); do
             if [ -f "$YAHO_DATA_DIR/server.yaml" ]; then
               url="$(sed -n 's/^url: *//p' "$YAHO_DATA_DIR/server.yaml")"
