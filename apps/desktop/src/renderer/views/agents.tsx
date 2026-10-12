@@ -442,6 +442,13 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
                   <option value="codex">Codex</option>
                 </Select>
               </Field>
+              {/* Codex is built for OpenAI's models: Claude through a proxy's Responses route refuses its requests. */}
+              {draft.harness === 'codex' && draft.models.some((m) => /claude|anthropic/i.test(m)) && (
+                <div role="alert" className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
+                  Codex works best with OpenAI's GPT models. With a Claude model ({draft.models.find((m) => /claude|anthropic/i.test(m))}) its jobs
+                  are likely to fail; pick a GPT model, or use Claude Code for Claude models.
+                </div>
+              )}
               <Field label="Allowed Models" hint="From your model providers. Jobs run with the primary." group>
                 <ModelPicker value={draft.models} onChange={(v) => set('models', v)} />
               </Field>
