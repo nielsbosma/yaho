@@ -1,5 +1,5 @@
 import { Check as CheckIcon, CheckCircle2, Monitor, Moon, Plus, Sun, Trash2, XCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Children, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { Card, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
 import { Field, Input, Select, Switch } from '../components/ui/form.tsx';
@@ -55,7 +55,7 @@ function Check({ label, run }: { label: string; run: () => Promise<string> }) {
   );
 }
 
-export function SettingsView() {
+export function SettingsView({ route }: { route: string[] }) {
   const state = useApi<AppState>('/api/state');
   const saved = useApi<Settings>('/api/settings', (e) => e.type === 'changed' && e.entity === 'settings');
   const [s, setS] = useState<Settings | null>(null);
@@ -99,10 +99,14 @@ export function SettingsView() {
           </>
         }
       />
-      <div className="max-w-3xl space-y-8 p-8">
-        <ErrorNote>{error}</ErrorNote>
-        <Appearance />
-        <ModelProviders settings={s} upd={upd} save={save} />
+      <SettingsPanes active={route[1]} error={error}>
+        <Pane id="appearance" label="Appearance">
+          <Appearance />
+        </Pane>
+        <Pane id="models" label="Model Providers">
+          <ModelProviders settings={s} upd={upd} save={save} />
+        </Pane>
+        <Pane id="secrets" label="Secrets">
         <Section title="Secrets (Dopbase)">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
             <Field label="Where Values Live" className="md:col-span-2">
@@ -162,6 +166,8 @@ export function SettingsView() {
             </div>
           </Card>
         </Section>
+        </Pane>
+        <Pane id="integrations" label="Integrations">
         <Section title="Slack" icon={<BrandLogo brand="slack" size="sm" />}>
           <SlackSettings value={s.slack ?? {}} stored={s.secrets_set ?? {}} onChange={(v) => upd((d) => void (d.slack = v))} />
         </Section>
@@ -194,6 +200,8 @@ export function SettingsView() {
             </div>
           </Card>
         </Section>
+        </Pane>
+        <Pane id="spending" label="Spending">
         <Section title="Spending">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
             <Field label="Global Spend Cap (USD)" hint="When total spend reaches it, no job starts and running jobs stop.">
@@ -206,6 +214,8 @@ export function SettingsView() {
             </Field>
           </Card>
         </Section>
+        </Pane>
+        <Pane id="defaults" label="Defaults for New Agents">
         <Section title="Defaults for New Agents">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
             <Field label="Models" className="md:col-span-2" group>
@@ -229,7 +239,13 @@ export function SettingsView() {
             </Field>
           </Card>
         </Section>
-        {state.data?.server && <ServerAccess />}
+        </Pane>
+        {state.data?.server && (
+          <Pane id="server" label="Server Access">
+            <ServerAccess />
+          </Pane>
+        )}
+        <Pane id="updates" label="Updates">
         <Section title="Updates">
           <Card className="space-y-4 p-4">
             <Switch
@@ -250,6 +266,8 @@ export function SettingsView() {
             <ClaudeCheckPanel auto={false} />
           </Card>
         </Section>
+        </Pane>
+        <Pane id="harnesses" label="Harnesses">
         <Section title="Harnesses">
           <Card className="space-y-3 p-4">
             {Object.entries(s.harnesses).map(([name, h]) => (
@@ -283,7 +301,9 @@ export function SettingsView() {
           </Card>
         </Section>
 
+        </Pane>
         {state.data?.debug && (
+          <Pane id="debug" label="Debug">
           <Section title="Debug">
             <Card className="space-y-4 p-4">
               <p className="text-sm text-muted">Shown because Yaho runs in debug mode (the dev session, or YAHO_DEBUG=1).</p>
@@ -303,9 +323,53 @@ export function SettingsView() {
               </label>
             </Card>
           </Section>
+          </Pane>
         )}
-      </div>
+      </SettingsPanes>
     </>
+  );
+}
+
+/** One page of Settings: its place in the list on the left, and its content. */
+function Pane({ children }: { id: string; label: string; icon?: ReactNode; children: ReactNode }) {
+  return <>{children}</>;
+}
+
+/**
+ * Settings as a list of sections on the left and the chosen one on the right (#/settings/<id>; the first by default).
+ * Save Settings in the header saves every section at once.
+ */
+function SettingsPanes({ active, error, children }: { active?: string; error: string | null; children: ReactNode }) {
+  const panes = Children.toArray(children).filter(isValidElement) as Array<ReactElement<{ id: string; label: string; icon?: ReactNode; children: ReactNode }>>;
+  const current = panes.find((p) => p.props.id === active) ?? panes[0];
+  return (
+    <div className="flex min-h-0 flex-col md:flex-row">
+      <nav aria-label="Settings sections" className="shrink-0 border-line px-4 pt-4 md:w-52 md:border-r md:px-3 md:py-6">
+        <ul className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
+          {panes.map((p) => (
+            <li key={p.props.id}>
+              <a
+                href={href('settings', p.props.id)}
+                aria-current={p === current ? 'page' : undefined}
+                className={cn(
+                  'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm whitespace-nowrap',
+                  p === current ? 'bg-hover font-medium text-ink' : 'text-muted hover:bg-hover/60 hover:text-ink',
+                )}
+              >
+                {p.props.icon}
+                {p.props.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <div className="min-w-0 flex-1">
+        <div className="max-w-3xl space-y-8 p-8">
+          <ErrorNote>{error}</ErrorNote>
+          {current?.props.children}
+        </div>
+      </div>
+    </div>
   );
 }
 

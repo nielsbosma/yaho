@@ -148,6 +148,9 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
       if (opts.webRoot && existsSync(opts.webRoot)) {
         let file = safeJoin(opts.webRoot, decodeURIComponent(path));
         if (!existsSync(file) || statSync(file).isDirectory()) file = join(opts.webRoot, 'index.html');
+        // index.html names the current build's files: never cache it, or a browser keeps the old app after an update.
+        // The built files under /assets/ have hashed names and can be cached for good.
+        res.setHeader('Cache-Control', path.startsWith('/assets/') && !file.endsWith('index.html') ? 'public, max-age=31536000, immutable' : 'no-cache');
         return sendFile(res, file);
       }
       throw new HttpError(404, 'not found');

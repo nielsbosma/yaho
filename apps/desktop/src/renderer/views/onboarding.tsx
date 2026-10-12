@@ -396,7 +396,7 @@ function ConnectionsStep({ settings }: { settings: SetupSettings }) {
           <BrandLogo brand="slack" size="sm" />
           Slack
         </div>
-        <p className="mt-1 text-xs text-muted">Get your inbox as Slack messages and answer from there. Set it up in Settings → Slack; it takes about five minutes.</p>
+        <p className="mt-1 text-xs text-muted">Get your inbox as Slack messages and answer from there. Set it up in Settings → Integrations; it takes about five minutes.</p>
       </div>
       <div className="space-y-3 rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">

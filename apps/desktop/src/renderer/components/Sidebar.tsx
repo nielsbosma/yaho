@@ -7,16 +7,12 @@ import {
   KeyRound,
   LayoutDashboard,
   LibraryBig,
-  Monitor,
-  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Play,
   Settings,
   Sparkles,
-  Sun,
 } from 'lucide-react';
-import { useTheme, type Theme } from '../lib/theme.ts';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { AppState } from '../App.tsx';
 import { useApi, type Agent } from '../lib/api.ts';
@@ -147,19 +143,15 @@ export function Sidebar({
       {c ? (
         <div className="app-drag titlebar-left relative flex h-16 shrink-0 items-center justify-center">
           {toggle}
-          <span
-            title={connected ? 'Connected to the core' : 'Reconnecting to the core…'}
-            className={cn('absolute top-3 right-3 size-1.5 rounded-full', connected ? 'bg-ok' : 'animate-pulse bg-warn')}
-          />
+          {/* Only when something is wrong: a connected app shows nothing. */}
+          {!connected && <span title="Reconnecting to the core…" className="absolute top-3 right-3 size-1.5 animate-pulse rounded-full bg-warn" />}
         </div>
       ) : (
         <div className="app-drag titlebar-left flex h-16 shrink-0 items-center gap-2 px-4">
           <Wordmark className="h-[41px] text-ink" />
           {state?.version && <span className="text-[11px] text-muted tabular-nums">v{state.version}</span>}
-          <span
-            title={connected ? 'Connected to the core' : 'Reconnecting to the core…'}
-            className={cn('ml-auto size-2 rounded-full', connected ? 'bg-ok' : 'animate-pulse bg-warn')}
-          />
+          {!connected && <span title="Reconnecting to the core…" className="size-2 animate-pulse rounded-full bg-warn" />}
+          <span className="ml-auto" />
           {chatButton}
           {toggle}
         </div>
@@ -213,40 +205,9 @@ export function Sidebar({
             </div>
           </div>
         )}
-        <div className="flex items-center gap-1">
-          <div className="min-w-0 flex-1">
-            <NavItem collapsed={c} to={href('settings')} icon={<Settings />} label="Settings" active={at === 'settings'} />
-          </div>
-          {!c && <ThemeSwitch />}
-        </div>
+        <NavItem collapsed={c} to={href('settings')} icon={<Settings />} label="Settings" active={at === 'settings'} />
       </div>
     </aside>
-  );
-}
-
-function ThemeSwitch() {
-  const [theme, setTheme] = useTheme();
-  const options: Array<[Theme, typeof Sun, string]> = [
-    ['system', Monitor, 'Match System'],
-    ['light', Sun, 'Light'],
-    ['dark', Moon, 'Dark'],
-  ];
-  return (
-    <div className="flex shrink-0 rounded-lg bg-hover p-0.5" role="radiogroup" aria-label="Theme">
-      {options.map(([t, Icon, label]) => (
-        <button
-          key={t}
-          type="button"
-          role="radio"
-          aria-checked={theme === t}
-          title={label}
-          onClick={() => setTheme(t)}
-          className={cn('cursor-pointer rounded-md p-1 text-muted', theme === t && 'bg-panel text-ink shadow-sm')}
-        >
-          <Icon className="size-3.5" />
-        </button>
-      ))}
-    </div>
   );
 }
 
