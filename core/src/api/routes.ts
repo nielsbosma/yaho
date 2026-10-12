@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
 import { checkClaude, lastClaudeCheck } from '../checks.ts';
-import { PROVIDERS } from '../providers.ts';
-import { listModels } from '../providerApi.ts';
+import { PROVIDERS, defaultProvider } from '../providers.ts';
+import { allModels, listModels } from '../providerApi.ts';
 import { revealToken, serverMode } from './session.ts';
 import { applySettingsUpdate, publicSettings, storeSecrets } from '../secrets/settingsSecrets.ts';
 import type { Ctx } from '../context.ts';
@@ -163,6 +163,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return { ok: true, health };
   });
   r.on('GET', '/api/settings/litellm/models', async () => ({ models: await litellmModels(ctx.settings) }));
+  r.on('GET', '/api/models', async () => allModels(ctx.settings, defaultProvider(ctx.settings).id));
   r.on('GET', '/api/providers/:id/models', async (req) => {
     const p = ctx.settings.providers.find((x) => x.id === req.params.id);
     if (!p) throw new HttpError(404, `no provider ${req.params.id}`);

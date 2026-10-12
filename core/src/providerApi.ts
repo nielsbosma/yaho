@@ -41,6 +41,37 @@ export async function listModels(s: Settings, p: ProviderConfig): Promise<string
   return list.map((m) => m.id).sort();
 }
 
+const modelCache = new Map<string, { at: number; models: string[] }>();
+
+/**
+ * Every model the configured providers offer, named the way agents and settings name them: plain on the default
+ * provider, "<id>/<model>" on the others. provider_of says which provider (its id) each name belongs to. Providers that
+ * fail to answer are left out, not fatal. OpenRouter is limited to Anthropic's models, the ones it serves Claude Code.
+ */
+export async function allModels(s: Settings, defaultId: string): Promise<{ models: string[]; provider_of: Record<string, string>; errors: Record<string, string> }> {
+  const models: string[] = [];
+  const provider_of: Record<string, string> = {};
+  const errors: Record<string, string> = {};
+  await Promise.all(
+    s.providers.map(async (p) => {
+      try {
+        const key = `${p.id}|${p.url ?? ''}|${(p.api_key ?? p.master_key ?? '').slice(-6)}`;
+        let list = modelCache.get(key);
+        if (!list || Date.now() - list.at > 600_000) modelCache.set(key, (list = { at: Date.now(), models: await listModels(s, p) }));
+        for (const m of list.models) {
+          if (p.kind === 'openrouter' && !m.startsWith('anthropic/')) continue;
+          const name = p.id === defaultId ? m : `${p.id}/${m}`;
+          models.push(name);
+          provider_of[name] = p.id;
+        }
+      } catch (e) {
+        errors[p.id] = (e as Error).message;
+      }
+    }),
+  );
+  return { models, provider_of, errors };
+}
+
 // ---------- the chat: OpenAI Chat Completions in and out ----------
 
 type Part = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };

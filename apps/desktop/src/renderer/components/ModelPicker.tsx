@@ -19,11 +19,15 @@ const PROVIDERS: Array<[RegExp, string]> = [
 export const providerOf = (model: string) => PROVIDERS.find(([re]) => re.test(model))?.[1] ?? 'Other';
 
 /**
- * Pick the models an agent may use, from what the LiteLLM proxy offers. Order matters: the first is the one jobs
+ * Pick the models an agent may use, from what the model providers offer (models on providers other than the default
+ * are named "<provider>/<model>"). Order matters: the first is the one jobs
  * run with, the last also serves Claude Code's small background calls.
  */
 export function ModelPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  const available = useApi<{ models: string[] }>('/api/settings/litellm/models');
+  const available = useApi<{ models: string[]; provider_of: Record<string, string> }>('/api/models');
+  const providerIds = new Set(Object.values(available.data?.provider_of ?? {}));
+  // One provider: group by vendor (Anthropic, Google…). Several: by provider, so the source is clear.
+  const groupOf = (m: string) => (providerIds.size > 1 ? (available.data?.provider_of[m] ?? 'Other') : providerOf(m));
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -41,12 +45,12 @@ export function ModelPicker({ value, onChange }: { value: string[]; onChange: (v
   const models = available.data?.models ?? [];
   const q = query.trim().toLowerCase();
   const matches = useMemo(
-    () => models.filter((m) => !value.includes(m) && (!q || m.toLowerCase().includes(q) || providerOf(m).toLowerCase().includes(q))),
-    [models, value, q],
+    () => models.filter((m) => !value.includes(m) && (!q || m.toLowerCase().includes(q) || groupOf(m).toLowerCase().includes(q))),
+    [models, value, q, available.data],
   );
   const groups = useMemo(() => {
     const g = new Map<string, string[]>();
-    for (const m of matches) g.set(providerOf(m), [...(g.get(providerOf(m)) ?? []), m]);
+    for (const m of matches) g.set(groupOf(m), [...(g.get(groupOf(m)) ?? []), m]);
     return [...g.entries()].sort(([a], [b]) => (a === 'Other' ? 1 : b === 'Other' ? -1 : a.localeCompare(b)));
   }, [matches]);
   const flat = groups.flatMap(([, ms]) => ms);

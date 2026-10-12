@@ -12,6 +12,7 @@ import { platform } from '../lib/platform.ts';
 /** The parts of the settings the setup touches. Secret fields are only sent, never read back. */
 interface SetupSettings {
   providers: Array<{ id: string; kind: string; url?: string; api_key?: string }>;
+  default_provider?: string;
   dopbase: { mode: string };
   global_spend_cap_usd: number;
   defaults: { models: string[]; budget_usd: number };
@@ -171,28 +172,44 @@ function SecretsStep() {
 
 function ModelsStep({ settings }: { settings: SetupSettings }) {
   const providers = useApi<ProviderInfo[]>('/api/providers');
-  const lite = settings.providers.find((p) => p.kind === 'litellm');
-  const liteId = lite?.id ?? 'litellm';
-  const [url, setUrl] = useState(lite?.url ?? 'http://localhost:4000');
+  const current = settings.providers.find((p) => p.id === (settings.default_provider ?? settings.providers[0]?.id));
+  const [kind, setKind] = useState(current?.kind ?? 'litellm');
+  const existing = settings.providers.find((p) => p.kind === kind);
+  const id = existing?.id ?? kind;
+  const [url, setUrl] = useState(existing?.url ?? 'http://localhost:4000');
   const [key, setKey] = useState('');
   const [models, setModels] = useState<string[] | null>(null);
   const [model, setModel] = useState(settings.defaults.models[0] ?? '');
   const [chatModel, setChatModel] = useState(settings.assistant?.model ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pick = (k: string) => {
+    setKind(k);
+    setModels(null);
+    setKey('');
+    setError(null);
+    const p = settings.providers.find((x) => x.kind === k);
+    setUrl(p?.url ?? 'http://localhost:4000');
+  };
+  const keyStored = !!settings.secrets_set?.[`providers.${id}.api_key`];
   const test = async () => {
     setBusy(true);
     setError(null);
     try {
+      // The chosen provider, added if new, becomes the default; its models are then plain names.
       await save((s) => {
-        let p = s.providers.find((x) => x.kind === 'litellm');
-        if (!p) s.providers.unshift((p = { id: 'litellm', kind: 'litellm' }));
-        p.url = url.trim();
+        let p = s.providers.find((x) => x.kind === kind);
+        if (!p) s.providers.push((p = { id: kind, kind }));
+        if (kind === 'litellm') p.url = url.trim();
         if (key) p.api_key = key;
+        s.default_provider = p.id;
       });
-      const r = await api<{ models: string[] }>('/api/settings/litellm/models');
-      setModels(r.models);
-      if (!model && r.models[0]) setModel(r.models[0]);
+      const r = await api<{ models: string[] }>(`/api/providers/${id}/models`);
+      // OpenRouter serves Claude Code Anthropic's models only.
+      const usable = kind === 'openrouter' ? r.models.filter((m) => m.startsWith('anthropic/')) : r.models;
+      setModels(usable);
+      if (!usable.includes(model)) setModel(usable.find((m) => /sonnet/.test(m)) ?? usable[0] ?? '');
+      if (chatModel && !usable.includes(chatModel)) setChatModel('');
     } catch (e) {
       setModels(null);
       setError((e as Error).message);
@@ -203,18 +220,26 @@ function ModelsStep({ settings }: { settings: SetupSettings }) {
   useEffect(() => {
     if (models && model)
       void save((s) => {
-        s.defaults.models = [model, ...s.defaults.models.filter((m) => m !== model)];
+        s.defaults.models = [model, ...s.defaults.models.filter((m) => m !== model && models.includes(m))];
         s.assistant = { ...s.assistant, model: chatModel || undefined };
       });
   }, [models, model, chatModel]);
+  const info = providers.data?.find((p) => p.kind === kind);
   return (
     <div className="space-y-4">
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Model provider">
         {(providers.data ?? []).map((p) => (
-          <div
+          <button
             key={p.kind}
-            className={cn('flex gap-3 rounded-xl border p-3 text-sm', p.available ? 'border-accent/60 bg-accent/5' : 'border-line opacity-60')}
-            aria-disabled={!p.available}
+            type="button"
+            role="radio"
+            aria-checked={p.kind === kind}
+            disabled={!p.available}
+            onClick={() => pick(p.kind)}
+            className={cn(
+              'flex gap-3 rounded-xl border p-3 text-left text-sm',
+              !p.available ? 'border-line opacity-60' : p.kind === kind ? 'border-accent bg-accent/5 ring-1 ring-accent/40' : 'cursor-pointer border-line hover:border-accent/50',
+            )}
           >
             {p.kind in BRAND_LOGOS ? (
               <BrandLogo brand={p.kind} />
@@ -230,17 +255,19 @@ function ModelsStep({ settings }: { settings: SetupSettings }) {
               </div>
               <div className="mt-0.5 text-xs text-muted">{p.description}</div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
-      <Field label="LiteLLM URL" hint="The address of your LiteLLM proxy.">
-        <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:4000" />
-      </Field>
-      <Field label="API Key" hint={settings.secrets_set?.[`providers.${liteId}.api_key`] ? 'A key is stored. Type a new one to replace it.' : 'Kept in the secrets store.'}>
-        <Input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={settings.secrets_set?.[`providers.${liteId}.api_key`] ? 'Value set' : 'sk-…'} />
+      {kind === 'litellm' && (
+        <Field label="LiteLLM URL" hint="The address of your LiteLLM proxy.">
+          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:4000" />
+        </Field>
+      )}
+      <Field label={`${info?.label ?? 'API'} Key`} hint={keyStored ? 'A key is stored. Type a new one to replace it.' : 'Kept in the secrets store; agents never see it.'}>
+        <Input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={keyStored ? 'Value set' : ''} />
       </Field>
       <div className="flex items-center gap-3">
-        <Button onClick={() => void test()} disabled={busy || !url.trim()}>
+        <Button onClick={() => void test()} disabled={busy || (kind === 'litellm' && !url.trim()) || (!key && !keyStored)}>
           {busy && <Loader2 className="animate-spin" />} Test Connection
         </Button>
         {models && <Status state="ok">{models.length} models available</Status>}
