@@ -78,9 +78,17 @@ function createWindow(conn: CoreConnection): BrowserWindow {
     },
   });
   // Links the renderer opens go to the default browser, never a new Electron window.
+  // Only web and mail links: a file: or custom-scheme URL would start a program.
+  const external = (url: string) => /^(https?|mailto):/i.test(url);
   w.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    if (external(url)) void shell.openExternal(url);
     return { action: 'deny' };
+  });
+  // The window never leaves the app's own page; a link that tries opens in the browser instead.
+  w.webContents.on('will-navigate', (e, url) => {
+    if (new URL(url).origin === new URL(w.webContents.getURL()).origin && !url.startsWith('file:')) return;
+    e.preventDefault();
+    if (external(url)) void shell.openExternal(url);
   });
   w.on('close', (e) => {
     if (quitting || devSession) return;

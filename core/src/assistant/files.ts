@@ -34,7 +34,9 @@ const unxml = (x: string) =>
 /** The text of a Word, PowerPoint or Excel file (Office Open XML is a zip of XML parts). */
 async function officeText(p: string, ext: string): Promise<string> {
   const { unzipSync, strFromU8 } = await import('fflate');
-  const zip = unzipSync(new Uint8Array(readFileSync(p)));
+  // Only the XML parts read below, each at most 50 MB unpacked: a small zip can unpack to gigabytes.
+  const wanted = /^(word\/document|ppt\/slides\/slide\d+|xl\/sharedStrings|xl\/workbook|xl\/worksheets\/sheet\d+)\.xml$/;
+  const zip = unzipSync(new Uint8Array(readFileSync(p)), { filter: (f) => wanted.test(f.name) && f.originalSize <= 50e6 });
   const part = (name: string) => (zip[name] ? strFromU8(zip[name]) : '');
   const byNumber = (re: RegExp) =>
     Object.keys(zip)

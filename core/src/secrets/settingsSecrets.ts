@@ -106,14 +106,39 @@ export function publicSettings(s: Settings): Settings & { secrets_set: Record<st
     secrets_set[slot.path] = !!get(s, slot);
     set(out, slot, undefined);
   }
+  // The external Dopbase token cannot live in Dopbase (it is how Yaho reaches it), but it never goes to the UI either.
+  secrets_set['dopbase.token'] = !!s.dopbase.token;
+  delete out.dopbase.token;
   return { ...out, secrets_set };
 }
 
 /** Merge an update from the UI: secret fields that are absent keep their value, null clears them. */
 export function applySettingsUpdate(current: Settings, next: Settings & { secrets_set?: unknown }): Settings {
   const before = new Map(secretSlots(current).map((slot) => [slot.path, get(current, slot)]));
+  const dopbaseToken = current.dopbase.token;
+  // What the core manages itself never comes from the UI: an old Settings page would otherwise undo Sign Out
+  // Everywhere (session_epoch), the setup being done, or the claimed Slack owner.
+  const kept = {
+    epoch: current.server.session_epoch,
+    onboarded: current.onboarded_at,
+    owner: current.slack?.owner,
+    since: current.slack?.since,
+  };
   const { secrets_set: _, ...rest } = next;
   Object.assign(current, rest);
+  current.server = { ...current.server, session_epoch: kept.epoch };
+  if (kept.epoch === undefined) delete current.server.session_epoch;
+  if (kept.onboarded === undefined) delete current.onboarded_at;
+  else current.onboarded_at = kept.onboarded;
+  if (current.slack || kept.owner) {
+    current.slack = { ...current.slack };
+    if (kept.owner === undefined) delete current.slack.owner;
+    else current.slack.owner = kept.owner;
+    if (kept.since === undefined) delete current.slack.since;
+    else current.slack.since = kept.since;
+  }
+  if (next.dopbase && !('token' in next.dopbase)) current.dopbase.token = dopbaseToken;
+  else if (next.dopbase && (next.dopbase as { token?: string | null }).token === null) delete current.dopbase.token;
   for (const slot of secretSlots(current)) {
     const given = slot.holder(current)?.[slot.field] as string | null | undefined;
     set(current, slot, given === undefined ? before.get(slot.path) : given === null ? undefined : given || undefined);

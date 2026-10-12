@@ -150,4 +150,6 @@ export const migrations: string[] = [
   // 5: where each inbox message was posted in Slack, so answers and read state can update it.
   `CREATE TABLE slack_posts (message TEXT PRIMARY KEY, channel TEXT NOT NULL, ts TEXT NOT NULL, created TEXT NOT NULL);
    CREATE INDEX slack_posts_ts ON slack_posts(ts);`,
+  // 6: the provider a job's token may reach through the bridge.
+  `ALTER TABLE job_tokens ADD COLUMN provider TEXT;`,
 ];

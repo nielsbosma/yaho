@@ -36,12 +36,17 @@ export const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-const eq = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const eq = (a: string, b: string) => {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+};
 
 function bearer(req: Req['raw'], query: URLSearchParams): string | null {
   const h = req.headers.authorization;
   if (h?.startsWith('Bearer ')) return h.slice(7).trim();
-  return query.get('token');
+  // ?token= is for EventSource and links (GET only): a token in a URL ends up in logs and history.
+  return req.method === 'GET' ? query.get('token') : null;
 }
 
 /** Resolve who is calling. The API token is the human; a live job token is that job's agent. */

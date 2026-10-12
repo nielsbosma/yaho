@@ -279,7 +279,8 @@ async function openRouterCatalog(): Promise<Map<string, ModelPrice>> {
     const j = (await res.json()) as { data?: Array<{ id: string; pricing?: Record<string, string> }> };
     for (const m of j.data ?? []) {
       const p = m.pricing;
-      if (!p?.prompt || !p.completion) continue;
+      // Variants (:batch, :free…) share the base name once normalized; their prices are not the ones jobs pay.
+      if (m.id.includes(':') || !p?.prompt || !p.completion) continue;
       const input = Number(p.prompt);
       prices.set(normalize(m.id), {
         input,
@@ -300,7 +301,9 @@ const normalize = (id: string) => id.toLowerCase().replace(/^[^/]+\//, '').repla
 
 /** Per-token prices for a model on this provider, or null when nobody says. */
 export async function priceFor(s: Settings, p: ProviderConfig, model: string): Promise<ModelPrice | null> {
-  if (p.kind === 'litellm') return modelPrice(s, model);
+  // LiteLLM knows prices for the models it is configured with; for the rest, OpenRouter's list (Codex reports only
+  // tokens, so without a price a job would count as free and its budget never stop it).
+  if (p.kind === 'litellm') return (await modelPrice(s, model)) ?? (await openRouterCatalog()).get(normalize(model)) ?? null;
   if (p.kind === 'berget') {
     try {
       const res = await fetch(ENDPOINTS.berget!.models, { signal: AbortSignal.timeout(15_000) });

@@ -171,14 +171,14 @@ export class JobRunner {
     const ses = this.session(agent, job);
     const cwd = ensureAgentWorkspace(ctx, agent.name);
 
-    const token = randomBytes(24).toString('hex');
-    ctx.db
-      .prepare('INSERT INTO job_tokens (token, job, agent, expires) VALUES (?,?,?,?)')
-      .run(token, job.id, agent.name, new Date(Date.now() + 7 * 864e5).toISOString());
-
     const remaining = Math.max(0, agent.budget_usd - agentSpend(ctx, agent.name));
     // The provider serving the model, and how Claude Code reaches it (a capped key per job where the provider can).
     const { provider, model: providerModel } = resolveModel(settings, model);
+
+    const token = randomBytes(24).toString('hex');
+    ctx.db
+      .prepare('INSERT INTO job_tokens (token, job, agent, expires, provider) VALUES (?,?,?,?,?)')
+      .run(token, job.id, agent.name, new Date(Date.now() + 7 * 864e5).toISOString(), provider.id);
     if (!harnessFits(provider, agent.harness))
       throw new Error(`${agent.harness} cannot use ${provider.id}: Codex needs a provider with OpenAI's Responses API (OpenAI, LiteLLM, Opper, OpenRouter)`);
     const access = await jobAccess(settings, provider, {
@@ -207,7 +207,8 @@ export class JobRunner {
       YAHO_AGENT_DB: join(cwd, 'agent.db'),
       ...access.env,
       // Codex keeps its sessions and settings here, apart from the person's own ~/.codex.
-      CODEX_HOME: join(ctx.paths.root, 'codex'),
+      // Per agent: Codex keeps its sessions there, and one agent must not read another's.
+      CODEX_HOME: join(ctx.paths.root, 'codex', agent.name),
       // Background calls (titles, summaries) must also use a model the provider knows.
       ANTHROPIC_DEFAULT_HAIKU_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,
       ANTHROPIC_SMALL_FAST_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,

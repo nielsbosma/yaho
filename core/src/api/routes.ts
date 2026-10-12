@@ -119,6 +119,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('POST', '/api/session/revoke-all', () => {
     ctx.settings.server.session_epoch = (ctx.settings.server.session_epoch ?? 0) + 1;
     saveSettings(ctx.settings);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
     return { revoked: true };
   });
   r.on('POST', '/api/session/token', async (req) => revealToken(ctx, req.raw, (await req.body<{ password?: string }>()).password));

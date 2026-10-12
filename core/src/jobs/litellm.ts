@@ -66,7 +66,8 @@ export async function modelPrice(s: Settings, model: string): Promise<ModelPrice
     });
     const j = (await res.json()) as { data?: Array<{ model_name: string; model_info?: Record<string, number | null> }> };
     const info = j.data?.find((m) => m.model_name === model)?.model_info;
-    if (info?.input_cost_per_token != null && info.output_cost_per_token != null) {
+    // LiteLLM says 0 for models it has no price for: that is unknown, not free.
+    if (info?.input_cost_per_token && info.output_cost_per_token) {
       price = {
         input: info.input_cost_per_token,
         output: info.output_cost_per_token,

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProviderConfig } from './config.ts';
 import type { Ctx } from './context.ts';
@@ -165,13 +166,16 @@ async function streamBack(model: string, upstream: Response, res: ServerResponse
 }
 
 /** Who may use the bridge: a running job, by the token it was given as its Anthropic key (or the core itself). */
-function jobFromToken(ctx: Ctx, req: IncomingMessage): boolean {
+/** A running job's token for this very provider (or the core's own token, for checks). */
+function jobFromToken(ctx: Ctx, req: IncomingMessage, providerId: string): boolean {
   const h = req.headers;
   const token = (h['x-api-key'] as string | undefined) ?? (h.authorization?.startsWith('Bearer ') ? h.authorization.slice(7) : undefined);
   if (!token) return false;
-  if (token === ctx.apiToken) return true;
-  const row = ctx.db.prepare('SELECT expires FROM job_tokens WHERE token = ?').get(token) as { expires: string } | undefined;
-  return !!row && row.expires > new Date().toISOString();
+  const a = Buffer.from(token);
+  const b = Buffer.from(ctx.apiToken);
+  if (a.length === b.length && timingSafeEqual(a, b)) return true;
+  const row = ctx.db.prepare('SELECT expires, provider FROM job_tokens WHERE token = ?').get(token) as { expires: string; provider: string | null } | undefined;
+  return !!row && row.expires > new Date().toISOString() && row.provider === providerId;
 }
 
 /** Handle /bridge/<provider>/v1/messages (and count_tokens). Returns false when the path is not the bridge's. */
@@ -179,7 +183,7 @@ export async function handleBridge(ctx: Ctx, req: IncomingMessage, res: ServerRe
   const m = /^\/bridge\/([^/]+)\/v1\/messages(\/count_tokens)?$/.exec(path);
   if (process.env.YAHO_DEBUG === '1') console.log(`[bridge] ${req.method} ${req.url}`);
   if (!m) return false;
-  if (!jobFromToken(ctx, req)) throw new HttpError(401, 'the bridge is for running jobs only');
+  if (!jobFromToken(ctx, req, m[1]!)) throw new HttpError(401, 'the bridge is for running jobs only');
   const provider = ctx.settings.providers.find((p: ProviderConfig) => p.id === m[1]);
   const base = provider && (provider.url?.replace(/\/$/, '') ?? BASES[provider.kind]);
   if (!provider || !base) throw new HttpError(404, `no provider ${m[1]} to bridge`);
@@ -191,7 +195,7 @@ export async function handleBridge(ctx: Ctx, req: IncomingMessage, res: ServerRe
   }
   const upstream = await fetch(`${base}/chat/completions`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${provider.master_key ?? provider.api_key ?? ''}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${provider.api_key ?? ''}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(forProvider(provider.kind, toChatCompletions(request) as { max_tokens?: number })),
   });
   if (!upstream.ok) {

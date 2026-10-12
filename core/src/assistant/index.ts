@@ -3,7 +3,8 @@ import { resolveModel } from '../providers.ts';
 import { chatRound } from '../providerApi.ts';
 import { join } from 'node:path';
 import YAML from 'yaml';
-import { saveSettings } from '../config.ts';
+import { saveSettings, type Settings } from '../config.ts';
+import { publicSettings } from '../secrets/settingsSecrets.ts';
 import type { Ctx } from '../context.ts';
 import { HttpError } from '../store.ts';
 import { addProjectFile, copyToAgentWorkspace, listLocalFolder, readLocalFile, writeAgentFile } from './files.ts';
@@ -378,12 +379,18 @@ function tools(ctx: Ctx): Record<string, Tool> {
     },
     update_settings: {
       description:
-        'Change settings that are not secrets: global_spend_cap_usd, defaults (models, budget_usd, max_parallel, guardrails), providers (id, kind, url; no keys), dopbase.mode/url/local_port.',
+        'Change these settings only: global_spend_cap_usd, defaults (models, budget_usd, max_parallel, harness, guardrails), assistant.model, updates (auto, channel latest|next). Providers, harness commands, keys and everything else are changed by the person in Settings.',
       parameters: obj({ yaml: str('a partial settings object in YAML, merged into the current settings') }, ['yaml']),
       run: (a) => {
         const patch = yamlDef<Record<string, unknown>>(a);
-        const banned = JSON.stringify(patch).match(/"(api_key|master_key|token)"/);
-        if (banned) throw new HttpError(400, `set ${banned[1]} in the Settings page, not in chat`);
+        // An allow-list, not a deny-list: what the chat reads (files, agents' messages) may try to steer it, and a
+        // harness command or a provider URL is code execution or a key sent elsewhere.
+        const outside = Object.keys(patch).filter((k) => !CHAT_SETTABLE.has(k));
+        if (outside.length) throw new HttpError(400, `the chat cannot change ${outside.join(', ')}; that is done in Settings`);
+        if (patch.updates && typeof patch.updates === 'object') {
+          const ch = (patch.updates as { channel?: unknown }).channel;
+          if (ch !== undefined && ch !== 'latest' && ch !== 'next') throw new HttpError(400, 'updates.channel is latest or next');
+        }
         deepMerge(ctx.settings as unknown as Record<string, unknown>, patch);
         saveSettings(ctx.settings);
         ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
@@ -410,12 +417,17 @@ async function api(ctx: Ctx, method: string, path: string): Promise<unknown> {
   return data;
 }
 
-function redact(settings: unknown): unknown {
-  return JSON.parse(JSON.stringify(settings, (k, v) => (['api_key', 'master_key', 'token'].includes(k) && v ? '(set)' : v)));
+/** Top-level settings the chat may change (update_settings). */
+const CHAT_SETTABLE = new Set(['global_spend_cap_usd', 'defaults', 'assistant', 'updates']);
+
+/** Settings as the chat sees them: what the UI sees (no secret values at all), not ctx.settings. */
+function redact(settings: Settings): unknown {
+  return publicSettings(settings);
 }
 
 function deepMerge(target: Record<string, unknown>, patch: Record<string, unknown>): void {
   for (const [k, v] of Object.entries(patch)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
     if (v && typeof v === 'object' && !Array.isArray(v) && target[k] && typeof target[k] === 'object')
       deepMerge(target[k] as Record<string, unknown>, v as Record<string, unknown>);
     else target[k] = v;

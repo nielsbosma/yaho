@@ -15,7 +15,8 @@ const toml = (s: string) => JSON.stringify(s); // a TOML basic string has JSON's
 function direct(command: string): [string, string[]] {
   if (!/\.cmd$/i.test(command)) return [command, []];
   const js = join(dirname(command), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-  return existsSync(js) ? [process.execPath, [js]] : [command, []];
+  if (!existsSync(js)) throw new Error(`cannot run ${command} without a shell: reinstall Codex with npm install -g @openai/codex`);
+  return [process.execPath, [js]];
 }
 
 /**
@@ -50,7 +51,6 @@ export const codex: HarnessAdapter = {
       env: run.env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
-      shell: /\.(cmd|bat)$/i.test(command),
       detached: process.platform !== 'win32',
     });
     // The prompt over stdin ("-"): Windows command lines cap at 32k characters.

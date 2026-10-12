@@ -62,7 +62,8 @@ export class Updates {
   }
 
   async check(): Promise<UpdateState> {
-    const channel = this.ctx.settings.updates?.channel ?? 'latest';
+    // The channel goes to a shell on Windows (npm is a .cmd there): only the two known names.
+    const channel = this.ctx.settings.updates?.channel === 'next' ? 'next' : 'latest';
     try {
       const res = await fetch(`https://registry.npmjs.org/${PACKAGE.replace('/', '%2f')}`, { headers: { Accept: 'application/vnd.npm.install-v1+json' } });
       if (!res.ok) throw new Error(`npm answered ${res.status}`);
