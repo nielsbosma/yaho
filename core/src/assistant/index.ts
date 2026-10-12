@@ -1,4 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs';
+import { resolveModel } from '../providers.ts';
 import { join } from 'node:path';
 import YAML from 'yaml';
 import { saveSettings } from '../config.ts';
@@ -376,7 +377,7 @@ function tools(ctx: Ctx): Record<string, Tool> {
     },
     update_settings: {
       description:
-        'Change settings that are not secrets: global_spend_cap_usd, defaults (models, budget_usd, max_parallel, guardrails), litellm.url, dopbase.mode/url/local_port.',
+        'Change settings that are not secrets: global_spend_cap_usd, defaults (models, budget_usd, max_parallel, guardrails), providers (id, kind, url; no keys), dopbase.mode/url/local_port.',
       parameters: obj({ yaml: str('a partial settings object in YAML, merged into the current settings') }, ['yaml']),
       run: (a) => {
         const patch = yamlDef<Record<string, unknown>>(a);
@@ -505,11 +506,12 @@ function focusPrompt(ctx: Ctx, focus: ChatFocus | undefined): string {
 
 /** One assistant turn: call the model, run its tools, repeat until it answers. */
 export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus): Promise<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }> {
-  const { litellm } = ctx.settings;
+  const chosen = ctx.settings.assistant?.model ?? ctx.settings.defaults.models[0];
+  if (!chosen) throw new HttpError(503, 'choose a default model in Settings first');
+  const { provider: litellm, model } = resolveModel(ctx.settings, chosen);
+  if (litellm.kind !== 'litellm') throw new HttpError(503, `the chat cannot use provider ${litellm.id} (${litellm.kind}) yet`);
   const key = litellm.master_key ?? litellm.api_key;
-  if (!litellm.url || !key) throw new HttpError(503, 'set the LiteLLM proxy URL and key in Settings first');
-  const model = ctx.settings.assistant?.model ?? ctx.settings.defaults.models[0];
-  if (!model) throw new HttpError(503, 'choose a default model in Settings first');
+  if (!litellm.url || !key) throw new HttpError(503, 'set the model provider URL and key in Settings first');
   const t = tools(ctx);
   const toolDefs = Object.entries(t).map(([name, x]) => ({
     type: 'function',
@@ -519,17 +521,25 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
   const steps: Step[] = [];
   const out: { navigate?: string[] } = {};
 
-  for (let round = 0; round < 12; round++) {
+  const ROUNDS = 12;
+  let answered = false;
+  for (let round = 0; round < ROUNDS; round++) {
     const res = await fetch(`${litellm.url.replace(/\/$/, '')}/v1/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, tools: toolDefs, max_tokens: 4000 }),
+      // Room for a whole agent definition in one tool call; a cut-off call arrives with no arguments.
+      body: JSON.stringify({ model, messages, tools: toolDefs, max_tokens: 16000 }),
     });
     if (!res.ok) throw new HttpError(502, `LiteLLM: ${res.status} ${(await res.text()).slice(0, 300)}`);
-    const j = (await res.json()) as { choices: Array<{ message: ChatMessage }> };
+    const j = (await res.json()) as { choices: Array<{ message: ChatMessage; finish_reason?: string }> };
     const msg = j.choices[0]!.message;
+    /** The reply hit the output limit: its tool calls are incomplete and must not run. */
+    const cut = j.choices[0]!.finish_reason === 'length';
     messages.push({ role: 'assistant', content: msg.content ?? '', ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}) });
-    if (!msg.tool_calls?.length) break;
+    if (!msg.tool_calls?.length) {
+      answered = true;
+      break;
+    }
     const images: Array<{ path: string; url: string }> = [];
     for (const call of msg.tool_calls) {
       const tool = t[call.function.name];
@@ -537,8 +547,15 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
       let result: unknown;
       let ok = true;
       try {
+        if (cut)
+          throw new Error(
+            'Your reply was cut off at the output limit, so this call arrived incomplete and did nothing. Send less in one call: change only the fields you need (omitted fields keep their value), keep long texts shorter, or split the work over several calls.',
+          );
         args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
         if (!tool) throw new Error(`unknown tool ${call.function.name}`);
+        const required = (tool.parameters as { required?: string[] }).required ?? [];
+        if (required.length && !Object.keys(args).length)
+          throw new Error(`the call had no arguments (needs ${required.join(', ')}); it may have been cut off. Send it again, shorter if it was long.`);
         result = await tool.run(args, out);
       } catch (e) {
         ok = false;
@@ -563,6 +580,15 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
           { type: 'image_url' as const, image_url: { url: i.url } },
         ]),
       });
+  }
+  // Out of rounds while still calling tools: say so, instead of leaving a tool result as the last word.
+  if (!answered) {
+    const failed = steps.filter((x) => !x.ok).at(-1);
+    const why = failed ? ` The last thing that failed: ${failed.tool.replace(/_/g, ' ')}: ${(failed.result as { error?: string })?.error ?? 'unknown error'}.` : '';
+    messages.push({
+      role: 'assistant',
+      content: `I stopped after ${ROUNDS} steps without finishing.${why} Ask again, perhaps for a smaller change at a time.`,
+    });
   }
   return { messages: messages.slice(1), steps, navigate: out.navigate };
 }

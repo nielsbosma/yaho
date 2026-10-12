@@ -7,6 +7,8 @@ import { onLive, useApi } from './lib/api.ts';
 import { platform } from './lib/platform.ts';
 import { go, useRoute } from './lib/router.ts';
 import { views } from './views/index.tsx';
+import { Onboarding } from './views/onboarding.tsx';
+import { UpdateBanner } from './components/UpdateBanner.tsx';
 
 export interface AppState {
   version: string;
@@ -17,6 +19,8 @@ export interface AppState {
   global_spend_cap_usd: number;
   /** The core runs in debug mode: developer-only settings show. */
   debug?: boolean;
+  /** The first-run setup is done; until then the app shows it instead of the pages. */
+  onboarded?: boolean;
 }
 
 export function App() {
@@ -62,7 +66,7 @@ export function App() {
       window.removeEventListener('yaho:chat-focus', onFocus);
     };
   });
-  const state = useApi<AppState>('/api/state', (e) => e.type === 'message' || e.type === 'job');
+  const state = useApi<AppState>('/api/state', (e) => e.type === 'message' || e.type === 'job' || (e.type === 'changed' && e.entity === 'settings'));
 
   useEffect(
     () =>
@@ -86,14 +90,19 @@ export function App() {
     );
   }
 
+  if (state.data && state.data.onboarded === false) return <Onboarding onDone={() => void state.reload()} />;
+
   const View = views[route[0] ?? 'inbox'] ?? views.inbox!;
   return (
     <div className="flex h-full">
       {/* Desktop: the window can be dragged by its top edge anywhere, whatever the page under it. Header padding only. */}
       {platform.kind === 'desktop' && <div aria-hidden className="app-drag fixed inset-x-0 top-0 z-50 h-2" />}
       <Sidebar route={route} state={state.data} connected={connected} assistantOpen={assistant} onAssistant={() => toggleAssistant()} />
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <View route={route} />
+      <main className="flex min-w-0 flex-1 flex-col">
+        <UpdateBanner />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <View route={route} />
+        </div>
       </main>
       {assistant && (
         <Assistant

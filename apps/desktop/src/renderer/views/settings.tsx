@@ -2,9 +2,10 @@ import { Check as CheckIcon, CheckCircle2, Monitor, Moon, Sun, XCircle } from 'l
 import { useEffect, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { Card, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
-import { Field, Input, Switch } from '../components/ui/form.tsx';
+import { Field, Input, Select, Switch } from '../components/ui/form.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
 import type { AppState } from '../App.tsx';
+import { ClaudeCheckPanel } from './onboarding.tsx';
 import { api, useApi } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
 import { href } from '../lib/router.ts';
@@ -12,9 +13,13 @@ import { PALETTES, usePalette, useTheme, type Theme } from '../lib/theme.ts';
 import { cn } from '../components/ui/cn.ts';
 
 interface Settings {
+  /** Which secrets are stored in Dopbase ("section.field"); their values never come to the UI. */
+  secrets_set?: Record<string, boolean>;
+  updates?: { auto?: boolean; channel?: 'latest' | 'next' };
   server: { host: string; port: number };
   harnesses: Record<string, { command: string; args?: string[] }>;
-  litellm: { url: string; api_key?: string; master_key?: string };
+  providers: Array<{ id: string; kind: string; url?: string; api_key?: string; master_key?: string }>;
+  default_provider?: string;
   dopbase: { mode: 'bundled' | 'external'; url: string; token?: string; local_port?: number; environment: string; project_prefix: string };
   global_spend_cap_usd: number;
   composio?: { api_key?: string; user_id?: string };
@@ -66,6 +71,14 @@ export function SettingsView() {
       fn(next);
       return next;
     });
+  // The LiteLLM provider, the only kind that works today; made if a settings file has none.
+  const liteOf = (d: Settings) => {
+    let p = d.providers.find((x) => x.kind === 'litellm');
+    if (!p) d.providers.unshift((p = { id: 'litellm', kind: 'litellm', url: 'http://localhost:4000' }));
+    return p;
+  };
+  const lite = s.providers.find((x) => x.kind === 'litellm') ?? { id: 'litellm', kind: 'litellm' };
+  const updLite = (fn: (p: Settings['providers'][number]) => void) => upd((d) => fn(liteOf(d)));
 
   const save = async () => {
     setError(null);
@@ -82,10 +95,11 @@ export function SettingsView() {
     <>
       <PageHeader
         title="Settings"
-        sub="Stored as settings.yaml in the data directory."
+        sub="Stored as settings.yaml in the data directory; keys and tokens are kept in the bundled Dopbase."
         actions={
           <>
             {ok && <span className="text-sm text-ok">Saved</span>}
+            <Button onClick={() => void api('/api/onboarding/reset', { method: 'POST' }).then(() => location.reload())}>Run Setup Again</Button>
             <Button variant="primary" onClick={() => void save()}>
               Save Settings
             </Button>
@@ -97,21 +111,26 @@ export function SettingsView() {
         <Appearance />
         <Section title="Models (LiteLLM)">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
+            <p className="text-xs text-muted md:col-span-2">
+              LiteLLM is the model provider today. OpenAI, Anthropic, your Claude Code subscription, OpenRouter, Opper.AI and Berget.AI are coming.
+            </p>
             <Field label="Proxy URL" className="md:col-span-2">
-              <Input value={s.litellm.url} onChange={(e) => upd((d) => void (d.litellm.url = e.target.value))} />
+              <Input value={lite.url ?? ''} onChange={(e) => updLite((p) => void (p.url = e.target.value))} />
             </Field>
             <Field label="API Key" hint="Used by jobs when no master key is set.">
               <Input
                 type="password"
-                value={s.litellm.api_key ?? ''}
-                onChange={(e) => upd((d) => void (d.litellm.api_key = e.target.value || undefined))}
+                value={lite.api_key ?? ''}
+                placeholder={s.secrets_set?.[`providers.${lite.id}.api_key`] ? 'Value set · type to replace' : undefined}
+                onChange={(e) => updLite((p) => void (p.api_key = e.target.value || undefined))}
               />
             </Field>
             <Field label="Master Key (Optional)" hint="Lets Yaho mint a budget-capped key per job, so LiteLLM enforces budgets.">
               <Input
                 type="password"
-                value={s.litellm.master_key ?? ''}
-                onChange={(e) => upd((d) => void (d.litellm.master_key = e.target.value || undefined))}
+                value={lite.master_key ?? ''}
+                placeholder={s.secrets_set?.[`providers.${lite.id}.master_key`] ? 'Value set · type to replace' : undefined}
+                onChange={(e) => updLite((p) => void (p.master_key = e.target.value || undefined))}
               />
             </Field>
             <div className="md:col-span-2">
@@ -186,7 +205,7 @@ export function SettingsView() {
           </Card>
         </Section>
         <Section title="Slack">
-          <SlackSettings value={s.slack ?? {}} onChange={(v) => upd((d) => void (d.slack = v))} />
+          <SlackSettings value={s.slack ?? {}} stored={s.secrets_set ?? {}} onChange={(v) => upd((d) => void (d.slack = v))} />
         </Section>
         <Section title="Apps (Composio)">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
@@ -195,6 +214,7 @@ export function SettingsView() {
               <Input
                 type="password"
                 value={s.composio?.api_key ?? ''}
+                placeholder={s.secrets_set?.['composio.api_key'] ? 'Value set · type to replace' : undefined}
                 onChange={(e) => upd((d) => void (d.composio = { ...d.composio, api_key: e.target.value || undefined }))}
               />
             </Field>
@@ -249,6 +269,26 @@ export function SettingsView() {
                 onChange={(e) => upd((d) => void (d.defaults.max_parallel = Number(e.target.value)))}
               />
             </Field>
+          </Card>
+        </Section>
+        <Section title="Updates">
+          <Card className="space-y-4 p-4">
+            <Switch
+              checked={s.updates?.auto !== false}
+              onChange={(v) => upd((d) => void (d.updates = { ...d.updates, auto: v }))}
+              label="Check for Updates Automatically"
+            />
+            <Field label="Update Channel" hint="Preview gets new versions first, before they are released to everyone.">
+              <Select value={s.updates?.channel ?? 'latest'} onChange={(e) => upd((d) => void (d.updates = { ...d.updates, channel: e.target.value as 'latest' | 'next' }))}>
+                <option value="latest">Stable</option>
+                <option value="next">Preview</option>
+              </Select>
+            </Field>
+          </Card>
+        </Section>
+        <Section title="Claude Code">
+          <Card className="p-4">
+            <ClaudeCheckPanel auto={false} />
           </Card>
         </Section>
         <Section title="Harnesses">
@@ -438,7 +478,14 @@ interface SlackStatus {
  * Your Yaho inbox as Slack DMs. Setup: create the app from Yaho's manifest, install it, paste its two tokens, then
  * open Yaho in Slack once so it knows it is you. Tokens are saved with Save Settings, which reconnects.
  */
-function SlackSettings({ value, onChange }: { value: NonNullable<Settings['slack']>; onChange: (v: NonNullable<Settings['slack']>) => void }) {
+function SlackSettings({
+  value,
+  stored,
+  onChange,
+}: {
+  value: NonNullable<Settings['slack']>;
+  stored: Record<string, boolean>;
+  onChange: (v: NonNullable<Settings['slack']>) => void }) {
   const status = useApi<SlackStatus>('/api/slack', (e) => e.type === 'changed' && (e.entity === 'slack' || e.entity === 'settings'));
   const st = status.data;
   const set = (patch: Partial<NonNullable<Settings['slack']>>) => onChange({ ...value, ...patch });
@@ -523,10 +570,10 @@ function SlackSettings({ value, onChange }: { value: NonNullable<Settings['slack
       </ol>
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Bot Token" hint="OAuth & Permissions → Bot User OAuth Token (xoxb-…).">
-          <Input type="password" value={value.bot_token ?? ''} placeholder="xoxb-…" onChange={(e) => set({ bot_token: e.target.value.trim() || undefined })} />
+          <Input type="password" value={value.bot_token ?? ''} placeholder={stored['slack.bot_token'] ? 'Value set · type to replace' : 'xoxb-…'} onChange={(e) => set({ bot_token: e.target.value.trim() || undefined })} />
         </Field>
         <Field label="App Token" hint="Basic Information → App-Level Tokens (xapp-…).">
-          <Input type="password" value={value.app_token ?? ''} placeholder="xapp-…" onChange={(e) => set({ app_token: e.target.value.trim() || undefined })} />
+          <Input type="password" value={value.app_token ?? ''} placeholder={stored['slack.app_token'] ? 'Value set · type to replace' : 'xapp-…'} onChange={(e) => set({ app_token: e.target.value.trim() || undefined })} />
         </Field>
       </div>
       <Field label="Post to Slack">

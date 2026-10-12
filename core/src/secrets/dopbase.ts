@@ -92,6 +92,24 @@ export class Dopbase {
     this.ctx.db.prepare('UPDATE resource_keys SET has_value = 0 WHERE resource = ? AND name = ?').run(resource, key);
   }
 
+  /** Every value in a project, whatever keys it holds (Yaho's own settings project has no declared keys). */
+  async projectValues(project: string): Promise<Record<string, string>> {
+    const id = await this.environmentId(project, false);
+    if (!id) return {};
+    const data = await this.call<{ entries: Array<{ key: string; value: string }> }>('GET', `/environments/${id}/secrets/runtime`);
+    return Object.fromEntries((data?.entries ?? []).map((e) => [e.key, e.value]));
+  }
+
+  async setProjectValue(project: string, key: string, value: string): Promise<void> {
+    const id = await this.environmentId(project, true);
+    await this.call('PUT', `/environments/${id}/secrets/${encodeURIComponent(key)}`, { value });
+  }
+
+  async deleteProjectValue(project: string, key: string): Promise<void> {
+    const id = await this.environmentId(project, false);
+    if (id) await this.call('DELETE', `/environments/${id}/secrets/${encodeURIComponent(key)}`, undefined, true);
+  }
+
   /** All values of a resource's declared keys, for injection into a harness environment. */
   async runtimeValues(resource: string): Promise<Record<string, string>> {
     const declared = new Set(getResource(this.ctx, resource).keys.map((k) => k.name));

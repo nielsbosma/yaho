@@ -4,6 +4,9 @@ import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
+import { checkClaude, lastClaudeCheck } from '../checks.ts';
+import { PROVIDERS } from '../providers.ts';
+import { applySettingsUpdate, publicSettings, storeSecrets } from '../secrets/settingsSecrets.ts';
 import type { Ctx } from '../context.ts';
 import { chat, type ChatFocus, type ChatMessage } from '../assistant/index.ts';
 import { litellmModels } from '../jobs/litellm.ts';
@@ -62,6 +65,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   // ---- overview ----
   r.on('GET', '/api/state', () => ({
     version: yahoVersion(),
+    onboarded: !!ctx.settings.onboarded_at,
     unread: s.unreadCount(ctx),
     running: ctx.db.prepare("SELECT COUNT(*) n FROM jobs WHERE status = 'running'").get()!.n,
     queued: ctx.db.prepare("SELECT COUNT(*) n FROM jobs WHERE status = 'queued'").get()!.n,
@@ -79,17 +83,49 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('GET', '/api/schedule', (req) => schedule(ctx.db, Math.min(168, Math.max(1, Number(req.query.get('hours')) || 24))));
 
   // ---- settings ----
-  r.on('GET', '/api/settings', () => ctx.settings);
+  // Secret values never leave the core: the UI sees which are set, and sends a value only to replace one.
+  r.on('GET', '/api/settings', () => publicSettings(ctx.settings));
   r.on('PUT', '/api/settings', async (req) => {
     const next = await definition<Settings>(req);
     const slackBefore = JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]);
-    Object.assign(ctx.settings, next);
-    saveSettings(ctx.settings);
+    applySettingsUpdate(ctx.settings, next);
     if (ctx.settings.dopbase.mode === 'bundled' && ctx.localDopbase && !ctx.localDopbase.child) await ctx.localDopbase.start();
+    await storeSecrets(ctx);
     ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
     runner(ctx).pump();
     if (JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]) !== slackBefore) void ctx.slack?.start();
-    return ctx.settings;
+    return publicSettings(ctx.settings);
+  });
+
+  // ---- first-run setup and checks ----
+  r.on('POST', '/api/onboarding/done', () => {
+    ctx.settings.onboarded_at = new Date().toISOString();
+    saveSettings(ctx.settings);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
+    return { onboarded: true };
+  });
+  r.on('POST', '/api/onboarding/reset', () => {
+    delete ctx.settings.onboarded_at;
+    saveSettings(ctx.settings);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
+    return { onboarded: false };
+  });
+  r.on('GET', '/api/providers', () => PROVIDERS);
+  r.on('GET', '/api/update', () => ctx.updates?.state ?? null);
+  r.on('POST', '/api/update/check', () => ctx.updates?.check());
+  r.on('POST', '/api/update/install', () => {
+    if (!ctx.updates) throw new HttpError(503, 'updates are not available');
+    try {
+      return ctx.updates.install();
+    } catch (e) {
+      throw new HttpError(400, (e as Error).message);
+    }
+  });
+  r.on('GET', '/api/checks/claude', () => lastClaudeCheck());
+  r.on('POST', '/api/checks/claude', async () => {
+    const r = await checkClaude(ctx);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'checks' });
+    return r;
   });
 
   // ---- Slack ----
@@ -107,7 +143,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     }
     return ctx.slack?.start().then(() => ctx.slack?.status);
   });
-  r.on('GET', '/api/settings/yaml', () => ({ yaml: YAML.stringify(ctx.settings) }));
+  r.on('GET', '/api/settings/yaml', () => ({ yaml: YAML.stringify(publicSettings(ctx.settings)) }));
   r.on('POST', '/api/settings/dopbase/test', async () => {
     const d = new Dopbase(ctx);
     const health = await d.health();

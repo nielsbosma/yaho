@@ -8,13 +8,13 @@ import YAML from 'yaml';
 export interface Settings {
   server: { host: string; port: number };
   harnesses: Record<string, { command: string; args?: string[] }>;
-  litellm: {
-    url: string;
-    /** Key the harness uses for model calls when no master key is set. */
-    api_key?: string;
-    /** With a master key Yaho mints one virtual key per job, capped at the agent's remaining budget. */
-    master_key?: string;
-  };
+  /**
+   * Where models come from. Only kind litellm works today (see providers.ts for the ones coming). A model name may name
+   * its provider, "<id>/<model>"; a bare name uses default_provider.
+   */
+  providers: ProviderConfig[];
+  /** The provider for model names without one; the first provider when unset. */
+  default_provider?: string;
   /** bundled: Yaho runs its own Dopbase on local_port. external: an existing server at url, with token. */
   dopbase: { mode: 'bundled' | 'external'; url: string; token?: string; local_port?: number; environment: string; project_prefix: string };
   global_spend_cap_usd: number;
@@ -30,6 +30,10 @@ export interface Settings {
   slack?: { bot_token?: string; app_token?: string; owner?: string; since?: string; post?: 'all' | 'expects_response' };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
+  /** When the first-run setup was finished (or skipped). Until then the app shows it. */
+  onboarded_at?: string;
+  /** Update checks: automatic (default on), and the npm dist-tag to follow (latest = stable, next = preview). */
+  updates?: { auto?: boolean; channel?: 'latest' | 'next' };
   defaults: {
     harness: string;
     models: string[];
@@ -37,6 +41,31 @@ export interface Settings {
     max_parallel: number;
     guardrails: Guardrails;
   };
+}
+
+/** One model provider. Secret fields live in Dopbase as PROVIDER_<ID>_API_KEY and PROVIDER_<ID>_MASTER_KEY. */
+export interface ProviderConfig {
+  /** Short name, used in model names ("<id>/<model>") and in the Dopbase key names. */
+  id: string;
+  /** litellm today; later anthropic, claude-subscription, openai, openrouter, opper, berget. */
+  kind: string;
+  url?: string;
+  /** Key for model calls (LiteLLM: when no master key is set). */
+  api_key?: string;
+  /** LiteLLM: with a master key Yaho mints one virtual key per job, capped at the agent's remaining budget. */
+  master_key?: string;
+}
+
+/**
+ * Settings files from before providers: the litellm block becomes the first provider. Runs on the raw YAML, so the
+ * file on disk, the secrets move and the in-memory settings all see the same shape.
+ */
+export function migrateSettingsShape(raw: Record<string, unknown>): Record<string, unknown> {
+  if (raw.litellm && !raw.providers) {
+    raw.providers = [{ id: 'litellm', kind: 'litellm', ...(raw.litellm as object) }];
+    delete raw.litellm;
+  }
+  return raw;
 }
 
 export interface Guardrails {
@@ -50,7 +79,7 @@ export interface Guardrails {
 export const defaultSettings = (): Settings => ({
   server: { host: '127.0.0.1', port: 4700 },
   harnesses: { 'claude-code': { command: 'claude' } },
-  litellm: { url: 'http://localhost:4000' },
+  providers: [{ id: 'litellm', kind: 'litellm', url: 'http://localhost:4000' }],
   dopbase: { mode: 'bundled', url: 'http://localhost:8840', local_port: 4702, environment: 'production', project_prefix: 'yaho-' },
   global_spend_cap_usd: 100,
   defaults: {
@@ -99,11 +128,50 @@ export function loadSettings(): Settings {
   if (!existsSync(p.settings)) {
     writeFileSync(p.settings, YAML.stringify(defaultSettings()));
   }
-  return merge(defaultSettings(), YAML.parse(readFileSync(p.settings, 'utf8')) ?? {});
+  const raw = migrateSettingsShape((YAML.parse(readFileSync(p.settings, 'utf8')) ?? {}) as Record<string, unknown>);
+  return merge(defaultSettings(), raw);
 }
 
+/** Settings that are secrets: [section, field, Dopbase key]. They live in the bundled Dopbase, not in settings.yaml. */
+/**
+ * One secret setting: where it sits in the settings (path, for the UI's secrets_set), its Dopbase key, and the object
+ * holding it. Secrets live in the bundled Dopbase, not in settings.yaml.
+ */
+export interface SecretSlot {
+  path: string;
+  key: string;
+  field: string;
+  /** The object holding the field; with create, made when missing (an optional section like slack). */
+  holder(s: Settings, create?: boolean): Record<string, unknown> | undefined;
+}
+
+const keyPart = (id: string) => id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+
+export function secretSlots(s: Settings): SecretSlot[] {
+  const section = (name: 'composio' | 'slack') => (x: Settings, create?: boolean) =>
+    (create ? (x[name] ??= {}) : x[name]) as Record<string, unknown> | undefined;
+  return [
+    ...s.providers.flatMap((p) =>
+      (['api_key', 'master_key'] as const).map((field) => ({
+        path: `providers.${p.id}.${field}`,
+        key: `PROVIDER_${keyPart(p.id)}_${field.toUpperCase()}`,
+        field,
+        holder: (x: Settings) => x.providers.find((q) => q.id === p.id) as unknown as Record<string, unknown> | undefined,
+      })),
+    ),
+    { path: 'composio.api_key', key: 'COMPOSIO_API_KEY', field: 'api_key', holder: section('composio') },
+    { path: 'slack.bot_token', key: 'SLACK_BOT_TOKEN', field: 'bot_token', holder: section('slack') },
+    { path: 'slack.app_token', key: 'SLACK_APP_TOKEN', field: 'app_token', holder: section('slack') },
+  ];
+}
+
+/** Secret settings (by path) confirmed in Dopbase; saveSettings leaves them out of the file. */
+export const secretsStored = new Set<string>();
+
 export function saveSettings(s: Settings): void {
-  writeFileSync(paths().settings, YAML.stringify(s));
+  const out = structuredClone(s);
+  for (const slot of secretSlots(out)) if (secretsStored.has(slot.path)) delete slot.holder(out)?.[slot.field];
+  writeFileSync(paths().settings, YAML.stringify(out));
 }
 
 /** The API token every caller (UI, CLI admin use) presents. Created once per data directory. */

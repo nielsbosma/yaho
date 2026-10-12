@@ -16,5 +16,7 @@ contextBridge.exposeInMainWorld('yahoDesktop', {
   setTheme: (theme: string) => ipcRenderer.send('yaho:theme', theme),
   setTitleBar: (color: string, symbolColor: string) => ipcRenderer.send('yaho:titlebar', color, symbolColor),
   os: process.platform,
+  restart: () => ipcRenderer.send('yaho:restart'),
+  createShortcut: (): Promise<{ files: string[]; error?: string }> => ipcRenderer.invoke('yaho:shortcut'),
   onNavigate: (cb: (route: string) => void) => ipcRenderer.on('yaho:navigate', (_e: unknown, route: string) => cb(route)),
 });

@@ -1,8 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, shell, Tray } from 'electron';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { startCore, type CoreConnection } from './core.ts';
 import { appIcon, overlayBadge } from './icons.ts';
+import { createShortcuts, removeShortcuts } from './shortcuts.ts';
 
 const here = import.meta.dirname;
 const desktopRoot = join(here, '../..');
@@ -27,6 +29,7 @@ const startHidden = process.argv.includes('--hidden');
 let win: BrowserWindow | null = null;
 /** The Yaho icon file: next to the app when packaged, in assets/logo in the repo. */
 const winIcon = packaged ? join(root, 'yaho.ico') : join(desktopRoot, '../../assets/logo/yaho.ico');
+const pngIcon = packaged ? join(root, 'yaho.png') : join(desktopRoot, '../../assets/logo/mark-256.png');
 /** Height of the window-button overlay on Windows and Linux; the renderer keeps its controls clear of it. */
 const TITLEBAR_HEIGHT = 40;
 let tray: Tray | null = null;
@@ -190,6 +193,21 @@ ipcMain.on('yaho:badge', () => void refreshState());
 ipcMain.on('yaho:notify', (_e, title: string, body: string) => {
   new Notification({ title, body, icon: appIcon(64) }).show();
 });
+// The desktop and Start menu shortcuts, from the first-run setup. The dev session runs plain electron.exe, which a
+// shortcut cannot start Yaho with, so it only says so.
+ipcMain.handle('yaho:shortcut', () =>
+  packaged ? { files: createShortcuts(winIcon, pngIcon) } : { files: [], error: 'Shortcuts are made by the installed app, not the dev session.' },
+);
+// Restart after an update. Started from the yaho command, the launcher opens the new version once this one has
+// exited (it waits for this pid); otherwise Electron restarts the same build.
+ipcMain.on('yaho:restart', () => {
+  const launcher = process.env.YAHO_LAUNCHER;
+  if (launcher && existsSync(launcher)) {
+    spawn(process.env.YAHO_NODE ?? 'node', [launcher, 'open', '--wait-pid', String(process.pid)], { detached: true, stdio: 'ignore' }).unref();
+  } else app.relaunch();
+  quitting = true;
+  app.quit();
+});
 ipcMain.on('yaho:reveal', (_e, path: string) => {
   if (existsSync(path)) shell.showItemInFolder(path);
 });
@@ -204,10 +222,26 @@ ipcMain.on('yaho:open', (_e, url: string) => {
   if (/^https?:\/\//.test(url)) void shell.openExternal(url);
 });
 
-if (!app.requestSingleInstanceLock()) app.quit();
+/**
+ * One-shot modes the yaho command uses: make or remove the shortcuts, or run the core without a window. They neither
+ * take the single-instance lock nor open a window.
+ */
+const oneShot = ['--create-shortcut', '--remove-shortcut', '--serve'].find((f) => process.argv.includes(f));
+if (oneShot === '--serve') {
+  const child = spawn(process.execPath, ['--no-warnings', coreMain, 'serve'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'inherit' });
+  child.on('exit', (code) => app.exit(code ?? 0));
+} else if (oneShot) {
+  void app.whenReady().then(() => {
+    const files = oneShot === '--create-shortcut' ? createShortcuts(winIcon, pngIcon) : removeShortcuts();
+    const verb = oneShot === '--create-shortcut' ? 'Made' : 'Removed';
+    process.stdout.write(files.length ? `${verb}:\n${files.map((f) => `  ${f}`).join('\n')}\n` : 'Nothing to do on this system.\n');
+    app.exit(0);
+  });
+} else if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => show());
 
 app.whenReady().then(async () => {
+  if (oneShot) return;
   // Taskbar grouping and notifications. Windows takes the taskbar icon from the program: the Yaho exe when installed,
   // electron.exe (and its icon) in the dev session.
   app.setAppUserModelId('com.nielsbosma.yaho');

@@ -18,6 +18,10 @@ export interface Platform {
   setTitleBar?(color: string, symbolColor: string): void;
   /** Desktop: the OS, for where the window buttons sit. */
   os?: string;
+  /** Desktop: quit and start again (after an update). */
+  restart?(): void;
+  /** Desktop: make the desktop and Start menu shortcuts. */
+  createShortcut?(): Promise<{ files: string[]; error?: string }>;
 }
 
 interface DesktopBridge {
@@ -31,6 +35,8 @@ interface DesktopBridge {
   setTheme(theme: string): void;
   setTitleBar?(color: string, symbolColor: string): void;
   os?: string;
+  createShortcut?(): Promise<{ files: string[]; error?: string }>;
+  restart?(): void;
 }
 
 declare global {
@@ -65,6 +71,8 @@ function makePlatform(): Platform {
       setTheme: (t) => d.setTheme(t),
       setTitleBar: (c, s) => d.setTitleBar?.(c, s),
       os: d.os,
+      createShortcut: d.createShortcut,
+      restart: d.restart,
     };
   }
   const baseTitle = document.title;

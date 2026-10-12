@@ -1,5 +1,5 @@
 import { Bot, BotOff, ChevronRight, Folder, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useState, type DragEvent } from 'react';
+import { useEffect, useState, type DragEvent } from 'react';
 import { api, useApi, type Agent } from '../lib/api.ts';
 import { href } from '../lib/router.ts';
 import { useAgentMenu } from './AgentMenu.tsx';
@@ -11,11 +11,12 @@ import { CountPill, ErrorNote } from './ui/display.tsx';
 import { Field, Input } from './ui/form.tsx';
 
 const DRAG = 'application/x-yaho-agent';
-const COLLAPSED = 'yaho:collapsed-folders';
+/** Folders the user opened. Kept for this run of the app only: every start begins with all folders closed. */
+const OPENED = 'yaho:opened-folders';
 
-function loadCollapsed(): string[] {
+function loadOpened(): string[] {
   try {
-    return JSON.parse(localStorage.getItem(COLLAPSED) ?? '[]') as string[];
+    return JSON.parse(sessionStorage.getItem(OPENED) ?? '[]') as string[];
   } catch {
     return [];
   }
@@ -29,19 +30,25 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
   const folders = useApi<string[]>('/api/folders', (e) => e.type === 'changed' && e.entity === 'agents');
   const agentMenu = useAgentMenu();
   const folderMenu = useContextMenu();
-  const [collapsed, setCollapsed] = useState<string[]>(loadCollapsed);
+  const [opened, setOpened] = useState<string[]>(loadOpened);
   const [over, setOver] = useState<string | null>(null); // folder name, or '' for the top level
   const [naming, setNaming] = useState<{ folder?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  // Going to an agent in a closed folder opens that folder, once; it can be closed again.
+  const activeFolder = agents?.find((a) => a.name === active)?.folder ?? null;
+  useEffect(() => {
+    if (activeFolder && !opened.includes(activeFolder)) toggle(activeFolder);
+  }, [activeFolder]);
+
   const toggle = (f: string) => {
-    const next = collapsed.includes(f) ? collapsed.filter((x) => x !== f) : [...collapsed, f];
-    setCollapsed(next);
+    const next = opened.includes(f) ? opened.filter((x) => x !== f) : [...opened, f];
+    setOpened(next);
     try {
-      localStorage.setItem(COLLAPSED, JSON.stringify(next));
+      sessionStorage.setItem(OPENED, JSON.stringify(next));
     } catch {
-      /* the folder just opens again next time */
+      /* it closes again on reload */
     }
   };
 
@@ -138,7 +145,7 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
         <ErrorNote>{error}</ErrorNote>
         {folderNames.map((f) => {
           const inside = agents?.filter((a) => a.folder === f) ?? [];
-          const open = !collapsed.includes(f);
+          const open = opened.includes(f);
           const running = inside.some((a) => a.running);
           return (
             <div key={f} {...drop(f)} className={cn('flex flex-col gap-0.5 rounded-lg', over === f && 'bg-accent/10 ring-1 ring-accent/40')}>

@@ -6,15 +6,17 @@ import { Router } from './api/http.ts';
 import { agentRoutes } from './api/agentRoutes.ts';
 import { composioRoutes } from './api/composioRoutes.ts';
 import { fontRoutes } from './api/fonts.ts';
-import { exampleRoutes, humanRoutes } from './api/routes.ts';
+import { exampleRoutes, humanRoutes, yahoVersion } from './api/routes.ts';
 import { startServer } from './api/server.ts';
-import { apiToken, loadSettings, paths } from './config.ts';
+import { apiToken, loadSettings, paths, saveSettings } from './config.ts';
 import { Bus, type Ctx } from './context.ts';
 import { openDb } from './db/index.ts';
 import { JobRunner } from './jobs/runner.ts';
 import { Scheduler } from './scheduler/index.ts';
 import { SlackBridge } from './slack/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
+import { loadSecrets } from './secrets/settingsSecrets.ts';
+import { Updates } from './updates.ts';
 
 // node:sqlite prints an ExperimentalWarning on Node 22; it is expected.
 process.removeAllListeners('warning');
@@ -34,6 +36,13 @@ export async function serve(
   // The bundled Dopbase runs next to the core whatever the mode, so switching to it in Settings needs no restart.
   ctx.localDopbase = new LocalDopbase(ctx);
   if (ctx.settings.dopbase.mode === 'bundled' && !process.env.YAHO_NO_DOPBASE) await ctx.localDopbase.start();
+  // Keys and tokens live in Dopbase; read them in (and move any still in settings.yaml) before anything uses them.
+  await loadSecrets(ctx);
+  // An install from before the first-run setup existed, with agents already: it is set up.
+  if (!ctx.settings.onboarded_at && ctx.db.prepare('SELECT 1 FROM agents LIMIT 1').get()) {
+    ctx.settings.onboarded_at = new Date().toISOString();
+    saveSettings(ctx.settings);
+  }
   const scheduler = new Scheduler(ctx);
   ctx.scheduler = scheduler;
   ctx.slack = new SlackBridge(ctx);
@@ -58,10 +67,13 @@ export async function serve(
 
   // Slack connects in the background; a bad token shows in Settings, never blocks the core.
   if (!opts.embedded) void ctx.slack.start();
+  ctx.updates = new Updates(ctx, yahoVersion());
+  if (!opts.embedded) ctx.updates.start();
 
   const close = async () => {
     scheduler.stop();
     await ctx.slack?.stop();
+    ctx.updates?.stop();
     ctx.localDopbase?.stop();
     await runner.shutdown();
     rmSync(p.server, { force: true });

@@ -1,0 +1,215 @@
+# Build, sign and publish Yaho for all five platforms.
+#
+#   A GitHub release (tag vX.Y.Z)  -> builds, signs, publishes to npm, attaches the installers to the release.
+#                                     A pre-release tag (v0.2.0-rc.1) publishes under the npm tag "next".
+#   Run by hand (publish: false)   -> builds and signs everything, publishes nothing: a dry run.
+#
+# Signing: Windows with Azure Artifact Signing (OIDC, no secret; tools/setup-signing.ps1 sets it up), macOS with the
+# Developer ID certificate and notarization (secrets MACOS_CERTIFICATE, MACOS_CERTIFICATE_PWD, APPLE_API_KEY_P8,
+# APPLE_API_KEY_ID, APPLE_API_ISSUER). Both live in the "release" environment, which only tags v* and main may use.
+# npm: the NPM_TOKEN secret until trusted publishing is turned on for each package.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to npm and the release (false = dry run)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOPBASE_VERSION: '0.1.9'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      npm_tag: ${{ steps.v.outputs.npm_tag }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: node node_modules/typescript/bin/tsc -p .
+      - run: node_modules/.bin/vp test run
+      - id: v
+        name: Version from the tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            v="${GITHUB_REF_NAME#v}"
+          else
+            v="$(node -p "require('./package.json').version")"
+          fi
+          case "$v" in *-*) tag=next ;; *) tag=latest ;; esac
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "npm_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Yaho $v (npm tag $tag)"
+
+  build:
+    needs: check
+    environment: release
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: windows-latest, platform: win32-x64 }
+          - { os: macos-latest, platform: darwin-arm64 }
+          - { os: macos-15-intel, platform: darwin-x64 }
+          - { os: ubuntu-latest, platform: linux-x64 }
+          - { os: ubuntu-24.04-arm, platform: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      - name: Set the version
+        shell: bash
+        run: node -e "const f='package.json',p=require('./'+f);p.version='${{ needs.check.outputs.version }}';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+
+      # Dopbase, built from its pinned tag on each platform (it publishes no Windows binary).
+      - uses: actions/cache@v4
+        id: dopbase
+        with:
+          path: vendor/dopbase
+          key: dopbase-${{ env.DOPBASE_VERSION }}-${{ matrix.platform }}
+      - if: steps.dopbase.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.dopbase.outputs.cache-hit != 'true'
+        run: node tools/build-dopbase.mjs ${{ env.DOPBASE_VERSION }}
+
+      # Windows signing: OIDC login, then signtool with Microsoft's signing dlib.
+      - if: runner.os == 'Windows'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.WINDOWS_SIGNING_CLIENT_ID }}
+          tenant-id: ${{ vars.WINDOWS_SIGNING_TENANT_ID }}
+          subscription-id: ${{ vars.WINDOWS_SIGNING_SUBSCRIPTION_ID }}
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_ENDPOINT: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          WINDOWS_SIGNING_ACCOUNT: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          WINDOWS_SIGNING_PROFILE: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+        run: ./tools/prepare-windows-signing.ps1
+
+      # macOS signing and notarization: electron-builder imports the certificate into a temporary keychain.
+      # The Bosma certificate is issued by Apple's Developer ID G2 CA; without that intermediate codesign does not
+      # accept the identity (filestar/build-scripts learned this).
+      - if: runner.os == 'macOS'
+        run: sudo security import tools/DeveloperIDG2CA.cer -k /Library/Keychains/System.keychain || true
+      - if: runner.os == 'macOS'
+        name: Notary key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+
+      - name: Build
+        shell: bash
+        env:
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MACOS_CERTIFICATE || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MACOS_CERTIFICATE_PWD || '' }}
+          APPLE_API_KEY_ID: ${{ runner.os == 'macOS' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ runner.os == 'macOS' && secrets.APPLE_API_ISSUER || '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ runner.os == 'macOS' }}
+        run: node tools/package.mjs --npm
+
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+        run: ./tools/verify-windows-signing.ps1
+      - if: runner.os == 'macOS'
+        name: Verify signature and notarization
+        run: |
+          app="$(ls -d apps/desktop/release/mac*/Yaho.app | head -1)"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -q 'Authority=Developer ID Application: Bosma Interactive'
+          spctl --assess --type execute --verbose "$app"
+          xcrun stapler validate "$app"
+
+      # Smoke test: the packaged core starts, answers /api/health and stops.
+      - name: Smoke test
+        shell: bash
+        run: |
+          export YAHO_DATA_DIR="$RUNNER_TEMP/yaho-smoke" YAHO_NO_DOPBASE=1
+          case "${{ runner.os }}" in
+            Windows) exe="$(ls apps/desktop/release/win-unpacked/Yaho.exe)" ;;
+            macOS) exe="$(ls -d apps/desktop/release/mac*/Yaho.app | head -1)/Contents/MacOS/Yaho" ;;
+            Linux) exe="$(ls -d apps/desktop/release/linux*-unpacked | head -1)/yaho" ;;
+          esac
+          if [ "${{ runner.os }}" = "Linux" ]; then run="xvfb-run -a"; else run=""; fi
+          $run "$exe" --serve &
+          for i in $(seq 1 60); do
+            if [ -f "$YAHO_DATA_DIR/server.yaml" ]; then
+              url="$(sed -n 's/^url: *//p' "$YAHO_DATA_DIR/server.yaml")"
+              if curl -fsS "$url/api/health"; then echo; echo "core answered at $url"; kill %1 || true; exit 0; fi
+            fi
+            sleep 2
+          done
+          echo "the packaged core did not start"; exit 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-${{ matrix.platform }}
+          path: apps/desktop/release/npm/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.platform }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.AppImage
+          if-no-files-found: ignore
+          retention-days: 7
+
+  publish:
+    needs: [check, build]
+    if: github.event_name == 'release' || inputs.publish
+    environment: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, registry-url: 'https://registry.npmjs.org' }
+      - uses: actions/download-artifact@v5
+        with: { path: dist }
+      - name: Publish to npm (the five apps, then the launcher)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ needs.check.outputs.npm_tag }}
+        run: |
+          set -e
+          for p in win32-x64 darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
+            (cd "dist/npm-$p/yaho-$p" && npm publish --access public --provenance --tag "$TAG")
+          done
+          # The launcher is the same on every platform; take the Linux one.
+          (cd dist/npm-linux-x64/yaho && npm publish --access public --provenance --tag "$TAG")
+      - name: Installers and checksums on the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out
+          find dist -maxdepth 2 -path 'dist/installer-*' -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \) -exec cp {} out/ \;
+          (cd out && sha256sum * > SHA256SUMS)
+          gh release upload "${{ github.ref_name }}" out/* --repo "${{ github.repository }}" --clobber

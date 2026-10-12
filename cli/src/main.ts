@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { parseArgs } from 'node:util';
 import YAML from 'yaml';
+import { LAUNCHER_COMMANDS, launcher, version } from './launcher.ts';
 
 const HELP = `yaho - talk to the Yaho orchestrator from inside a job
 
@@ -176,7 +177,33 @@ async function main(argv: string[]): Promise<void> {
   throw new CliError(`unknown command: ${p.join(' ')}\n\n${HELP}`);
 }
 
-main(process.argv.slice(2)).catch((e) => {
+/**
+ * Outside a job (no job token) the command belongs to the human: bare `yaho` opens the app, and open, doctor,
+ * shortcut, serve, update and --version are handled by the launcher. Inside a job everything is the agent's CLI.
+ */
+async function entry(argv: string[]): Promise<void> {
+  const [first] = argv;
+  if (first === '--version' || first === '-v') return void out(version());
+  if (!token && (!first || LAUNCHER_COMMANDS.has(first))) {
+    const code = await launcher(first, argv.slice(1));
+    if (code > 0) process.exit(code);
+    return;
+  }
+  if (!token && (first === '--help' || first === '-h' || first === 'help')) return void out(`${HUMAN_HELP}\n${HELP}`);
+  return main(argv);
+}
+
+const HUMAN_HELP = `yaho - Yet Another Harness Orchestrator
+
+  yaho                    open the app (or bring it to the front)
+  yaho doctor             check the install: app, Node, Claude Code, data folder, core
+  yaho shortcut [--remove] make (or remove) the desktop and Start menu shortcuts
+  yaho serve              run the core without a window
+  yaho update             update to the latest version
+  yaho --version
+`;
+
+entry(process.argv.slice(2)).catch((e) => {
   process.stderr.write(`yaho: ${e instanceof CliError ? e.message : (e as Error).stack}\n`);
   process.exit(1);
 });

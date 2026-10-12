@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { resolveModel } from '../providers.ts';
 import { existsSync, mkdirSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import type { Ctx } from '../context.ts';
@@ -174,9 +175,12 @@ export class JobRunner {
       .run(token, job.id, agent.name, new Date(Date.now() + 7 * 864e5).toISOString());
 
     const remaining = Math.max(0, agent.budget_usd - agentSpend(ctx, agent.name));
-    let modelKey = settings.litellm.api_key ?? '';
-    if (settings.litellm.master_key) {
-      r.liteKey = await createLitellmKey(settings, { maxBudget: remaining, models: agent.models, agent: agent.name, job: job.id });
+    // The provider serving the model; today only LiteLLM can run jobs.
+    const { provider, model: providerModel } = resolveModel(settings, model);
+    if (provider.kind !== 'litellm') throw new Error(`provider ${provider.id} (${provider.kind}) cannot run jobs yet`);
+    let modelKey = provider.api_key ?? '';
+    if (provider.master_key) {
+      r.liteKey = await createLitellmKey(settings, { maxBudget: remaining, models: agent.models.map((m) => resolveModel(settings, m).model), agent: agent.name, job: job.id });
       modelKey = r.liteKey;
     }
     const secrets = await envForAgent(ctx, agent.resources);
@@ -194,11 +198,11 @@ export class JobRunner {
       YAHO_AGENT: agent.name,
       YAHO_JOB: job.id,
       YAHO_AGENT_DB: join(cwd, 'agent.db'),
-      ANTHROPIC_BASE_URL: settings.litellm.url,
+      ANTHROPIC_BASE_URL: provider.url ?? '',
       ANTHROPIC_AUTH_TOKEN: modelKey,
       // Background calls (titles, summaries) must also use a model LiteLLM knows.
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: agent.models[agent.models.length - 1] ?? model,
-      ANTHROPIC_SMALL_FAST_MODEL: agent.models[agent.models.length - 1] ?? model,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,
+      ANTHROPIC_SMALL_FAST_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,
       DISABLE_TELEMETRY: '1',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     });
@@ -207,7 +211,7 @@ export class JobRunner {
     let prompt = contextPrompt(ctx, agent, fresh, ses.summary, ses.resumed);
     if (ses.resumed && job.trigger_type === 'continue') prompt = `Your budget was raised. Continue exactly where you stopped.\n\n${prompt}`;
     updateJob(ctx, job.id, { model });
-    if (!r.liteKey) r.price = await modelPrice(settings, model);
+    if (!r.liteKey) r.price = await modelPrice(settings, providerModel);
     addJobEvent(ctx, job.id, 'prompt', { system: systemPrompt(agent), user: prompt });
     addJobEvent(ctx, job.id, 'status', { text: `${ses.resumed ? 'Resuming' : 'Starting'} ${agent.harness} with ${model}` });
 
@@ -222,7 +226,7 @@ export class JobRunner {
         args: harnessCfg.args,
         cwd,
         env,
-        model,
+        model: providerModel,
         systemPrompt: systemPrompt(agent),
         prompt,
         resumeSessionId: ses.harnessId,

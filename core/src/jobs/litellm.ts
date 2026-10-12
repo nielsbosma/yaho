@@ -1,10 +1,11 @@
+import { litellmProvider } from '../providers.ts';
 import type { Settings } from '../config.ts';
 
-/** LiteLLM admin calls. Used only when settings.litellm.master_key is set. */
+/** LiteLLM admin calls. Used only when settinglitellmProvider(s).master_key is set. */
 async function admin<T>(s: Settings, method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${s.litellm.url.replace(/\/$/, '')}${path}`, {
+  const res = await fetch(`${litellmProvider(s).url.replace(/\/$/, '')}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${s.litellm.master_key}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${litellmProvider(s).master_key}`, 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`LiteLLM ${method} ${path}: ${res.status} ${(await res.text()).slice(0, 300)}`);
@@ -36,8 +37,8 @@ export async function deleteLitellmKey(s: Settings, key: string): Promise<void> 
 }
 
 export async function litellmModels(s: Settings): Promise<string[]> {
-  const key = s.litellm.master_key ?? s.litellm.api_key;
-  const res = await fetch(`${s.litellm.url.replace(/\/$/, '')}/v1/models`, { headers: key ? { Authorization: `Bearer ${key}` } : {} });
+  const key = litellmProvider(s).master_key ?? litellmProvider(s).api_key;
+  const res = await fetch(`${litellmProvider(s).url.replace(/\/$/, '')}/v1/models`, { headers: key ? { Authorization: `Bearer ${key}` } : {} });
   if (!res.ok) throw new Error(`LiteLLM /v1/models: ${res.status}`);
   const j = (await res.json()) as { data?: Array<{ id: string }> };
   return (j.data ?? []).map((m) => m.id);
@@ -58,8 +59,8 @@ export async function modelPrice(s: Settings, model: string): Promise<ModelPrice
   if (hit && Date.now() - hit.at < 3600_000) return hit.price;
   let price: ModelPrice | null = null;
   try {
-    const key = s.litellm.master_key ?? s.litellm.api_key;
-    const res = await fetch(`${s.litellm.url.replace(/\/$/, '')}/model/info`, {
+    const key = litellmProvider(s).master_key ?? litellmProvider(s).api_key;
+    const res = await fetch(`${litellmProvider(s).url.replace(/\/$/, '')}/model/info`, {
       headers: key ? { Authorization: `Bearer ${key}` } : {},
       signal: AbortSignal.timeout(10_000),
     });

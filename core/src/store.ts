@@ -431,6 +431,8 @@ export function getResource(ctx: Ctx, name: string): Resource & { agents: string
 /** Saves names and flags only. Values go to Dopbase through the secrets module. */
 export function saveResource(ctx: Ctx, input: Partial<Resource> & { name: string; agents?: string[] }, rename?: string) {
   assertName('resource', input.name);
+  // Its Dopbase project holds Yaho's own keys (secrets/settingsSecrets.ts).
+  if (input.name === 'settings') throw new HttpError(400, 'the name settings is reserved; choose another');
   const ts = now();
   if (rename && rename !== input.name) ctx.db.prepare('UPDATE resources SET name = ? WHERE name = ?').run(input.name, rename);
   const prev = ctx.db.prepare('SELECT * FROM resources WHERE name = ?').get(input.name) as Row | undefined;
