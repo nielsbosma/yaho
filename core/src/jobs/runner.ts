@@ -268,7 +268,8 @@ export class JobRunner {
       case 'result':
         if (e.summary)
           ctx.db.prepare('UPDATE sessions SET last_state = ?, updated = ? WHERE id = ?').run(e.summary.slice(0, 4000), now(), sessionId);
-        if (!r.capped && typeof e.cost_usd === 'number') this.setCost(r, r.baseCost + e.cost_usd);
+        // The harness's own total. With a capped key it only raises the cost: the provider's usage can lag behind (OpenRouter).
+        if (typeof e.cost_usd === 'number' && (!r.capped || r.baseCost + e.cost_usd > getJob(this.ctx, r.job).cost_usd)) this.setCost(r, r.baseCost + e.cost_usd);
         if (!e.ok && !r.ending) {
           const budget = /budget/i.test(e.error ?? '');
           r.ending = { status: budget ? 'budget_exhausted' : 'failed', reason: e.error };
@@ -284,7 +285,8 @@ export class JobRunner {
   private async pollCost(r: Running): Promise<void> {
     if (!r.capped) return;
     const spend = await r.capped.spend().catch(() => null);
-    if (spend !== null) this.setCost(r, r.baseCost + spend);
+    // Only upward: the harness may already have reported a higher total than the provider's (lagging) usage.
+    if (spend !== null && r.baseCost + spend > getJob(this.ctx, r.job).cost_usd) this.setCost(r, r.baseCost + spend);
   }
 
   private setCost(r: Running, cost: number): void {
