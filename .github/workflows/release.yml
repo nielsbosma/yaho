@@ -275,19 +275,19 @@ jobs:
           set -e
           ! docker run --rm -v yaho-smoke:/data yaho:smoke 2>err.txt; grep -q YAHO_PASSWORD err.txt
           ! docker run --rm -e YAHO_PASSWORD=smoke-password-1234 yaho:smoke 2>err.txt; grep -q 'No volume on /data' err.txt
-          docker run -d --name y -p 4700:4700 -v yaho-smoke:/data -e YAHO_PASSWORD=smoke-password-1234 yaho:smoke
+          docker run -d --name yaho-smoke -p 4700:4700 -v yaho-smoke:/data -e YAHO_PASSWORD=smoke-password-1234 yaho:smoke
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:4700/api/health && break; sleep 2; done; echo
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4700/api/agents)" = 401
           curl -fsS -c jar -H 'Content-Type: application/json' -d '{"password":"smoke-password-1234"}' http://127.0.0.1:4700/api/session
           curl -fsS -b jar -X POST -H 'Content-Type: application/json' -d '{"name":"smoke","briefing":"Smoke test.","enabled":false}' http://127.0.0.1:4700/api/agents > /dev/null
-          docker exec y sh -c 'echo kept > /data/home/.claude-smoke'
-          docker restart y
+          docker exec yaho-smoke sh -c 'echo kept > /data/home/.claude-smoke'
+          docker restart yaho-smoke
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:4700/api/health && break; sleep 2; done; echo
           curl -fsS -b jar http://127.0.0.1:4700/api/agents | grep -q '"smoke"'
-          docker exec y cat /data/home/.claude-smoke | grep -q kept
-          docker exec y yaho doctor || true
-          docker exec y claude --version
-          docker logs y | tail -20
+          docker exec yaho-smoke cat /data/home/.claude-smoke | grep -q kept
+          docker exec yaho-smoke yaho doctor || true
+          docker exec yaho-smoke claude --version
+          docker logs yaho-smoke | tail -20
       - name: Push by digest
         id: push
         if: github.event_name == 'release' || inputs.publish
