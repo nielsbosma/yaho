@@ -40,7 +40,7 @@ export interface ClaudeCheck {
 }
 
 
-const STEPS = ['Welcome', 'Secrets Store', 'Models', 'Claude Code', 'Budget', 'Connections', 'Finish'] as const;
+const STEPS = ['Welcome', 'Models', 'Claude Code', 'Budget', 'Connections', 'Finish'] as const;
 
 /** Send changed settings; secret fields that are not given keep their stored value. */
 async function save(patch: (s: SetupSettings) => void): Promise<void> {
@@ -88,12 +88,11 @@ export function Onboarding({ onDone }: { onDone?: () => void }) {
           ) : (
             <>
               {step === 0 && <Welcome />}
-              {step === 1 && <SecretsStep />}
-              {step === 2 && <ModelsStep settings={s} />}
-              {step === 3 && <ClaudeStep />}
-              {step === 4 && <BudgetStep settings={s} />}
-              {step === 5 && <ConnectionsStep settings={s} />}
-              {step === 6 && <FinishStep />}
+              {step === 1 && <ModelsStep settings={s} />}
+              {step === 2 && <ClaudeStep />}
+              {step === 3 && <BudgetStep settings={s} />}
+              {step === 4 && <ConnectionsStep settings={s} />}
+              {step === 5 && <FinishStep />}
             </>
           )}
           <div className="mt-6 flex items-center gap-2 border-t border-line pt-4">
@@ -124,7 +123,7 @@ function Welcome() {
     <div className="space-y-3 text-sm leading-relaxed">
       <p>Yaho runs long-lived AI agents on a schedule. Each agent has a briefing, a workspace that it keeps between runs, and a budget.</p>
       <p>Agents work on their own and come to you only when they need you: a question, an instruction or a result, in your inbox.</p>
-      <p className="text-muted">This setup takes a few minutes: where keys are kept, which models to use, Claude Code, and your budget.</p>
+      <p className="text-muted">This setup takes a few minutes: which models to use, Claude Code, and your budget.</p>
     </div>
   );
 }
@@ -145,27 +144,6 @@ function Status({ state, children }: { state: 'ok' | 'fail' | 'busy' | 'idle'; c
         )}
       </span>
       <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-function SecretsStep() {
-  const [r, setR] = useState<{ ok: boolean; error?: string } | null>(null);
-  useEffect(() => {
-    api<{ ok: boolean; error?: string }>('/api/settings/dopbase/test', { method: 'POST' })
-      .then(setR)
-      .catch((e: Error) => setR({ ok: false, error: e.message }));
-  }, []);
-  return (
-    <div className="space-y-4 text-sm">
-      <p>
-        Every key and token you give Yaho, for model providers, Slack and the tools your agents use, is kept in a secrets store that runs inside Yaho
-        (Dopbase). Agents get only the keys you grant them, and only while they run.
-      </p>
-      <Status state={!r ? 'busy' : r.ok ? 'ok' : 'fail'}>
-        {!r ? 'Starting the secrets store…' : r.ok ? 'The secrets store is running.' : `The secrets store did not start: ${r.error ?? 'unknown error'}`}
-      </Status>
-      <p className="text-xs text-muted">Teams can use a shared Dopbase server instead, in Settings → Secrets.</p>
     </div>
   );
 }
