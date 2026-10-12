@@ -39,3 +39,11 @@ describe('Anthropic Messages to Chat Completions', () => {
     expect(back.usage).toEqual({ input_tokens: 10, output_tokens: 3 });
   });
 });
+
+describe('OpenAI', () => {
+  it('gets max_completion_tokens instead of max_tokens; other providers keep max_tokens', async () => {
+    const { forProvider } = await import('./providerApi.ts');
+    expect(forProvider('openai', { model: 'gpt-x', max_tokens: 50 })).toEqual({ model: 'gpt-x', max_completion_tokens: 50 });
+    expect(forProvider('berget', { model: 'm', max_tokens: 50 })).toEqual({ model: 'm', max_tokens: 50 });
+  });
+});

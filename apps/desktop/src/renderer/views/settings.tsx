@@ -697,8 +697,15 @@ function ModelProviders({ settings: s, upd, save }: { settings: Settings; upd: (
                     onChange={(e) => set(p.id, (x) => void (x.api_key = e.target.value || undefined))}
                   />
                 </Field>
-                {p.kind === 'litellm' && (
-                  <Field label="Master Key (Optional)" hint="Lets Yaho mint a budget-capped key per job, so LiteLLM enforces budgets.">
+                {(p.kind === 'litellm' || p.kind === 'openrouter') && (
+                  <Field
+                    label={p.kind === 'openrouter' ? 'Management Key (Optional)' : 'Master Key (Optional)'}
+                    hint={
+                      p.kind === 'openrouter'
+                        ? 'From OpenRouter → Settings → Management Keys. Lets Yaho create a key per job with a credit limit, so OpenRouter enforces budgets.'
+                        : 'Lets Yaho mint a budget-capped key per job, so LiteLLM enforces budgets.'
+                    }
+                  >
                     <Input
                       type="password"
                       value={p.master_key ?? ''}

@@ -10,7 +10,7 @@ import { envForAgent } from '../secrets/dopbase.ts';
 import type { Agent, Job } from '../store.ts';
 import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, totalSpend, updateJob } from '../store.ts';
 import { contextPrompt, systemPrompt } from './prompt.ts';
-import { deleteLitellmKey, litellmKeySpend, type ModelPrice } from './litellm.ts';
+import type { ModelPrice } from './litellm.ts';
 import { jobAccess, priceFor } from '../providerApi.ts';
 
 type Row = Record<string, unknown>;
@@ -21,7 +21,8 @@ interface Running {
   /** Set when the job is being ended on purpose (finish, sleep, stop, budget). The close handler applies it. */
   ending?: { status: string; reason?: string; summary?: string; resumeAt?: string };
   baseCost: number;
-  liteKey?: string;
+  /** A key minted for this job alone (LiteLLM, OpenRouter with a management key): its spend, and its removal. */
+  capped?: { spend(): Promise<number>; release(): Promise<void> };
   /** Live estimate from token usage when LiteLLM cannot report spend per job. Keyed by response id. */
   usage: Map<string, number>;
   price?: ModelPrice | null;
@@ -185,7 +186,7 @@ export class JobRunner {
       job: job.id,
       bridge: { apiUrl: ctx.apiUrl, token },
     });
-    if (provider.kind === 'litellm') r.liteKey = access.jobKey;
+    r.capped = access.capped;
     const secrets = await envForAgent(ctx, agent.resources);
     for (const w of secrets.warnings) addJobEvent(ctx, job.id, 'system', { text: w });
 
@@ -215,7 +216,7 @@ export class JobRunner {
     if (ses.resumed && job.trigger_type === 'continue') prompt = `Your budget was raised. Continue exactly where you stopped.\n\n${prompt}`;
     updateJob(ctx, job.id, { model });
     // Without a capped key Yaho counts the cost itself, from the tokens the harness reports.
-    if (!r.liteKey) r.price = await priceFor(settings, provider, providerModel);
+    if (!r.capped) r.price = await priceFor(settings, provider, providerModel);
     addJobEvent(ctx, job.id, 'prompt', { system: systemPrompt(agent), user: prompt });
     addJobEvent(ctx, job.id, 'status', { text: `${ses.resumed ? 'Resuming' : 'Starting'} ${agent.harness} with ${model}` });
 
@@ -240,9 +241,9 @@ export class JobRunner {
       (e) => this.onEvent(r, ses.id, e),
     );
     updateJob(ctx, job.id, { pid: r.proc.pid ?? null });
-    if (r.liteKey) r.poll = setInterval(() => void this.pollCost(r), 10_000);
+    if (r.capped) r.poll = setInterval(() => void this.pollCost(r), 10_000);
     const code = await r.proc.done;
-    if (r.liteKey) await this.pollCost(r);
+    if (r.capped) await this.pollCost(r);
     const end =
       r.ending ??
       (code === 0
@@ -255,7 +256,7 @@ export class JobRunner {
     const { ctx } = this;
     switch (e.kind) {
       case 'usage':
-        if (!r.liteKey && r.price) {
+        if (!r.capped && r.price) {
           const p = r.price;
           r.usage.set(e.id, e.input * p.input + e.output * p.output + e.cache_read * p.cache_read + e.cache_write * p.cache_write);
           this.setCost(r, r.baseCost + [...r.usage.values()].reduce((a, b) => a + b, 0));
@@ -267,7 +268,7 @@ export class JobRunner {
       case 'result':
         if (e.summary)
           ctx.db.prepare('UPDATE sessions SET last_state = ?, updated = ? WHERE id = ?').run(e.summary.slice(0, 4000), now(), sessionId);
-        if (!r.liteKey && typeof e.cost_usd === 'number') this.setCost(r, r.baseCost + e.cost_usd);
+        if (!r.capped && typeof e.cost_usd === 'number') this.setCost(r, r.baseCost + e.cost_usd);
         if (!e.ok && !r.ending) {
           const budget = /budget/i.test(e.error ?? '');
           r.ending = { status: budget ? 'budget_exhausted' : 'failed', reason: e.error };
@@ -281,8 +282,8 @@ export class JobRunner {
   }
 
   private async pollCost(r: Running): Promise<void> {
-    if (!r.liteKey) return;
-    const spend = await litellmKeySpend(this.ctx.settings, r.liteKey).catch(() => null);
+    if (!r.capped) return;
+    const spend = await r.capped.spend().catch(() => null);
     if (spend !== null) this.setCost(r, r.baseCost + spend);
   }
 
@@ -329,7 +330,7 @@ export class JobRunner {
     if (!this.running.has(r.job)) return;
     this.running.delete(r.job);
     if (r.poll) clearInterval(r.poll);
-    if (r.liteKey) void deleteLitellmKey(ctx.settings, r.liteKey).catch(() => undefined);
+    if (r.capped) void r.capped.release().catch(() => undefined);
     ctx.db.prepare('DELETE FROM job_tokens WHERE job = ?').run(r.job);
     if (this.shuttingDown) return this.requeueInterrupted(r.job, 'the Yaho core restarted');
     const job = getJob(ctx, r.job);

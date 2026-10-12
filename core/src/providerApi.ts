@@ -1,5 +1,5 @@
 import type { ProviderConfig, Settings } from './config.ts';
-import { createLitellmKey, litellmModels, modelPrice, type ModelPrice } from './jobs/litellm.ts';
+import { createLitellmKey, deleteLitellmKey, litellmKeySpend, litellmModels, modelPrice, type ModelPrice } from './jobs/litellm.ts';
 import { HttpError } from './store.ts';
 
 /**
@@ -14,9 +14,11 @@ const ENDPOINTS: Record<string, { chat: string; claude?: string; models: string 
   openrouter: { chat: 'https://openrouter.ai/api/v1', claude: 'https://openrouter.ai/api', models: 'https://openrouter.ai/api/v1/models' },
   opper: { chat: 'https://api.opper.ai/v3/compat', claude: 'https://api.opper.ai/v3/compat', models: 'https://api.opper.ai/v3/compat/models' },
   berget: { chat: 'https://api.berget.ai/v1', models: 'https://api.berget.ai/v1/models' },
+  openai: { chat: 'https://api.openai.com/v1', models: 'https://api.openai.com/v1/models' },
 };
 
-const keyOf = (p: ProviderConfig) => p.master_key ?? p.api_key;
+/** The key for model calls. LiteLLM's master key can make them; OpenRouter's management key cannot. */
+const keyOf = (p: ProviderConfig) => (p.kind === 'litellm' ? (p.master_key ?? p.api_key) : p.api_key);
 const needKey = (p: ProviderConfig) => {
   const k = keyOf(p);
   if (!k) throw new HttpError(503, `set the API key for ${p.id} in Settings first`);
@@ -38,6 +40,8 @@ export async function listModels(s: Settings, p: ProviderConfig): Promise<string
   let list = j.data ?? [];
   // Berget also serves speech, embeddings and rerankers; only chat models with tool calling can run agents.
   if (p.kind === 'berget') list = list.filter((m) => m.capabilities?.function_calling);
+  // OpenAI also lists embeddings, speech, images and moderation; agents need chat models.
+  if (p.kind === 'openai') list = list.filter((m) => /^(gpt-|o\d|chatgpt-)/.test(m.id) && !/(audio|realtime|transcribe|tts|image|search|embedding)/.test(m.id));
   return list.map((m) => m.id).sort();
 }
 
@@ -92,6 +96,13 @@ const clean = (m: OAIMessage): OAIMessage => ({
   ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
 });
 
+/** OpenAI's newer models take max_completion_tokens and refuse max_tokens. */
+export function forProvider<T extends { max_tokens?: number }>(kind: string, body: T): T | (Omit<T, 'max_tokens'> & { max_completion_tokens?: number }) {
+  if (kind !== 'openai' || body.max_tokens === undefined) return body;
+  const { max_tokens, ...rest } = body;
+  return { ...rest, max_completion_tokens: max_tokens };
+}
+
 export interface ChatReply {
   message: OAIMessage;
   /** stop, tool_calls, or length (cut off at the output limit). */
@@ -111,7 +122,7 @@ export async function chatRound(
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     // Only the standard fields: some providers reject what others add to their replies (Berget: function_call: null).
-    body: JSON.stringify({ ...body, messages: body.messages.map(clean) }),
+    body: JSON.stringify({ ...forProvider(p.kind, body), messages: body.messages.map(clean) }),
   });
   if (!res.ok) throw new HttpError(502, `${p.id}: ${res.status} ${(await res.text()).slice(0, 300)}`);
   const j = (await res.json()) as { choices: Array<{ message: OAIMessage; finish_reason?: string }> };
@@ -174,8 +185,8 @@ async function anthropicChat(base: string, key: string, body: { model: string; m
 export interface JobAccess {
   /** ANTHROPIC_* variables for Claude Code. */
   env: Record<string, string>;
-  /** A key minted for this job alone (LiteLLM with a master key): the provider caps its spend. */
-  jobKey?: string;
+  /** A key minted for this job alone, capped at the agent's remaining budget: its spend so far, and its removal. */
+  capped?: { spend(): Promise<number>; release(): Promise<void> };
   /** capped: the provider refuses past the budget. counted: Yaho adds up the reported cost and stops the job. */
   budget: 'capped' | 'counted';
 }
@@ -189,9 +200,25 @@ export async function jobAccess(
   if (p.kind === 'litellm') {
     if (p.master_key) {
       const jobKey = await createLitellmKey(s, { maxBudget: o.remaining, models: o.models, agent: o.agent, job: o.job });
-      return { env: { ANTHROPIC_BASE_URL: p.url ?? '', ANTHROPIC_AUTH_TOKEN: jobKey }, jobKey, budget: 'capped' };
+      return {
+        env: { ANTHROPIC_BASE_URL: p.url ?? '', ANTHROPIC_AUTH_TOKEN: jobKey },
+        capped: { spend: () => litellmKeySpend(s, jobKey), release: () => deleteLitellmKey(s, jobKey) },
+        budget: 'capped',
+      };
     }
     return { env: { ANTHROPIC_BASE_URL: p.url ?? '', ANTHROPIC_AUTH_TOKEN: p.api_key ?? '' }, budget: 'counted' };
+  }
+  // OpenRouter with a management key: a key per job with a credit limit, as LiteLLM's master key does.
+  if (p.kind === 'openrouter' && p.master_key && o.job) {
+    const minted = await openRouterKey(p.master_key, { name: `yaho-${o.agent}-${o.job}`, limit: o.remaining });
+    return {
+      env: { ANTHROPIC_BASE_URL: p.url ?? ENDPOINTS.openrouter!.claude!, ANTHROPIC_AUTH_TOKEN: minted.key, ANTHROPIC_API_KEY: '' },
+      capped: {
+        spend: () => openRouterKeyUsage(p.master_key!, minted.hash),
+        release: () => openRouterDeleteKey(p.master_key!, minted.hash),
+      },
+      budget: 'capped',
+    };
   }
   const key = needKey(p);
   if (p.kind === 'anthropic') return { env: { ANTHROPIC_API_KEY: key }, budget: 'counted' };
@@ -253,4 +280,29 @@ export async function priceFor(s: Settings, p: ProviderConfig, model: string): P
     }
   }
   return (await openRouterCatalog()).get(normalize(model)) ?? null;
+}
+
+// ---------- OpenRouter's management API: keys per job ----------
+
+const OR_KEYS = 'https://openrouter.ai/api/v1/keys';
+
+async function openRouterKey(management: string, o: { name: string; limit: number }): Promise<{ key: string; hash: string }> {
+  const res = await fetch(OR_KEYS, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${management}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: o.name, limit: Math.max(0.01, Number(o.limit.toFixed(4))) }),
+  });
+  if (!res.ok) throw new Error(`OpenRouter could not create a key for this job: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  const j = (await res.json()) as { key: string; data: { hash: string } };
+  return { key: j.key, hash: j.data.hash };
+}
+
+async function openRouterKeyUsage(management: string, hash: string): Promise<number> {
+  const res = await fetch(`${OR_KEYS}/${hash}`, { headers: { Authorization: `Bearer ${management}` } });
+  if (!res.ok) throw new Error(`OpenRouter key usage: ${res.status}`);
+  return Number(((await res.json()) as { data?: { usage?: number } }).data?.usage ?? 0);
+}
+
+async function openRouterDeleteKey(management: string, hash: string): Promise<void> {
+  await fetch(`${OR_KEYS}/${hash}`, { method: 'DELETE', headers: { Authorization: `Bearer ${management}` } });
 }

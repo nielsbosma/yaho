@@ -2,16 +2,17 @@ import anthropic from '../assets/providers/anthropic.svg';
 import berget from '../assets/providers/berget.svg';
 import composio from '../assets/providers/composio.svg';
 import litellm from '../assets/providers/litellm.svg';
+import openai from '../assets/providers/openai.svg';
 import openrouter from '../assets/providers/openrouter.svg';
 import opper from '../assets/providers/opper.svg';
 import slack from '../assets/providers/slack.svg';
 import { cn } from './ui/cn.ts';
 
 /**
- * The services Yaho connects to, with their own marks (assets/providers): Anthropic and OpenRouter from Simple Icons,
+ * The services Yaho connects to, with their own marks (assets/providers): Anthropic, OpenAI and OpenRouter from Simple Icons,
  * Slack's colour mark, the rest from the companies' sites.
  */
-export const BRAND_LOGOS = { anthropic, berget, composio, litellm, openrouter, opper, slack } as const;
+export const BRAND_LOGOS = { anthropic, berget, composio, litellm, openai, openrouter, opper, slack } as const;
 export type Brand = keyof typeof BRAND_LOGOS;
 
 /** A brand's mark on a small white tile, so it reads the same in light and dark. */

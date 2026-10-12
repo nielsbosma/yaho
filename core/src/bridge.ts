@@ -1,10 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProviderConfig } from './config.ts';
 import type { Ctx } from './context.ts';
+import { forProvider } from './providerApi.ts';
 import { HttpError } from './store.ts';
 
 /**
- * Claude Code speaks Anthropic's Messages API; Berget (and any provider with only OpenAI's Chat Completions) does not.
+ * Claude Code speaks Anthropic's Messages API; Berget and OpenAI (any provider with only Chat Completions) do not.
  * For those jobs the core serves /bridge/<provider>/v1/messages and translates both ways: the request to Chat
  * Completions, and the reply (streamed or not) back to Messages. A job reaches it with its own job token, so the
  * provider's key never leaves the core.
@@ -23,7 +24,7 @@ interface AnthropicRequest {
   stream?: boolean;
 }
 
-const BASES: Record<string, string> = { berget: 'https://api.berget.ai/v1' };
+const BASES: Record<string, string> = { berget: 'https://api.berget.ai/v1', openai: 'https://api.openai.com/v1' };
 
 /** Anthropic request to Chat Completions. */
 export function toChatCompletions(req: AnthropicRequest): Record<string, unknown> {
@@ -191,7 +192,7 @@ export async function handleBridge(ctx: Ctx, req: IncomingMessage, res: ServerRe
   const upstream = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${provider.master_key ?? provider.api_key ?? ''}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(toChatCompletions(request)),
+    body: JSON.stringify(forProvider(provider.kind, toChatCompletions(request) as { max_tokens?: number })),
   });
   if (!upstream.ok) {
     const text = await upstream.text();
