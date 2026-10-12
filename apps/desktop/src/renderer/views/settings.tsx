@@ -65,6 +65,8 @@ export function SettingsView({ route }: { route: string[] }) {
     if (saved.data) setS(structuredClone(saved.data));
   }, [saved.data]);
   if (!s) return null;
+  /** Something differs from what was last loaded or saved. */
+  const dirty = !!saved.data && JSON.stringify(s) !== JSON.stringify(saved.data);
 
   const upd = (fn: (d: Settings) => void) =>
     setS((prev) => {
@@ -79,23 +81,30 @@ export function SettingsView({ route }: { route: string[] }) {
     try {
       await api('/api/settings', { method: 'PUT', body: s });
       setOk(true);
+      setTimeout(() => setOk(false), 2000);
     } catch (e) {
       setError((e as Error).message);
     }
   };
 
   return (
-    <>
+    <div className="flex h-full flex-col">
       <PageHeader
         title="Settings"
-        sub="Stored as settings.yaml in the data directory; keys and tokens are kept in the bundled Dopbase."
         actions={
           <>
-            {ok && <span className="text-sm text-ok">Saved</span>}
             <Button onClick={() => void api('/api/onboarding/reset', { method: 'POST' }).then(() => location.reload())}>Run Setup Again</Button>
-            <Button variant="primary" onClick={() => void save()}>
+            <Button variant="primary" disabled={!dirty} title={dirty ? undefined : 'Nothing to save'} onClick={() => void save()}>
               Save Settings
             </Button>
+            {/* Fades in after a save and away again by itself. */}
+            <span
+              role="status"
+              aria-live="polite"
+              className={cn('flex items-center gap-1 text-sm text-ok transition-all duration-300', ok ? 'translate-x-0 opacity-100' : '-translate-x-1 opacity-0')}
+            >
+              <CheckIcon className="size-4" /> Saved
+            </span>
           </>
         }
       />
@@ -110,7 +119,7 @@ export function SettingsView({ route }: { route: string[] }) {
         <Section title="Slack" icon={<BrandLogo brand="slack" size="sm" />}>
           <SlackSettings value={s.slack ?? {}} stored={s.secrets_set ?? {}} onChange={(v) => upd((d) => void (d.slack = v))} />
         </Section>
-        <Section title="Apps (Composio)" icon={<BrandLogo brand="composio" size="sm" />}>
+        <Section title="Composio" icon={<BrandLogo brand="composio" size="sm" />}>
           <Card className="grid gap-4 p-4 md:grid-cols-2">
             <ComposioKeyHelp />
             <Field label="Composio API Key" hint="Agents never see it: Yaho makes their calls.">
@@ -140,8 +149,8 @@ export function SettingsView({ route }: { route: string[] }) {
           </Card>
         </Section>
         </Pane>
-        <Pane id="spending" label="Spending">
-        <Section title="Spending">
+        <Pane id="guardrails" label="Guard Rails">
+        <Section title="Guard Rails">
           <Card className="grid gap-4 p-4 md:grid-cols-2">
             <Field label="Global Spend Cap (USD)" hint="When total spend reaches it, no job starts and running jobs stop.">
               <Input
@@ -326,7 +335,7 @@ export function SettingsView({ route }: { route: string[] }) {
           </Pane>
         )}
       </SettingsPanes>
-    </>
+    </div>
   );
 }
 
@@ -336,15 +345,21 @@ function Pane({ children }: { id: string; label: string; icon?: ReactNode; child
 }
 
 /**
- * Settings as a list of sections on the left and the chosen one on the right (#/settings/<id>; the first by default).
+ * Settings as a list of sections on the left (in PANE_ORDER) and the chosen one on the right (#/settings/<id>; the first
+ * by default).
  * Save Settings in the header saves every section at once.
  */
+const PANE_ORDER = ['models', 'harnesses', 'integrations', 'guardrails', 'defaults', 'server', 'updates', 'appearance', 'advanced', 'debug'];
+
 function SettingsPanes({ active, error, children }: { active?: string; error: string | null; children: ReactNode }) {
-  const panes = Children.toArray(children).filter(isValidElement) as Array<ReactElement<{ id: string; label: string; icon?: ReactNode; children: ReactNode }>>;
+  const rank = (id: string) => (PANE_ORDER.includes(id) ? PANE_ORDER.indexOf(id) : PANE_ORDER.length);
+  const panes = (Children.toArray(children).filter(isValidElement) as Array<ReactElement<{ id: string; label: string; icon?: ReactNode; children: ReactNode }>>).sort(
+    (a, b) => rank(a.props.id) - rank(b.props.id),
+  );
   const current = panes.find((p) => p.props.id === active) ?? panes[0];
   return (
-    <div className="flex min-h-0 flex-col md:flex-row">
-      <nav aria-label="Settings sections" className="shrink-0 border-line px-4 pt-4 md:w-52 md:border-r md:px-3 md:py-6">
+    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <nav aria-label="Settings sections" className="shrink-0 border-line px-4 pt-4 md:w-52 md:overflow-y-auto md:border-r md:px-3 md:py-6">
         <ul className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
           {panes.map((p) => (
             <li key={p.props.id}>
@@ -363,7 +378,7 @@ function SettingsPanes({ active, error, children }: { active?: string; error: st
           ))}
         </ul>
       </nav>
-      <div className="min-w-0 flex-1">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <div className="max-w-3xl space-y-8 p-8">
           <ErrorNote>{error}</ErrorNote>
           {current?.props.children}
