@@ -6,6 +6,7 @@ import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
 import { checkClaude, lastClaudeCheck } from '../checks.ts';
 import { PROVIDERS } from '../providers.ts';
+import { listModels } from '../providerApi.ts';
 import { revealToken, serverMode } from './session.ts';
 import { applySettingsUpdate, publicSettings, storeSecrets } from '../secrets/settingsSecrets.ts';
 import type { Ctx } from '../context.ts';
@@ -162,6 +163,11 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return { ok: true, health };
   });
   r.on('GET', '/api/settings/litellm/models', async () => ({ models: await litellmModels(ctx.settings) }));
+  r.on('GET', '/api/providers/:id/models', async (req) => {
+    const p = ctx.settings.providers.find((x) => x.id === req.params.id);
+    if (!p) throw new HttpError(404, `no provider ${req.params.id}`);
+    return { models: await listModels(ctx.settings, p) };
+  });
 
   // ---- assistant ----
   r.on('POST', '/api/assistant', async (req) => {

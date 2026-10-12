@@ -1,8 +1,7 @@
 import type { ProviderConfig, Settings } from './config.ts';
 
 /**
- * The model providers Yaho knows. Only LiteLLM works today; the rest are listed so onboarding and Settings can show
- * them as coming. When one is built, its settings go in a `providers:` list (id, kind, url) with its key in Dopbase
+ * The model providers Yaho knows (providerApi.ts does the work). Those not available yet show as coming. When one is built, its settings go in a `providers:` list (id, kind, url) with its key in Dopbase
  * as PROVIDER_<ID>_API_KEY, and model names take the form <provider>/<model> (a bare name means the default provider).
  */
 export interface ProviderInfo {
@@ -15,9 +14,9 @@ export interface ProviderInfo {
 
 export const PROVIDERS: ProviderInfo[] = [
   { kind: 'litellm', label: 'LiteLLM', available: true, description: 'Your LiteLLM proxy, in front of any model. Budgets are enforced per job.' },
-  { kind: 'anthropic', label: 'Anthropic', available: false, description: 'Claude models with an Anthropic API key.' },
-  { kind: 'openrouter', label: 'OpenRouter', available: false, description: 'Hundreds of models behind one OpenRouter key.' },
-  { kind: 'opper', label: 'Opper.AI', available: false, description: 'Models through Opper.' },
+  { kind: 'anthropic', label: 'Anthropic', available: true, description: 'Claude models with an Anthropic API key.' },
+  { kind: 'openrouter', label: 'OpenRouter', available: true, description: 'Claude models through your OpenRouter key; more models in the chat.' },
+  { kind: 'opper', label: 'Opper.AI', available: true, description: 'Hundreds of models through Opper, hosted in the EU.' },
   { kind: 'berget', label: 'Berget.AI', available: false, description: 'Open models hosted in the EU by Berget.' },
 ];
 

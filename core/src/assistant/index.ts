@@ -1,5 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { resolveModel } from '../providers.ts';
+import { chatRound } from '../providerApi.ts';
 import { join } from 'node:path';
 import YAML from 'yaml';
 import { saveSettings } from '../config.ts';
@@ -508,13 +509,10 @@ function focusPrompt(ctx: Ctx, focus: ChatFocus | undefined): string {
 export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus): Promise<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }> {
   const chosen = ctx.settings.assistant?.model ?? ctx.settings.defaults.models[0];
   if (!chosen) throw new HttpError(503, 'choose a default model in Settings first');
-  const { provider: litellm, model } = resolveModel(ctx.settings, chosen);
-  if (litellm.kind !== 'litellm') throw new HttpError(503, `the chat cannot use provider ${litellm.id} (${litellm.kind}) yet`);
-  const key = litellm.master_key ?? litellm.api_key;
-  if (!litellm.url || !key) throw new HttpError(503, 'set the model provider URL and key in Settings first');
+  const { provider, model } = resolveModel(ctx.settings, chosen);
   const t = tools(ctx);
   const toolDefs = Object.entries(t).map(([name, x]) => ({
-    type: 'function',
+    type: 'function' as const,
     function: { name, description: x.description, parameters: x.parameters },
   }));
   const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM + focusPrompt(ctx, focus) }, ...history.filter((m) => m.role !== 'system')];
@@ -524,14 +522,8 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
   const ROUNDS = 12;
   let answered = false;
   for (let round = 0; round < ROUNDS; round++) {
-    const res = await fetch(`${litellm.url.replace(/\/$/, '')}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      // Room for a whole agent definition in one tool call; a cut-off call arrives with no arguments.
-      body: JSON.stringify({ model, messages, tools: toolDefs, max_tokens: 16000 }),
-    });
-    if (!res.ok) throw new HttpError(502, `LiteLLM: ${res.status} ${(await res.text()).slice(0, 300)}`);
-    const j = (await res.json()) as { choices: Array<{ message: ChatMessage; finish_reason?: string }> };
+    // Room for a whole agent definition in one tool call; a cut-off call arrives with no arguments.
+    const j = await chatRound(provider, { model, messages, tools: toolDefs, max_tokens: 16000 }).then((x) => ({ choices: [x] }));
     const msg = j.choices[0]!.message;
     /** The reply hit the output limit: its tool calls are incomplete and must not run. */
     const cut = j.choices[0]!.finish_reason === 'length';

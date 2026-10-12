@@ -10,7 +10,8 @@ import { envForAgent } from '../secrets/dopbase.ts';
 import type { Agent, Job } from '../store.ts';
 import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, totalSpend, updateJob } from '../store.ts';
 import { contextPrompt, systemPrompt } from './prompt.ts';
-import { createLitellmKey, deleteLitellmKey, litellmKeySpend, modelPrice, type ModelPrice } from './litellm.ts';
+import { deleteLitellmKey, litellmKeySpend, type ModelPrice } from './litellm.ts';
+import { jobAccess, priceFor } from '../providerApi.ts';
 
 type Row = Record<string, unknown>;
 
@@ -175,14 +176,15 @@ export class JobRunner {
       .run(token, job.id, agent.name, new Date(Date.now() + 7 * 864e5).toISOString());
 
     const remaining = Math.max(0, agent.budget_usd - agentSpend(ctx, agent.name));
-    // The provider serving the model; today only LiteLLM can run jobs.
+    // The provider serving the model, and how Claude Code reaches it (a capped key per job where the provider can).
     const { provider, model: providerModel } = resolveModel(settings, model);
-    if (provider.kind !== 'litellm') throw new Error(`provider ${provider.id} (${provider.kind}) cannot run jobs yet`);
-    let modelKey = provider.api_key ?? '';
-    if (provider.master_key) {
-      r.liteKey = await createLitellmKey(settings, { maxBudget: remaining, models: agent.models.map((m) => resolveModel(settings, m).model), agent: agent.name, job: job.id });
-      modelKey = r.liteKey;
-    }
+    const access = await jobAccess(settings, provider, {
+      models: agent.models.map((m) => resolveModel(settings, m).model),
+      remaining,
+      agent: agent.name,
+      job: job.id,
+    });
+    if (provider.kind === 'litellm') r.liteKey = access.jobKey;
     const secrets = await envForAgent(ctx, agent.resources);
     for (const w of secrets.warnings) addJobEvent(ctx, job.id, 'system', { text: w });
 
@@ -199,9 +201,8 @@ export class JobRunner {
       YAHO_AGENT: agent.name,
       YAHO_JOB: job.id,
       YAHO_AGENT_DB: join(cwd, 'agent.db'),
-      ANTHROPIC_BASE_URL: provider.url ?? '',
-      ANTHROPIC_AUTH_TOKEN: modelKey,
-      // Background calls (titles, summaries) must also use a model LiteLLM knows.
+      ...access.env,
+      // Background calls (titles, summaries) must also use a model the provider knows.
       ANTHROPIC_DEFAULT_HAIKU_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,
       ANTHROPIC_SMALL_FAST_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,
       DISABLE_TELEMETRY: '1',
@@ -212,7 +213,8 @@ export class JobRunner {
     let prompt = contextPrompt(ctx, agent, fresh, ses.summary, ses.resumed);
     if (ses.resumed && job.trigger_type === 'continue') prompt = `Your budget was raised. Continue exactly where you stopped.\n\n${prompt}`;
     updateJob(ctx, job.id, { model });
-    if (!r.liteKey) r.price = await modelPrice(settings, providerModel);
+    // Without a capped key Yaho counts the cost itself, from the tokens the harness reports.
+    if (!r.liteKey) r.price = await priceFor(settings, provider, providerModel);
     addJobEvent(ctx, job.id, 'prompt', { system: systemPrompt(agent), user: prompt });
     addJobEvent(ctx, job.id, 'status', { text: `${ses.resumed ? 'Resuming' : 'Starting'} ${agent.harness} with ${model}` });
 

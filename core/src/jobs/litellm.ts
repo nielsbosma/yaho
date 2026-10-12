@@ -1,7 +1,7 @@
 import { litellmProvider } from '../providers.ts';
 import type { Settings } from '../config.ts';
 
-/** LiteLLM admin calls. Used only when settinglitellmProvider(s).master_key is set. */
+/** LiteLLM admin calls. Used only when the LiteLLM provider has a master key. */
 async function admin<T>(s: Settings, method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${litellmProvider(s).url.replace(/\/$/, '')}${path}`, {
     method,

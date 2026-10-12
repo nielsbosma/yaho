@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Ctx } from './context.ts';
 import { resolveModel } from './providers.ts';
+import { jobAccess } from './providerApi.ts';
 
 /** The oldest Claude Code Yaho is known to work with. */
 export const MIN_CLAUDE_VERSION = '2.0.0';
@@ -89,16 +90,17 @@ export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
     const chosen = ctx.settings.defaults.models[0];
     const resolved = chosen ? resolveModel(ctx.settings, chosen) : undefined;
     const model = resolved?.model;
-    const { url, api_key, master_key } = resolved?.provider ?? {};
-    if (!model || !url || !(api_key || master_key)) {
+    const access = resolved ? await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '' }).catch(() => null) : null;
+    if (!model || !access) {
       r.failed = 'provider';
       r.error = 'Set the model provider (URL, key and a default model) first.';
       return (last = r);
     }
     r.model = model;
+    // As jobs get it, but with the provider's own key, never a capped one minted for the check.
+    const { env: providerEnv } = access;
     Object.assign(env, {
-      ANTHROPIC_BASE_URL: url,
-      ANTHROPIC_AUTH_TOKEN: api_key ?? master_key,
+      ...providerEnv,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
       ANTHROPIC_SMALL_FAST_MODEL: model,
       DISABLE_TELEMETRY: '1',
