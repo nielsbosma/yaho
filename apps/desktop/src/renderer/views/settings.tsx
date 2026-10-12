@@ -209,13 +209,13 @@ export function SettingsView({ route }: { route: string[] }) {
             </Field>
           </Card>
         </Section>
+        </Pane>
+        <Pane id="harnesses" label="Harnesses">
         <Section title="Claude Code">
           <Card className="p-4">
             <ClaudeCheckPanel auto={false} />
           </Card>
         </Section>
-        </Pane>
-        <Pane id="harnesses" label="Harnesses">
         <Section title="Harnesses">
           <Card className="space-y-3 p-4">
             {Object.entries(s.harnesses).map(([name, h]) => (
