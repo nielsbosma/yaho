@@ -40,8 +40,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
         <div className="text-center text-xs">
           {lost ? (
             <p className="text-muted">
-              The password is YAHO_PASSWORD in this server's deploy settings (on Sliplane: the service's environment variables). Change it
-              there and redeploy to set a new one.
+              The password is YAHO_PASSWORD in this server's deploy settings. Change it there and redeploy to set a new one.
             </p>
           ) : (
             <button type="button" onClick={() => setLost(true)} className="cursor-pointer text-muted hover:text-ink hover:underline">
