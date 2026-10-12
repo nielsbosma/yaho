@@ -71,14 +71,13 @@ export function InboxView({ route }: ViewProps) {
           />
         </div>
         <div className="flex gap-1 px-5 py-2 text-xs">
-          {/* The chips carry their own padding; pull them back so their text lines up with the heading. */}
           {(['all', 'unread'] as const).map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => setFilter(f)}
               className={cn(
-                'cursor-pointer rounded-md px-2 py-1 capitalize first:-ml-2',
+                'cursor-pointer rounded-md px-2 py-1 capitalize',
                 filter === f ? 'bg-hover font-medium' : 'text-muted hover:text-ink',
               )}
             >
@@ -115,8 +114,7 @@ export function InboxView({ route }: ViewProps) {
               )}
             >
               <div className="flex items-center gap-2 text-xs">
-                {/* Unread dot in the left margin, so every line starts at the same edge as the heading. */}
-                {!m.read && <span className="absolute top-[18px] left-2 size-2 rounded-full bg-accent" aria-label="Unread" />}
+                {!m.read && <span className="size-2 shrink-0 rounded-full bg-accent" aria-label="Unread" />}
                 <span className={cn('truncate', !m.read ? 'font-semibold text-ink' : 'text-muted')}>{who(m.from)}</span>
                 <span className="text-muted">· {m.type}</span>
                 <span className="ml-auto shrink-0 text-muted">{ago(m.created)}</span>
@@ -137,11 +135,7 @@ export function InboxView({ route }: ViewProps) {
       {/* The space above the message, beside the window controls, moves the window like a title bar. */}
       <div aria-hidden className="titlebar-strip app-drag absolute top-0 right-0 z-10" style={{ left: listWidth }} />
       <div className="titlebar-below min-w-0 flex-1 overflow-y-auto">
-        {selected ? (
-          <Thread id={selected} />
-        ) : (
-          <Empty title="Pick a message">Questions get one-click answers; instructions get Open and Copy buttons and a Done.</Empty>
-        )}
+        {selected && <Thread id={selected} />}
       </div>
       <Compose open={compose} onClose={() => setCompose(false)} />
       <Dialog
