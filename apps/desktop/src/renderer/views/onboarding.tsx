@@ -1,4 +1,9 @@
-import { ArrowLeft, ArrowRight, Check, Loader2, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Cpu, Loader2, X } from 'lucide-react';
+import anthropicLogo from '../assets/providers/anthropic.svg';
+import bergetLogo from '../assets/providers/berget.svg';
+import litellmLogo from '../assets/providers/litellm.svg';
+import openrouterLogo from '../assets/providers/openrouter.svg';
+import opperLogo from '../assets/providers/opper.svg';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Wordmark } from '../components/Wordmark.tsx';
 import { Button } from '../components/ui/button.tsx';
@@ -36,6 +41,15 @@ export interface ClaudeCheck {
   error?: string;
   failed?: 'install' | 'version' | 'provider' | 'harness';
 }
+
+/** Each provider's own mark (assets/providers): Anthropic and OpenRouter from Simple Icons, the rest from their sites. */
+const PROVIDER_LOGOS: Record<string, string> = {
+  litellm: litellmLogo,
+  anthropic: anthropicLogo,
+  openrouter: openrouterLogo,
+  opper: opperLogo,
+  berget: bergetLogo,
+};
 
 const STEPS = ['Welcome', 'Secrets Store', 'Models', 'Claude Code', 'Budget', 'Connections', 'Finish'] as const;
 
@@ -211,14 +225,23 @@ function ModelsStep({ settings }: { settings: SetupSettings }) {
         {(providers.data ?? []).map((p) => (
           <div
             key={p.kind}
-            className={cn('rounded-xl border p-3 text-sm', p.available ? 'border-accent/60 bg-accent/5' : 'border-line opacity-60')}
+            className={cn('flex gap-3 rounded-xl border p-3 text-sm', p.available ? 'border-accent/60 bg-accent/5' : 'border-line opacity-60')}
             aria-disabled={!p.available}
           >
-            <div className="flex items-center gap-2 font-medium">
-              {p.label}
-              {!p.available && <span className="rounded-full bg-hover px-1.5 text-[10.5px] font-normal text-muted">Coming Soon</span>}
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-white">
+              {PROVIDER_LOGOS[p.kind] ? (
+                <img src={PROVIDER_LOGOS[p.kind]} alt="" className="size-5 object-contain" />
+              ) : (
+                <Cpu className="size-4 text-muted" />
+              )}
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 font-medium">
+                {p.label}
+                {!p.available && <span className="rounded-full bg-hover px-1.5 text-[10.5px] font-normal text-muted">Coming Soon</span>}
+              </div>
+              <div className="mt-0.5 text-xs text-muted">{p.description}</div>
             </div>
-            <div className="mt-0.5 text-xs text-muted">{p.description}</div>
           </div>
         ))}
       </div>
