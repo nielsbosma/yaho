@@ -335,6 +335,13 @@ const definitionOf = (a: Agent) => ({
 export function AgentEditor({ existing }: { existing?: Agent }) {
   const [mode, setMode] = useState<'form' | 'yaml'>('form');
   const [draft, setDraft] = useState<Agent>(existing ? { ...existing } : blank());
+  // A new agent starts on the default harness from Settings (Harnesses → Make Default).
+  useEffect(() => {
+    if (existing) return;
+    void api<{ defaults: { harness?: string } }>('/api/settings').then((st) => {
+      if (st.defaults.harness) setDraft((d) => ({ ...d, harness: st.defaults.harness! }));
+    });
+  }, [existing]);
   const [yaml, setYaml] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

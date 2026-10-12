@@ -275,15 +275,16 @@ function ModelsStep({ settings }: { settings: SetupSettings }) {
 }
 
 /** Installed, recent enough, and able to answer through the provider: with Check Again. Also used in Settings. */
-export function ClaudeCheckPanel({ auto = true }: { auto?: boolean }) {
-  const last = useApi<ClaudeCheck | null>('/api/checks/claude', (e) => e.type === 'changed' && e.entity === 'checks');
+export function ClaudeCheckPanel({ auto = true, harness = 'claude-code' }: { auto?: boolean; harness?: 'claude-code' | 'codex' }) {
+  const name = harness === 'codex' ? 'Codex' : 'Claude Code';
+  const last = useApi<ClaudeCheck | null>(`/api/checks/${harness}`, (e) => e.type === 'changed' && e.entity === 'checks');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async () => {
     setBusy(true);
     setError(null);
     try {
-      await api('/api/checks/claude', { method: 'POST' });
+      await api(`/api/checks/${harness}`, { method: 'POST' });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -300,7 +301,7 @@ export function ClaudeCheckPanel({ auto = true }: { auto?: boolean }) {
     busy ? 'busy' : !c ? 'idle' : ok ? 'ok' : reached ? 'fail' : 'idle';
   return (
     <div className="space-y-3">
-      <Status state={state(c?.installed, true)}>{c?.installed ? 'Claude Code is installed' : 'Claude Code is installed'}</Status>
+      <Status state={state(c?.installed, true)}>{`${name} is installed`}</Status>
       <Status state={state(c?.recent, !!c?.installed)}>{c?.version ? `Version ${c.version}` : 'A recent version'}</Status>
       <Status state={state(c?.works, !!c?.recent)}>
         {c?.works ? `It answers through your provider (${c.model})` : 'It answers through your model provider'}
@@ -308,7 +309,7 @@ export function ClaudeCheckPanel({ auto = true }: { auto?: boolean }) {
       {c?.error && (
         <div className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-xs">
           <div className="mb-1 font-medium text-danger">
-            {c.failed === 'provider' ? 'The model provider did not answer' : c.failed === 'install' ? 'Not installed' : c.failed === 'version' ? 'Too old' : 'Claude Code failed'}
+            {c.failed === 'provider' ? 'The model provider did not answer' : c.failed === 'install' ? 'Not installed' : c.failed === 'version' ? 'Too old' : `${name} failed`}
           </div>
           <pre className="font-mono break-words whitespace-pre-wrap text-ink/80">{c.error}</pre>
         </div>

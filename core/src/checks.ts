@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Ctx } from './context.ts';
 import { resolveModel } from './providers.ts';
-import { jobAccess } from './providerApi.ts';
+import { harnessFits, jobAccess, listModels } from './providerApi.ts';
+import { codex } from './harness/codex.ts';
+import type { HarnessEvent } from './harness/types.ts';
 
 /** The oldest Claude Code Yaho is known to work with. */
 export const MIN_CLAUDE_VERSION = '2.0.0';
@@ -117,6 +119,93 @@ export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
     return (last = r);
   } finally {
     // Windows may still hold the folder a moment after Claude Code exits; a leftover temp folder does no harm.
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch {
+      /* left for the OS to clean */
+    }
+  }
+}
+
+// ---------- Codex ----------
+
+/** The oldest Codex Yaho is known to work with (its JSON events and -c provider settings). */
+export const MIN_CODEX_VERSION = '0.150.0';
+let lastCodex: ClaudeCheck | null = null;
+export const lastCodexCheck = () => lastCodex;
+
+/**
+ * Is Codex installed, recent enough, and able to answer through Yaho's provider? The test run goes through the Codex
+ * adapter, so it starts Codex exactly as a job does (provider over the Responses API, its own CODEX_HOME).
+ */
+export async function checkCodex(ctx: Ctx): Promise<ClaudeCheck> {
+  const cmd = ctx.settings.harnesses.codex?.command ?? 'codex';
+  const r: ClaudeCheck = { checked_at: new Date().toISOString(), installed: false };
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/^(YAHO_PASSWORD|YAHO_SERVER)$/.test(k)) env[k] = v;
+  const dir = mkdtempSync(join(tmpdir(), 'yaho-check-'));
+  try {
+    const v = await run(cmd, ['--version'], env, dir, 20_000);
+    if (v.code !== 0) {
+      r.failed = 'install';
+      r.error = `Codex was not found (${cmd}). Install it with: npm install -g @openai/codex`;
+      return (lastCodex = r);
+    }
+    r.installed = true;
+    r.version = /\d+\.\d+\.\d+/.exec(v.out)?.[0] ?? v.out;
+    r.recent = newer(r.version, MIN_CODEX_VERSION);
+    if (!r.recent) {
+      r.failed = 'version';
+      r.error = `Codex ${r.version} is older than ${MIN_CODEX_VERSION}. Update it with: npm install -g @openai/codex@latest`;
+      return (lastCodex = r);
+    }
+    const chosen = ctx.settings.defaults.models[0];
+    const resolved = chosen ? resolveModel(ctx.settings, chosen) : undefined;
+    if (!resolved) {
+      r.failed = 'provider';
+      r.error = 'Set the model provider (key and a default model) first.';
+      return (lastCodex = r);
+    }
+    if (!harnessFits(resolved.provider, 'codex')) {
+      r.failed = 'provider';
+      r.error = `Codex needs a provider with OpenAI's Responses API (OpenAI, LiteLLM, Opper or OpenRouter); the default model is on ${resolved.provider.id}.`;
+      return (lastCodex = r);
+    }
+    // Codex is built for OpenAI's models; Claude through a proxy's Responses route often refuses its requests. Test
+    // with a GPT model: one from the default models, or else the first the provider offers.
+    const gpt = (m: string) => /(^|\/)(gpt|o\d|codex)/i.test(m);
+    let model = resolved.model;
+    if (!gpt(model)) {
+      const fromDefaults = ctx.settings.defaults.models.map((m) => resolveModel(ctx.settings, m)).find((x) => x.provider.id === resolved.provider.id && gpt(x.model));
+      model = fromDefaults?.model ?? (await listModels(ctx.settings, resolved.provider).catch(() => [] as string[])).find(gpt) ?? model;
+    }
+    r.model = model;
+    const access = await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '' });
+    const events: HarnessEvent[] = [];
+    const proc = codex.start(
+      {
+        command: cmd,
+        cwd: dir,
+        env: { ...env, ...access.env, CODEX_HOME: join(ctx.paths.root, 'codex') },
+        model,
+        systemPrompt: 'Answer in one word.',
+        prompt: 'Reply with the single word OK.',
+      },
+      (e) => events.push(e),
+    );
+    const timer = setTimeout(() => proc.kill(), 120_000);
+    await proc.done;
+    clearTimeout(timer);
+    const result = events.find((e) => e.kind === 'result') as { ok: boolean; summary?: string; error?: string } | undefined;
+    r.works = !!result?.ok && !!result.summary;
+    if (!r.works) {
+      const notes = events.filter((e) => e.kind === 'stderr').map((e) => (e as { text: string }).text);
+      const text = [result?.error, ...notes].filter(Boolean).join('\n').slice(0, 1200) || 'Codex gave no answer';
+      r.failed = /model|api|401|403|404|429|5\d\d|auth|key|connect|ECONN|fetch|stream/i.test(text) ? 'provider' : 'harness';
+      r.error = text;
+    }
+    return (lastCodex = r);
+  } finally {
     try {
       rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     } catch {

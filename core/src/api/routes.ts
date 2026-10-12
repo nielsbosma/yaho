@@ -4,7 +4,7 @@ import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
-import { checkClaude, lastClaudeCheck } from '../checks.ts';
+import { checkClaude, checkCodex, lastClaudeCheck, lastCodexCheck } from '../checks.ts';
 import { PROVIDERS, defaultProvider } from '../providers.ts';
 import { allModels, listModels } from '../providerApi.ts';
 import { revealToken, serverMode } from './session.ts';
@@ -131,6 +131,13 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     } catch (e) {
       throw new HttpError(400, (e as Error).message);
     }
+  });
+  // One check per harness (claude-code, codex); /api/checks/claude is kept for older clients.
+  r.on('GET', '/api/checks/:harness', (req) => (req.params.harness === 'codex' ? lastCodexCheck() : lastClaudeCheck()));
+  r.on('POST', '/api/checks/:harness', async (req) => {
+    const r = req.params.harness === 'codex' ? await checkCodex(ctx) : await checkClaude(ctx);
+    ctx.bus.emitEvent({ type: 'changed', entity: 'checks' });
+    return r;
   });
   r.on('GET', '/api/checks/claude', () => lastClaudeCheck());
   r.on('POST', '/api/checks/claude', async () => {
