@@ -12,7 +12,7 @@ import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
 import { ago, Badge, Card, Empty, ErrorNote, money, PageHeader, Section, StatusBadge, Tabs } from '../components/ui/display.tsx';
-import { Field, Input, Switch, Textarea } from '../components/ui/form.tsx';
+import { Field, Input, Select, Switch, Textarea } from '../components/ui/form.tsx';
 import { api, useApi, type Agent, type Artifact, type Job, type Project, type Resource, type TriggerSpec } from '../lib/api.ts';
 import { go, href } from '../lib/router.ts';
 import { AgentInbox } from './inbox.tsx';
@@ -422,7 +422,20 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
 
           <Section title="Models and Budget">
             <Card className="space-y-4 p-4">
-              <Field label="Allowed Models" hint="From your LiteLLM proxy. Jobs run with the primary." group>
+              <Field
+                label="Harness"
+                hint={
+                  draft.harness === 'codex'
+                    ? "OpenAI's Codex. Needs a model on a provider with OpenAI's Responses API: OpenAI, LiteLLM, Opper or OpenRouter."
+                    : 'Anthropic\'s Claude Code. Works with every model provider.'
+                }
+              >
+                <Select value={draft.harness} onChange={(e) => set('harness', e.target.value)} className="md:w-64">
+                  <option value="claude-code">Claude Code</option>
+                  <option value="codex">Codex</option>
+                </Select>
+              </Field>
+              <Field label="Allowed Models" hint="From your model providers. Jobs run with the primary." group>
                 <ModelPicker value={draft.models} onChange={(v) => set('models', v)} />
               </Field>
               <div className="grid gap-4 md:grid-cols-2">

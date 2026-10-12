@@ -168,6 +168,11 @@ export async function launcher(cmd: string | undefined, args: string[]): Promise
         if (maj! < 22 || (maj === 22 && min! < 17)) throw new Error(`Node ${process.versions.node} is too old`);
         return process.versions.node;
       }) && ok;
+      check('Codex (for agents that use it)', () => {
+        const r = spawnSync('codex', ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' });
+        if (r.status !== 0) throw new Error('codex was not found on PATH; install it with: npm i -g @openai/codex');
+        return r.stdout.trim();
+      });
       ok = check('Claude Code', () => {
         const r = spawnSync('claude', ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' });
         if (r.status !== 0) throw new Error('claude was not found on PATH; install Claude Code first');

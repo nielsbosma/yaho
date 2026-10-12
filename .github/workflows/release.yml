@@ -293,6 +293,7 @@ jobs:
           docker exec yaho-smoke cat /data/home/.claude-smoke | grep -q kept
           docker exec yaho-smoke yaho doctor || true
           docker exec yaho-smoke claude --version
+          docker exec yaho-smoke codex --version
           docker logs yaho-smoke | tail -20
       - name: Push by digest
         id: push

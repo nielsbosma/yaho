@@ -183,7 +183,7 @@ async function anthropicChat(base: string, key: string, body: { model: string; m
 // ---------- jobs: the environment Claude Code gets ----------
 
 export interface JobAccess {
-  /** ANTHROPIC_* variables for Claude Code. */
+  /** ANTHROPIC_* variables for Claude Code, and YAHO_CODEX_BASE_URL + YAHO_MODEL_KEY for Codex where the provider has OpenAI's Responses API. */
   env: Record<string, string>;
   /** A key minted for this job alone, capped at the agent's remaining budget: its spend so far, and its removal. */
   capped?: { spend(): Promise<number>; release(): Promise<void> };
@@ -191,8 +191,42 @@ export interface JobAccess {
   budget: 'capped' | 'counted';
 }
 
-/** How a job's Claude Code reaches this provider, with the agent's remaining budget. */
+/** Where Codex reaches a provider: its Responses API base. Anthropic and Berget have none. */
+function responsesBase(p: ProviderConfig): string | undefined {
+  if (p.kind === 'litellm') return p.url ? `${p.url.replace(/\/$/, '')}/v1` : undefined;
+  if (p.kind === 'openai') return p.url ?? 'https://api.openai.com/v1';
+  if (p.kind === 'opper') return p.url ?? 'https://api.opper.ai/v3/compat';
+  if (p.kind === 'openrouter') return 'https://openrouter.ai/api/v1';
+  return undefined;
+}
+
+/** Can a job on this provider run in the given harness? */
+export function harnessFits(p: ProviderConfig, harness: string): boolean {
+  return harness === 'codex' ? !!responsesBase(p) : true;
+}
+
+/** How a job reaches this provider, with the agent's remaining budget: Claude Code's variables, and Codex's. */
 export async function jobAccess(
+  s: Settings,
+  p: ProviderConfig,
+  o: { models: string[]; remaining: number; agent: string; job: string; bridge?: { apiUrl: string; token: string } },
+): Promise<JobAccess> {
+  const base = responsesBase(p);
+  // Codex needs only the Responses address and a key; a provider Claude Code cannot reach here (OpenAI without the
+  // bridge) still serves Codex.
+  const access = await claudeAccess(s, p, o).catch((e: Error) => {
+    if (!base) throw e;
+    return { env: {}, budget: 'counted' } as JobAccess;
+  });
+  if (base) {
+    // The same key Claude Code got (a capped one where minted), so budgets hold for Codex too.
+    const key = access.env.ANTHROPIC_AUTH_TOKEN || access.env.ANTHROPIC_API_KEY || keyOf(p) || '';
+    Object.assign(access.env, { YAHO_CODEX_BASE_URL: base, YAHO_MODEL_KEY: p.kind === 'openai' ? (keyOf(p) ?? '') : key });
+  }
+  return access;
+}
+
+async function claudeAccess(
   s: Settings,
   p: ProviderConfig,
   o: { models: string[]; remaining: number; agent: string; job: string; bridge?: { apiUrl: string; token: string } },

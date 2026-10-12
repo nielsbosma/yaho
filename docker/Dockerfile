@@ -1,4 +1,4 @@
-# Yaho Server: the core, the web UI, the yaho CLI, Dopbase and Claude Code in one image.
+# Yaho Server: the core, the web UI, the yaho CLI, Dopbase, Claude Code and Codex in one image.
 #   docker build -f docker/Dockerfile -t yaho .
 #   docker run -d -p 4700:4700 -v yaho-data:/data -e YAHO_PASSWORD='a long password' yaho
 # Everything Yaho keeps is in the /data volume, the home folder included (Claude Code's sessions, gh and git sign-ins).
@@ -23,6 +23,7 @@ RUN pnpm install --frozen-lockfile && node tools/package.mjs --stage
 # ---- The image ----
 FROM node:22-bookworm-slim
 ARG CLAUDE_CODE_VERSION=2.1.296
+ARG CODEX_VERSION=0.162.1
 # Tools agents use: git, gh, Python, curl, jq, ripgrep. tini passes signals and reaps child processes.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl git jq ripgrep python3 python3-pip python3-venv tini \
@@ -30,7 +31,7 @@ RUN apt-get update \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
  && apt-get update && apt-get install -y --no-install-recommends gh \
  && rm -rf /var/lib/apt/lists/* \
- && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+ && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" \
  && npm cache clean --force \
  # The node image's user 1000 becomes yaho, with its home on the volume.
  && usermod -l yaho -d /data/home node && groupmod -n yaho node

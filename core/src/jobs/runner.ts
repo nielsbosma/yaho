@@ -4,14 +4,14 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { newId, now } from '../db/index.ts';
-import { adapters, killTree } from '../harness/claudeCode.ts';
+import { adapters, killTree } from '../harness/index.ts';
 import type { HarnessEvent, HarnessProcess } from '../harness/types.ts';
 import { envForAgent } from '../secrets/dopbase.ts';
 import type { Agent, Job } from '../store.ts';
 import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, totalSpend, updateJob } from '../store.ts';
 import { contextPrompt, systemPrompt } from './prompt.ts';
 import type { ModelPrice } from './litellm.ts';
-import { jobAccess, priceFor } from '../providerApi.ts';
+import { harnessFits, jobAccess, priceFor } from '../providerApi.ts';
 
 type Row = Record<string, unknown>;
 
@@ -179,6 +179,8 @@ export class JobRunner {
     const remaining = Math.max(0, agent.budget_usd - agentSpend(ctx, agent.name));
     // The provider serving the model, and how Claude Code reaches it (a capped key per job where the provider can).
     const { provider, model: providerModel } = resolveModel(settings, model);
+    if (!harnessFits(provider, agent.harness))
+      throw new Error(`${agent.harness} cannot use ${provider.id}: Codex needs a provider with OpenAI's Responses API (OpenAI, LiteLLM, Opper, OpenRouter)`);
     const access = await jobAccess(settings, provider, {
       models: agent.models.map((m) => resolveModel(settings, m).model),
       remaining,
@@ -204,6 +206,8 @@ export class JobRunner {
       YAHO_JOB: job.id,
       YAHO_AGENT_DB: join(cwd, 'agent.db'),
       ...access.env,
+      // Codex keeps its sessions and settings here, apart from the person's own ~/.codex.
+      CODEX_HOME: join(ctx.paths.root, 'codex'),
       // Background calls (titles, summaries) must also use a model the provider knows.
       ANTHROPIC_DEFAULT_HAIKU_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,
       ANTHROPIC_SMALL_FAST_MODEL: resolveModel(settings, agent.models[agent.models.length - 1] ?? model).model,

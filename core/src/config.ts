@@ -79,7 +79,7 @@ export interface Guardrails {
 
 export const defaultSettings = (): Settings => ({
   server: { host: '127.0.0.1', port: 4700 },
-  harnesses: { 'claude-code': { command: 'claude' } },
+  harnesses: { 'claude-code': { command: 'claude' }, codex: { command: 'codex' } },
   providers: [{ id: 'litellm', kind: 'litellm', url: 'http://localhost:4000' }],
   dopbase: { mode: 'bundled', url: 'http://localhost:8840', local_port: 4702, environment: 'production', project_prefix: 'yaho-' },
   global_spend_cap_usd: 100,

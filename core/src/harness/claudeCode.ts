@@ -147,4 +147,3 @@ export const claudeCode: HarnessAdapter = {
   },
 };
 
-export const adapters: Record<string, HarnessAdapter> = { 'claude-code': claudeCode };
