@@ -162,7 +162,7 @@ jobs:
         run: |
           app="$(ls -d apps/desktop/release/mac*/Yaho.app | head -1)"
           codesign --verify --deep --strict --verbose=2 "$app"
-          codesign -dv "$app" 2>&1 | grep -q 'Authority=Developer ID Application: Bosma Interactive'
+          codesign -dvv "$app" 2>&1 | grep -q 'Authority=Developer ID Application: Bosma Interactive'
           spctl --assess --type execute --verbose "$app"
           xcrun stapler validate "$app"
 

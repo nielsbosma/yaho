@@ -186,9 +186,14 @@ try {
     # ---- 4. Federated credentials --------------------------------------------------------------------
     Step 'Federated credentials (who may log in as the app)'
     if ($script:AppId) {
-        FederatedCredential 'yaho-release' "repo:${Repo}:environment:${Environment}"
+        # GitHub may send the immutable form (repo:<owner>@<id>/<repo>@<id>), which a renamed or re-created repo cannot
+        # match; trust whatever this repository actually sends.
+        $prefix = & gh api "repos/$Repo/actions/oidc/customization/sub" --jq '.sub_claim_prefix // empty' 2>$null
+        if (-not $prefix) { $prefix = "repo:$Repo" }
+        $name = if ($prefix -eq "repo:$Repo") { 'yaho-release' } else { 'yaho-release-immutable' }
+        FederatedCredential $name "${prefix}:environment:${Environment}"
         $all = @(Invoke-Az ad app federated-credential list --id $script:AppId --output json -Json) | Where-Object { $_ }
-        $foreign = $all | Where-Object { $_.issuer -ne $Issuer -or $_.subject -notlike "repo:${Repo}:*" }
+        $foreign = $all | Where-Object { $_.issuer -ne $Issuer -or $_.subject -notlike "${prefix}:*" -and $_.subject -notlike "repo:${Repo}:*" }
         if ($foreign) { Write-Warning ("Credentials that trust something other than ${Repo}: " + (($foreign | ForEach-Object { "$($_.name) = $($_.subject)" }) -join '; ')) }
     } else { Todo 'skipped (no app yet)' }
 

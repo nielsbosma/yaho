@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, shell, Tray } from 'electron';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { startCore, type CoreConnection } from './core.ts';
 import { appIcon, overlayBadge } from './icons.ts';
 import { createShortcuts, removeShortcuts } from './shortcuts.ts';
@@ -221,6 +221,21 @@ ipcMain.on('yaho:titlebar', (_e, color: string, symbolColor: string) => {
 ipcMain.on('yaho:open', (_e, url: string) => {
   if (/^https?:\/\//.test(url)) void shell.openExternal(url);
 });
+
+/**
+ * Linux: Chromium's setuid sandbox helper only works when it is owned by root with the setuid bit, which an npm install
+ * (or an unpacked folder) never gives it, and Electron then refuses to start. Without the helper, start without it,
+ * the way AppImages do. Must be set before the app is ready.
+ */
+if (process.platform === 'linux') {
+  const helper = join(dirname(process.execPath), 'chrome-sandbox');
+  try {
+    const st = statSync(helper);
+    if (st.uid !== 0 || !(st.mode & 0o4000)) app.commandLine.appendSwitch('no-sandbox');
+  } catch {
+    app.commandLine.appendSwitch('no-sandbox');
+  }
+}
 
 /**
  * One-shot modes the yaho command uses: make or remove the shortcuts, or run the core without a window. They neither
