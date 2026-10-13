@@ -331,6 +331,7 @@ const definitionOf = (a: Agent) => ({
   resources: a.resources,
   guardrails: a.guardrails,
   ...(a.email ? { email: true } : {}),
+  ...(a.sms ? { sms: true } : {}),
 });
 
 export function AgentEditor({ existing }: { existing?: Agent }) {
@@ -349,6 +350,7 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
   const projects = useApi<Project[]>('/api/projects');
   const resources = useApi<Resource[]>('/api/resources');
   const email = useApi<{ configured: boolean; domain?: string }>('/api/resend');
+  const sms = useApi<{ configured: boolean; number?: string }>('/api/twilio');
   useEffect(() => {
     if (existing) setDraft({ ...existing });
   }, [existing]);
@@ -519,6 +521,18 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
               >
                 <div className="flex h-9 items-center">
                   <Switch checked={!!draft.email} onChange={(v) => set('email', v || undefined)} label="Email" />
+                </div>
+              </Field>
+              <Field
+                label="SMS"
+                hint={
+                  sms.data?.configured
+                    ? `Text people from ${sms.data.number} and get their replies in its inbox.`
+                    : 'Text people and get their replies. Set up SMS in Settings → Integrations first.'
+                }
+              >
+                <div className="flex h-9 items-center">
+                  <Switch checked={!!draft.sms} onChange={(v) => set('sms', v || undefined)} label="SMS" />
                 </div>
               </Field>
             </Card>

@@ -10,6 +10,7 @@ import { serverMode, sessionRoute, sessionValid } from './session.ts';
 import { handleBridge } from '../bridge.ts';
 import { handleWhatsAppWebhook } from '../whatsapp/bridge.ts';
 import { handleResendWebhook } from '../email/resend.ts';
+import { handleTwilioWebhook, WEBHOOK_PATH as TWILIO_WEBHOOK } from '../sms/twilio.ts';
 
 export const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -113,6 +114,8 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
       if (path === '/api/whatsapp/webhook') return await handleWhatsAppWebhook(ctx, raw, res, url.searchParams, () => readBytes(raw, 4 * 1024 * 1024));
       // Resend's webhook for inbound email; it checks the signing secret itself.
       if (path === '/api/resend/webhook') return await handleResendWebhook(ctx, raw, res, () => readBytes(raw, 4 * 1024 * 1024));
+      // Twilio's webhook for incoming texts; it checks the auth token's signature itself.
+      if (path === TWILIO_WEBHOOK) return await handleTwilioWebhook(ctx, raw, res, () => readBytes(raw, 256 * 1024));
 
       if (path.startsWith('/api/')) {
         // Sign in and out (server version) are open, like health.

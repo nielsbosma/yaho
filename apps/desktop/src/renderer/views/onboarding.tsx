@@ -391,6 +391,13 @@ function ConnectionsStep({ settings }: { settings: SetupSettings }) {
         </div>
         <p className="mt-1 text-xs text-muted">Give agents their own email address on your domain through Resend, so they can email people and act on the replies. Set it up in Settings → Integrations; Yaho must be reachable from the internet.</p>
       </div>
+      <div className="rounded-xl border border-line p-4">
+        <div className="flex items-center gap-2 font-medium">
+          <BrandLogo brand="twilio" size="sm" />
+          SMS
+        </div>
+        <p className="mt-1 text-xs text-muted">Let agents text people from a Twilio number and act on the replies. Set it up in Settings → Integrations; Yaho must be reachable from the internet.</p>
+      </div>
       <div className="space-y-3 rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
           <BrandLogo brand="composio" size="sm" />

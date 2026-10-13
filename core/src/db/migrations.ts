@@ -163,4 +163,11 @@ export const migrations: string[] = [
    CREATE TABLE emails (message TEXT PRIMARY KEY, thread TEXT NOT NULL REFERENCES email_threads(token) ON DELETE CASCADE, direction TEXT NOT NULL, addresses TEXT NOT NULL, resend_id TEXT, message_id TEXT, created TEXT NOT NULL);
    CREATE INDEX emails_thread ON emails(thread, created);
    CREATE INDEX emails_message_id ON emails(message_id);`,
+  // 9: SMS through Twilio. agents.sms opts an agent in; sms ties each message to the phone it went to or came from,
+  // so a text to the shared number finds the agent that last texted that phone.
+  `ALTER TABLE agents ADD COLUMN sms INTEGER NOT NULL DEFAULT 0;
+   CREATE TABLE sms (message TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE ON UPDATE CASCADE, phone TEXT NOT NULL, direction TEXT NOT NULL, sid TEXT, created TEXT NOT NULL);
+   CREATE INDEX sms_phone ON sms(phone, created);
+   CREATE INDEX sms_agent ON sms(agent, created);
+   CREATE UNIQUE INDEX sms_sid ON sms(sid) WHERE sid IS NOT NULL;`,
 ];

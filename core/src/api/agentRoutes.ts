@@ -51,6 +51,7 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     const m = await req.body<s.SendInput>();
     if (!m.to) throw new HttpError(400, 'to is required: human or agent:<name>');
     if (String(m.to).startsWith('email:')) throw new HttpError(400, 'send email with yaho email send (or yaho email reply)');
+    if (String(m.to).startsWith('sms:')) throw new HttpError(400, 'send texts with yaho sms send (or yaho sms reply)');
     const job = s.getJob(ctx, w.job);
     if (m.artifacts !== undefined) {
       if (!Array.isArray(m.artifacts)) throw new HttpError(400, 'artifacts must be a list of artifact ids');
@@ -68,6 +69,12 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
   on('POST', '/email', async (req, w) => {
     if (!ctx.email) throw new HttpError(400, 'email is not set up in Yaho');
     return ctx.email.send(w.agent, w.job, await req.body());
+  });
+
+  // ---- SMS through Twilio ----
+  on('POST', '/sms', async (req, w) => {
+    if (!ctx.sms) throw new HttpError(400, 'SMS is not set up in Yaho');
+    return ctx.sms.send(w.agent, w.job, await req.body());
   });
 
   // ---- query (read-only, scoped) ----

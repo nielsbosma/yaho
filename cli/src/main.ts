@@ -26,6 +26,8 @@ const HELP = `yaho - talk to the Yaho orchestrator from inside a job
   yaho idea --title "..." < idea.md     suggest a feature for Yaho itself (a GitHub issue)
   yaho email send --to a@b.com[,c@d.com] [--cc ...] --subject "..." [--body B] < body.txt
   yaho email reply <message-id> [--to ...] [--cc ...] [--body B] < body.txt
+  yaho sms send --to +46701234567 [--body B] < text.txt
+  yaho sms reply <message-id> [--body B] < text.txt
   yaho budget
   yaho sleep <duration>                 e.g. 30m, 2h, 1d; ends this job now
   yaho finish [--summary "..."]         ends this job now
@@ -180,6 +182,13 @@ async function main(argv: string[]): Promise<void> {
         need(f.subject, '--subject "..."');
       }
       return out(await call('POST', '/email', { to: f.to, cc: f.cc, subject: f.subject, body: need(body, 'the body on stdin (or --body)'), reply_to }));
+    }
+    case 'sms': {
+      if (sub !== 'send' && sub !== 'reply') break;
+      const body = readStdin().trim() || f.body;
+      const reply_to = sub === 'reply' ? need(a1, 'the message id to reply to') : undefined;
+      if (sub === 'send') need(f.to, '--to +46701234567');
+      return out(await call('POST', '/sms', { to: f.to, body: need(body, 'the text on stdin (or --body)'), reply_to }));
     }
     case 'budget':
       return out(await call('GET', '/budget'));

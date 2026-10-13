@@ -18,7 +18,7 @@ const typeMeta = {
   reply: { icon: CornerDownRight, tone: 'neutral' as const, label: 'Reply' },
 };
 
-export const who = (addr: string) => (addr === 'human' ? 'You' : addr.replace(/^(agent|email):/, ''));
+export const who = (addr: string) => (addr === 'human' ? 'You' : addr.replace(/^(agent|email|sms):/, ''));
 
 function CopyValue({ value }: { value: string }) {
   const [done, setDone] = useState(false);

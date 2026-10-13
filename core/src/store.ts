@@ -23,6 +23,8 @@ export interface Agent {
   resources: string[];
   /** An address of its own through Resend (<name>@<domain>) to send email from and get replies at. */
   email?: boolean;
+  /** Text people from Yaho's Twilio number and get their replies. */
+  sms?: boolean;
 }
 
 export interface Project {
@@ -135,6 +137,7 @@ function agentFromRow(ctx: Ctx, r: Row): Agent {
       (x) => x.resource as string,
     ),
     ...(r.email ? { email: true } : {}),
+    ...(r.sms ? { sms: true } : {}),
   };
 }
 
@@ -202,6 +205,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
     projects: input.projects ?? (prev ? agentFromRow(ctx, prev).projects : []),
     resources: input.resources ?? (prev ? agentFromRow(ctx, prev).resources : []),
     email: input.email ?? !!prev?.email,
+    sms: input.sms ?? !!prev?.sms,
   };
   if (!ctx.settings.harnesses[a.harness]) throw new HttpError(400, `unknown harness ${a.harness}`);
   for (const t of a.triggers) {
@@ -216,11 +220,11 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
   db.exec('BEGIN');
   try {
     db.prepare(
-      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, created, updated)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, sms, created, updated)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(name) DO UPDATE SET enabled=excluded.enabled, briefing=excluded.briefing, harness=excluded.harness,
          models=excluded.models, budget_usd=excluded.budget_usd, max_parallel=excluded.max_parallel,
-         guardrails=excluded.guardrails, email=excluded.email, updated=excluded.updated`,
+         guardrails=excluded.guardrails, email=excluded.email, sms=excluded.sms, updated=excluded.updated`,
     ).run(
       a.name,
       a.enabled ? 1 : 0,
@@ -231,6 +235,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
       a.max_parallel,
       JSON.stringify(a.guardrails),
       a.email ? 1 : 0,
+      a.sms ? 1 : 0,
       ts,
       ts,
     );
@@ -619,7 +624,7 @@ export interface SendInput {
 
 /** Store a message and fan it out: UI event, human notification, or an inbox trigger for the receiving agent. */
 export function sendMessage(ctx: Ctx, m: SendInput): Message {
-  const to = m.to.startsWith('agent:') || m.to.startsWith('email:') || m.to === 'human' ? m.to : `agent:${m.to}`;
+  const to = m.to.startsWith('agent:') || m.to.startsWith('email:') || m.to.startsWith('sms:') || m.to === 'human' ? m.to : `agent:${m.to}`;
   if (to.startsWith('agent:') && !agentExists(ctx, to.slice(6))) throw new HttpError(400, `no agent named ${to.slice(6)}`);
   const type = m.type ?? (m.reply_to ? 'reply' : 'info');
   if (!['question', 'instruction', 'info', 'reply'].includes(type)) throw new HttpError(400, `unknown message type ${type}`);

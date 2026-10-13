@@ -17,6 +17,7 @@ import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
 import { schedule } from '../schedule.ts';
 import { slackCreateUrl, slackManifest } from '../slack/manifest.ts';
+import { WEBHOOK_PATH as TWILIO_WEBHOOK } from '../sms/twilio.ts';
 import { stats } from '../stats.ts';
 import { Router, type Req } from './http.ts';
 import { safeJoin, sendFile } from './server.ts';
@@ -96,6 +97,8 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const waBefore = wa();
     const rs = () => JSON.stringify([ctx.settings.resend?.api_key, ctx.settings.resend?.domain]);
     const rsBefore = rs();
+    const tw = () => JSON.stringify([ctx.settings.twilio?.account_sid, ctx.settings.twilio?.auth_token, ctx.settings.twilio?.number]);
+    const twBefore = tw();
     applySettingsUpdate(ctx.settings, next);
     if (ctx.settings.dopbase.mode === 'bundled' && ctx.localDopbase && !ctx.localDopbase.child) await ctx.localDopbase.start();
     await storeSecrets(ctx);
@@ -104,6 +107,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     if (JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]) !== slackBefore) void ctx.slack?.start();
     if (wa() !== waBefore) void ctx.whatsapp?.start();
     if (rs() !== rsBefore) void ctx.email?.start();
+    if (tw() !== twBefore) void ctx.sms?.start();
     return publicSettings(ctx.settings);
   });
 
@@ -166,6 +170,13 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('POST', '/api/resend/reconnect', async () => {
     await ctx.email?.start();
     return ctx.email?.status;
+  });
+
+  // ---- SMS (Twilio) ----
+  r.on('GET', '/api/twilio', () => ({ ...(ctx.sms?.status ?? { configured: false, connected: false }), webhook_path: TWILIO_WEBHOOK }));
+  r.on('POST', '/api/twilio/reconnect', async () => {
+    await ctx.sms?.start();
+    return ctx.sms?.status;
   });
 
   // ---- Slack ----
@@ -396,6 +407,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('POST', '/api/messages', async (req) => {
     const m = await req.body<s.SendInput>();
     if (String(m.to ?? '').startsWith('email:')) throw new HttpError(400, 'email is sent by agents (yaho email), not from the inbox');
+    if (String(m.to ?? '').startsWith('sms:')) throw new HttpError(400, 'texts are sent by agents (yaho sms), not from the inbox');
     const msg = s.sendMessage(ctx, { ...m, from: 'human' });
     if (m.reply_to) s.markRead(ctx, m.reply_to, true);
     return msg;
