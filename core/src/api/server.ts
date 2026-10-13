@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { chmodSync, createReadStream, existsSync, rmSync, statSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
@@ -82,7 +82,11 @@ export function safeJoin(root: string, rel: string): string {
   return full;
 }
 
-export function startServer(ctx: Ctx, router: Router, opts: { host: string; port: number; webRoot?: string }): Promise<Server> {
+/**
+ * Serve the API and UI on host:port, and with socket also on that Unix socket: the way a sandboxed job's yaho reaches the
+ * core, as the sandbox has its own network where 127.0.0.1 is not this machine.
+ */
+export function startServer(ctx: Ctx, router: Router, opts: { host: string; port: number; webRoot?: string; socket?: string }): Promise<Server> {
   const sse = new Set<Req['res']>();
   ctx.bus.on('event', (e: BusEvent) => {
     const line = `data: ${JSON.stringify(e)}\n\n`;
@@ -92,7 +96,7 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
     for (const res of sse) res.write(': ping\n\n');
   }, 25_000).unref();
 
-  const server = createServer(async (raw, res) => {
+  const handler = async (raw: Req['raw'], res: Req['res']) => {
     const url = new URL(raw.url ?? '/', 'http://local');
     const path = url.pathname;
     const wantsYaml = !!raw.headers.accept?.includes('yaml');
@@ -173,8 +177,22 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
       if (status === 500) console.error(e);
       send(res, status, { error: (e as Error).message }, wantsYaml);
     }
-  });
+  };
 
+  const server = createServer(handler);
+  if (opts.socket) {
+    const socket = opts.socket;
+    const local = createServer(handler);
+    rmSync(socket, { force: true });
+    local.on('error', (e) => console.error(`[server] no Unix socket at ${socket}: ${e.message}`));
+    // Agents may run as their own user (server version); the job token still decides what a caller may do.
+    local.listen(socket, () => chmodSync(socket, 0o666));
+    server.on('close', () => {
+      local.closeAllConnections();
+      local.close();
+      rmSync(socket, { force: true });
+    });
+  }
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(opts.port, opts.host, () => resolve(server));

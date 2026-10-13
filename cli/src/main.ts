@@ -4,6 +4,7 @@
  * Needs YAHO_API_URL and YAHO_JOB_TOKEN, which Yaho puts in every job's environment.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
 import { basename } from 'node:path';
 import { parseArgs } from 'node:util';
 import YAML from 'yaml';
@@ -37,10 +38,42 @@ class CliError extends Error {}
 
 const apiUrl = process.env.YAHO_API_URL;
 const token = process.env.YAHO_JOB_TOKEN;
+/** In Sandbox Mode the job has its own network: the core is reached through its Unix socket instead of apiUrl. */
+const socket = process.env.YAHO_API_SOCKET;
+
+interface Reply {
+  status: number;
+  ok: boolean;
+  type: string;
+  body: Buffer;
+}
+
+/** One request to the core, over its socket when there is one, else over HTTP. */
+function request(path: string, init: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array<ArrayBuffer> } = {}): Promise<Reply> {
+  if (!socket)
+    return fetch(`${apiUrl}${path}`, init).then(async (r) => ({
+      status: r.status,
+      ok: r.ok,
+      type: r.headers.get('content-type') ?? '',
+      body: Buffer.from(await r.arrayBuffer()),
+    }));
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ socketPath: socket, path, method: init.method ?? 'GET', headers: init.headers }, (res) => {
+      const parts: Buffer[] = [];
+      res.on('data', (d: Buffer) => parts.push(d));
+      res.on('end', () =>
+        resolve({ status: res.statusCode ?? 0, ok: (res.statusCode ?? 0) < 300, type: String(res.headers['content-type'] ?? ''), body: Buffer.concat(parts) }),
+      );
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.end(init.body);
+  });
+}
 
 async function call(method: string, path: string, body?: unknown, raw?: Buffer | string, contentType?: string): Promise<unknown> {
   if (!apiUrl || !token) throw new CliError('YAHO_API_URL and YAHO_JOB_TOKEN are not set: yaho only works inside a Yaho job');
-  const res = await fetch(`${apiUrl}/api/agent${path}`, {
+  const res = await request(`/api/agent${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -49,8 +82,8 @@ async function call(method: string, path: string, body?: unknown, raw?: Buffer |
     },
     body: raw === undefined ? (body === undefined ? undefined : JSON.stringify(body)) : typeof raw === 'string' ? raw : new Uint8Array(raw),
   });
-  const text = await res.text();
-  const ct = res.headers.get('content-type') ?? '';
+  const text = res.body.toString('utf8');
+  const ct = res.type;
   if (!ct.includes('yaml') && !ct.includes('json')) {
     if (!res.ok) throw new CliError(`${res.status} ${text}`);
     return text;
@@ -122,11 +155,11 @@ async function main(argv: string[]): Promise<void> {
       if (sub === 'files') {
         const project = need(a1, 'project name');
         if (!a2) return out(await call('GET', `/projects/${encodeURIComponent(project)}/files`));
-        const res = await fetch(`${apiUrl}/api/agent/projects/${encodeURIComponent(project)}/files/${encodeURIComponent(a2)}`, {
+        const res = await request(`/api/agent/projects/${encodeURIComponent(project)}/files/${encodeURIComponent(a2)}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) throw new CliError(`${res.status} ${await res.text()}`);
-        const buf = Buffer.from(await res.arrayBuffer());
+        if (!res.ok) throw new CliError(`${res.status} ${res.body.toString('utf8')}`);
+        const buf = res.body;
         const target = f.out ?? a2;
         writeFileSync(target, buf);
         return out({ saved: target, bytes: buf.length });

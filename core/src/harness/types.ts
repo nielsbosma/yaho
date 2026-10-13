@@ -13,6 +13,8 @@ export interface HarnessRun {
   transcriptPath?: string;
   /** Spend cap for this run in USD, when the harness can enforce one. */
   maxBudgetUsd?: number;
+  /** Run in the harness's sandbox (Guard Rails → Sandbox Mode): writes only in cwd and temp. guard: the file tools' hook command. */
+  sandbox?: { guard: string };
 }
 
 /** Normalised events every adapter emits. */

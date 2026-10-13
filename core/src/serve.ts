@@ -17,9 +17,11 @@ import { SlackBridge } from './slack/bridge.ts';
 import { WhatsAppBridge } from './whatsapp/bridge.ts';
 import { EmailBridge } from './email/resend.ts';
 import { SmsBridge } from './sms/twilio.ts';
+import { TelegramBridge } from './telegram/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
+import { SANDBOX_GUARD, sandboxGuardScript } from './harness/sandbox.ts';
 import { checkServerPassword, loadTotp, serverMode } from './api/session.ts';
 
 // node:sqlite prints an ExperimentalWarning on Node 22; it is expected.
@@ -55,6 +57,7 @@ export async function serve(
   ctx.whatsapp = new WhatsAppBridge(ctx);
   ctx.email = new EmailBridge(ctx);
   ctx.sms = new SmsBridge(ctx);
+  ctx.telegram = new TelegramBridge(ctx);
 
   const router = new Router();
   humanRoutes(ctx, router);
@@ -69,17 +72,19 @@ export async function serve(
   const port = opts.port ?? Number(process.env.YAHO_PORT ?? settings.server.port);
   const here = dirname(fileURLToPath(import.meta.url));
   const webRoot = opts.webRoot ?? process.env.YAHO_WEB_ROOT ?? join(here, '../../apps/desktop/dist/renderer');
-  const server = await startServer(ctx, router, { host, port, webRoot });
+  const server = await startServer(ctx, router, { host, port, webRoot, socket: process.platform === 'win32' ? undefined : p.socket });
   const addr = server.address();
   const actualPort = typeof addr === 'object' && addr ? addr.port : port;
   ctx.apiUrl = `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${actualPort}`;
   writeFileSync(p.server, YAML.stringify({ url: ctx.apiUrl, pid: process.pid, started: new Date().toISOString() }));
 
-  // Slack and WhatsApp connect in the background; a bad token shows in Settings, never blocks the core.
+  // The integrations connect in the background; a bad token shows in Settings, never blocks the core.
   if (!opts.embedded) void ctx.slack.start();
-  if (!opts.embedded) void ctx.whatsapp.start();
-  if (!opts.embedded) void ctx.email.start();
-  if (!opts.embedded) void ctx.sms.start();
+  // WhatsApp, Email and SMS need webhooks from the internet, so they only run in the server version.
+  if (!opts.embedded && serverMode()) void ctx.whatsapp.start();
+  if (!opts.embedded && serverMode()) void ctx.email.start();
+  if (!opts.embedded && serverMode()) void ctx.sms.start();
+  if (!opts.embedded) void ctx.telegram.start();
   ctx.updates = new Updates(ctx, yahoVersion());
   if (!opts.embedded) ctx.updates.start();
 
@@ -89,6 +94,7 @@ export async function serve(
     ctx.whatsapp?.stop();
     ctx.email?.stop();
     ctx.sms?.stop();
+    ctx.telegram?.stop();
     ctx.updates?.stop();
     ctx.localDopbase?.stop();
     await runner.shutdown();
@@ -127,4 +133,5 @@ function writeShims(ctx: Ctx): void {
   const posix = (p: string) => p.replaceAll('\\', '/');
   const sh = ['#!/bin/sh', `${electron ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}exec "${posix(node)}" ${flags} "${posix(cli)}" "$@"`];
   writeFileSync(join(ctx.paths.bin, 'yaho'), sh.join('\n') + '\n', { mode: 0o755 });
+  writeFileSync(join(ctx.paths.bin, SANDBOX_GUARD), sandboxGuardScript());
 }
