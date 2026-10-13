@@ -8,7 +8,7 @@ import { platform } from './lib/platform.ts';
 import { go, useRoute } from './lib/router.ts';
 import { views } from './views/index.tsx';
 import { Onboarding } from './views/onboarding.tsx';
-import { SignIn } from './views/signin.tsx';
+import { SignIn, TotpSetup } from './views/signin.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 
 export interface AppState {
@@ -22,16 +22,16 @@ export interface AppState {
   debug?: boolean;
   /** The first-run setup is done; until then the app shows it instead of the pages. */
   onboarded?: boolean;
-  /** The server version (Docker): password sign-in, no desktop features. */
+  /** The server version (Docker): password and authenticator sign-in, no desktop features. */
   server?: boolean;
 }
 
 /**
  * In front of the app. The desktop has its token; a browser without one asks the core whether it is the server version
- * (Docker) and shows Sign In until a session cookie exists.
+ * (Docker) and shows Sign In (and the authenticator's setup, the first time) until a session cookie exists.
  */
 export function App() {
-  const [session, setSession] = useState<{ server: boolean; signed_in: boolean } | null>(null);
+  const [session, setSession] = useState<{ server: boolean; signed_in: boolean; totp?: boolean; totp_setup?: boolean } | null>(null);
   const check = () =>
     void fetch(new URL('/api/session', platform.apiUrl))
       .then((r) => r.json())
@@ -42,7 +42,8 @@ export function App() {
   }, []);
   if (platform.token) return <Main />;
   if (!session) return null;
-  if (session.server && !session.signed_in) return <SignIn onSignedIn={check} />;
+  if (session.server && session.totp_setup) return <TotpSetup onDone={check} />;
+  if (session.server && !session.signed_in) return <SignIn totp={!!session.totp} onSignedIn={check} />;
   if (session.server) return <Main />;
   return (
     <div className="flex h-full items-center justify-center p-8 text-center text-muted">

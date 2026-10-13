@@ -1,13 +1,16 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Ctx } from '../context.ts';
 import { HttpError } from '../store.ts';
 
 /**
- * The server version's sign-in. The password is YAHO_PASSWORD, set in the deploy and left there; signing in gives a
- * session cookie. Sessions are signed with a key derived from the password, the API token (a random file in the data
- * folder) and a counter, so changing the password or "Sign Out Everywhere" ends every session at once. The desktop
- * does not use any of this: it keeps its API token.
+ * The server version's sign-in: the password (YAHO_PASSWORD, set in the deploy and left there) and a code from an
+ * authenticator app (TOTP). The authenticator's secret is made on the server and kept in the data folder; until it is
+ * set up, the password gives a session that can only set it up. YAHO_TOTP_RESET=1 forgets it, for a lost phone.
+ * Sessions are signed with a key derived from the password, the authenticator's secret, the API token and a counter,
+ * so changing either, or "Sign Out Everywhere", ends every session at once. The desktop does not use any of this: it
+ * keeps its API token.
  */
 export const serverMode = () => process.env.YAHO_SERVER === '1';
 
@@ -32,6 +35,21 @@ export function checkServerPassword(): void {
   if (pw.length < MIN_PASSWORD) throw new Error(`YAHO_PASSWORD is too short: use at least ${MIN_PASSWORD} characters.`);
 }
 
+/** Forget the authenticator's secret when the deploy says so (YAHO_TOTP_RESET=1), and read it. */
+export function loadTotp(ctx: Ctx): void {
+  secret = null;
+  pending = null;
+  lastStep = -1;
+  if (!serverMode()) return;
+  const reset = process.env.YAHO_TOTP_RESET === '1';
+  delete process.env.YAHO_TOTP_RESET;
+  if (reset && existsSync(ctx.paths.totp)) {
+    rmSync(ctx.paths.totp);
+    console.warn('[yaho] YAHO_TOTP_RESET=1: the authenticator was removed. Sign in with the password to set it up again, then remove YAHO_TOTP_RESET.');
+  }
+  if (existsSync(ctx.paths.totp)) secret = Buffer.from(readFileSync(ctx.paths.totp, 'utf8').trim(), 'hex');
+}
+
 const eq = (a: string, b: string) => {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
@@ -40,7 +58,7 @@ const eq = (a: string, b: string) => {
 
 function key(ctx: Ctx): Buffer {
   const epoch = ctx.settings.server.session_epoch ?? 0;
-  return createHmac('sha256', ctx.apiToken).update(`${password}\n${epoch}`).digest();
+  return createHmac('sha256', ctx.apiToken).update(`${password}\n${epoch}\n${secret?.toString('hex') ?? ''}`).digest();
 }
 
 const sign = (ctx: Ctx, payload: string) => createHmac('sha256', key(ctx)).update(payload).digest('base64url');
@@ -63,22 +81,64 @@ function setCookie(req: IncomingMessage, res: ServerResponse, value: string, max
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
-/** A valid session cookie on this request (and renew it when past half its life). */
-export function sessionValid(ctx: Ctx, req: IncomingMessage, res: ServerResponse): boolean {
-  if (!serverMode()) return false;
+/** A full session uses the app; a setup session (password only, no authenticator yet) can only set one up. */
+type Level = 'full' | 'setup';
+
+/** The session on this request, if any (and renew it when past half its life). */
+function sessionLevel(ctx: Ctx, req: IncomingMessage, res: ServerResponse): Level | null {
+  if (!serverMode()) return null;
   const c = cookies(req)[COOKIE];
-  if (!c) return false;
-  const [expires, sig] = c.split('.');
-  if (!expires || !sig || !eq(sig, sign(ctx, expires))) return false;
+  if (!c) return null;
+  const [payload, sig] = c.split('.');
+  if (!payload || !sig || !eq(sig, sign(ctx, payload))) return null;
+  const [expires, level] = payload.split(':');
+  if (level !== 'full' && !(level === 'setup' && !secret)) return null;
   const left = Number(expires) - Date.now();
-  if (!(left > 0)) return false;
-  if (left < (DAYS / 2) * 864e5) issue(ctx, req, res);
-  return true;
+  if (!(left > 0)) return null;
+  if (left < (DAYS / 2) * 864e5) issue(ctx, req, res, level);
+  return level;
 }
 
-function issue(ctx: Ctx, req: IncomingMessage, res: ServerResponse): void {
-  const expires = String(Date.now() + DAYS * 864e5);
-  setCookie(req, res, `${expires}.${sign(ctx, expires)}`, DAYS * 86400);
+/** A valid full session cookie on this request. */
+export const sessionValid = (ctx: Ctx, req: IncomingMessage, res: ServerResponse) => sessionLevel(ctx, req, res) === 'full';
+
+function issue(ctx: Ctx, req: IncomingMessage, res: ServerResponse, level: Level): void {
+  const payload = `${Date.now() + DAYS * 864e5}:${level}`;
+  setCookie(req, res, `${payload}.${sign(ctx, payload)}`, DAYS * 86400);
+}
+
+// ---- the authenticator: RFC 6238, the defaults every app uses (SHA-1, 6 digits, 30 seconds) ----
+let secret: Buffer | null = null;
+/** The secret being set up, shown as a QR code until a code from it confirms it. */
+let pending: Buffer | null = null;
+/** The last time step a code was used for: a code works once. */
+let lastStep = -1;
+
+const STEP = 30_000;
+
+export function totpCode(key: Buffer, step: number): string {
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(step));
+  const h = createHmac('sha1', key).update(msg).digest();
+  return String((h.readUInt32BE(h[19]! & 15) & 0x7fffffff) % 1e6).padStart(6, '0');
+}
+
+/** The time step a code is for, allowing one step either side for a clock that is a little off. */
+function codeStep(key: Buffer, given: unknown, after: number): number | null {
+  if (typeof given !== 'string') return null;
+  const code = given.replace(/\s/g, '');
+  const now = Math.floor(Date.now() / STEP);
+  for (const s of [now - 1, now, now + 1]) if (s > after && eq(code, totpCode(key, s))) return s;
+  return null;
+}
+
+function base32(buf: Buffer): string {
+  const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const b of buf) bits += b.toString(2).padStart(8, '0');
+  let out = '';
+  for (let i = 0; i < bits.length; i += 5) out += abc[parseInt(bits.slice(i, i + 5).padEnd(5, '0'), 2)];
+  return out;
 }
 
 /** Never empty: an unset password must not match an empty guess. */
@@ -103,20 +163,35 @@ function clientAddress(req: IncomingMessage): string {
   return req.socket.remoteAddress ?? 'unknown';
 }
 
-/** Check a password, with the lockout. Throws 429 while locked out, 401 when wrong. */
-function checkPassword(req: IncomingMessage, given: unknown): void {
+/**
+ * Check the password, and the authenticator's code once it is set up, with the lockout. Throws 429 while locked out,
+ * 401 when wrong; which of the two was wrong is not said.
+ */
+function checkPassword(req: IncomingMessage, given: unknown, code?: unknown): void {
+  attempt(req, () => {
+    if (!(typeof given === 'string' && eq(given, configured()))) return false;
+    if (!secret) return true;
+    const s = codeStep(secret, code, lastStep);
+    if (s === null) return false;
+    lastStep = s;
+    return true;
+  }, secret ? 'Wrong password or code.' : 'Wrong password.');
+}
+
+/** One guess against the lockout: five wrong lock the address out, and a cap for everyone. */
+function attempt(req: IncomingMessage, ok: () => boolean, wrong: string): void {
   const ip = clientAddress(req);
   const f = fails.get(ip) ?? { count: 0, until: 0, level: 0 };
   if (f.until > Date.now()) throw new HttpError(429, `Too many wrong passwords. Try again in ${Math.ceil((f.until - Date.now()) / 60000)} minutes.`);
   recent = recent.filter((t) => t > Date.now() - 60_000);
   if (recent.length >= GLOBAL_PER_MINUTE) throw new HttpError(429, 'Too many wrong passwords on this server just now. Try again in a minute.');
-  if (typeof given === 'string' && eq(given, configured())) {
+  if (ok()) {
     fails.delete(ip);
     return;
   }
   f.count++;
   recent.push(Date.now());
-  console.warn(`[yaho] wrong password from ${ip} (${f.count})`);
+  console.warn(`[yaho] wrong sign-in from ${ip} (${f.count})`);
   if (fails.size >= MAX_TRACKED && !fails.has(ip)) fails.delete(fails.keys().next().value!);
   if (f.count >= 5) {
     f.until = Date.now() + 15 * 60_000 * 2 ** f.level;
@@ -124,10 +199,10 @@ function checkPassword(req: IncomingMessage, given: unknown): void {
     f.count = 0;
   }
   fails.set(ip, f);
-  throw new HttpError(401, 'Wrong password.');
+  throw new HttpError(401, wrong);
 }
 
-/** The open session routes: whether this is a server and signed in, sign in, sign out. */
+/** The open session routes: whether this is a server and signed in, sign in, sign out, and setting up the authenticator. */
 export async function sessionRoute(
   ctx: Ctx,
   req: IncomingMessage,
@@ -135,13 +210,18 @@ export async function sessionRoute(
   path: string,
   body: () => Promise<Record<string, unknown>>,
 ): Promise<unknown | undefined> {
+  if (path === '/api/session/totp') return totpSetup(ctx, req, res, body);
   if (path !== '/api/session') return undefined;
-  if (req.method === 'GET') return { server: serverMode(), signed_in: sessionValid(ctx, req, res) };
+  if (req.method === 'GET') {
+    const level = sessionLevel(ctx, req, res);
+    return { server: serverMode(), signed_in: level === 'full', totp: !!secret, totp_setup: level === 'setup' };
+  }
   if (!serverMode()) throw new HttpError(404, 'sign-in is only used by the server version');
   if (req.method === 'POST') {
-    checkPassword(req, (await body()).password);
-    issue(ctx, req, res);
-    return { signed_in: true };
+    const b = await body();
+    checkPassword(req, b.password, b.code);
+    issue(ctx, req, res, secret ? 'full' : 'setup');
+    return { signed_in: !!secret, totp_setup: !secret };
   }
   if (req.method === 'DELETE') {
     setCookie(req, res, '', 0);
@@ -150,8 +230,33 @@ export async function sessionRoute(
   throw new HttpError(405, 'method not allowed');
 }
 
-/** Show the API token (for the CLI and scripts) after asking for the password again. */
-export function revealToken(ctx: Ctx, req: IncomingMessage, password: unknown): { token: string } {
-  checkPassword(req, password);
+/**
+ * Set up the authenticator, with a setup session: GET shows the secret to scan, POST with a code from it saves it and
+ * makes the session a full one.
+ */
+async function totpSetup(ctx: Ctx, req: IncomingMessage, res: ServerResponse, body: () => Promise<Record<string, unknown>>): Promise<unknown> {
+  if (sessionLevel(ctx, req, res) !== 'setup') throw new HttpError(401, 'sign in with the password first');
+  pending ??= randomBytes(20);
+  const key = pending;
+  if (req.method === 'GET') {
+    const label = encodeURIComponent(`Yaho:${req.headers.host ?? 'server'}`);
+    const b32 = base32(key);
+    return { secret: b32, uri: `otpauth://totp/${label}?secret=${b32}&issuer=Yaho&algorithm=SHA1&digits=6&period=30` };
+  }
+  if (req.method !== 'POST') throw new HttpError(405, 'method not allowed');
+  const code = (await body()).code;
+  let step: number | null = null;
+  attempt(req, () => (step = codeStep(key, code, -1)) !== null, 'That code does not match. Check the time on your phone and try the next one.');
+  writeFileSync(ctx.paths.totp, key.toString('hex'), { mode: 0o600 });
+  secret = key;
+  pending = null;
+  lastStep = step!;
+  issue(ctx, req, res, 'full');
+  return { signed_in: true };
+}
+
+/** Show the API token (for the CLI and scripts) after asking for the password and code again. */
+export function revealToken(ctx: Ctx, req: IncomingMessage, password: unknown, code: unknown): { token: string } {
+  checkPassword(req, password, code);
   return { token: ctx.apiToken };
 }

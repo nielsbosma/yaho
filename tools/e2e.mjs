@@ -1,11 +1,13 @@
 // End-to-end test of a running Yaho (desktop core or server image) with the keys in .plan/secrets.env. Spends a
 // little on each provider. Prints results, never keys.
-//   node tools/e2e.mjs --url http://127.0.0.1:4799 --password <server password>
+//   node tools/e2e.mjs --url http://127.0.0.1:4799 --password <server password> [--totp <authenticator key>]
+// A server whose authenticator is not set up yet gets one set up, and its key printed for the next run.
 //   node tools/e2e.mjs --url http://127.0.0.1:4791 --token <api token>
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { totp } from './totp.mjs';
 
-const { values: o } = parseArgs({ options: { url: { type: 'string' }, password: { type: 'string' }, token: { type: 'string' }, only: { type: 'string' } } });
+const { values: o } = parseArgs({ options: { url: { type: 'string' }, password: { type: 'string' }, totp: { type: 'string' }, token: { type: 'string' }, only: { type: 'string' } } });
 const U = o.url ?? 'http://127.0.0.1:4799';
 const env = Object.fromEntries(
   readFileSync(new URL('../.plan/secrets.env', import.meta.url), 'utf8')
@@ -42,8 +44,13 @@ pass('API refuses requests without credentials', open.status === 401, `${open.st
 if (o.password) {
   const wrong = await call('/api/session', { method: 'POST', body: JSON.stringify({ password: 'definitely not it' }) });
   pass('wrong password refused', wrong.status === 401);
-  const ok = await call('/api/session', { method: 'POST', body: JSON.stringify({ password: o.password }) });
+  const ok = await call('/api/session', { method: 'POST', body: JSON.stringify({ password: o.password, code: o.totp && totp(o.totp) }) });
   pass('signs in with the password', ok.status === 200 && !!cookie);
+  if (ok.body?.totp_setup) {
+    const { secret } = (await call('/api/session/totp')).body;
+    const set = await call('/api/session/totp', { method: 'POST', body: JSON.stringify({ code: totp(secret) }) });
+    pass('sets up the authenticator', set.status === 200, `key ${secret}: pass --totp ${secret} next time`);
+  }
 }
 
 // ---- 2. Providers ----

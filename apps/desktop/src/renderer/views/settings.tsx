@@ -639,9 +639,10 @@ function SlackSettings({
   );
 }
 
-/** Server version: sign out, end every session, and the API token for the CLI and scripts (after the password). */
+/** Server version: sign out, end every session, and the API token for the CLI and scripts (after the password and code). */
 function ServerAccess() {
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const signOut = async (everywhere: boolean) => {
@@ -654,12 +655,14 @@ function ServerAccess() {
       <Card className="space-y-4 p-4">
         <p className="text-sm text-muted">
           The password is YAHO_PASSWORD in this server's deploy settings. Change it there and redeploy; that also signs everyone out.
+          To move the authenticator to a new phone, set YAHO_TOTP_RESET=1 there and redeploy, sign in with the password and scan the
+          new QR code, then remove YAHO_TOTP_RESET.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => void signOut(false)}>Sign Out</Button>
           <Button onClick={() => void signOut(true)}>Sign Out Everywhere</Button>
         </div>
-        <Field label="API Token" hint="For the yaho CLI and scripts. Enter the password to show it.">
+        <Field label="API Token" hint="For the yaho CLI and scripts. Enter the password and a code to show it.">
           {token ? (
             <code className="block rounded-lg bg-code px-3 py-2 text-xs break-all select-all">{token}</code>
           ) : (
@@ -669,7 +672,7 @@ function ServerAccess() {
                 e.preventDefault();
                 setError(null);
                 try {
-                  setToken((await api<{ token: string }>('/api/session/token', { body: { password } })).token);
+                  setToken((await api<{ token: string }>('/api/session/token', { body: { password, code } })).token);
                 } catch (err) {
                   setError((err as Error).message);
                 }
@@ -678,7 +681,10 @@ function ServerAccess() {
               <div className="flex-1">
                 <Input type="password" value={password} placeholder="Password" onChange={(e) => setPassword(e.target.value)} />
               </div>
-              <Button type="submit" disabled={!password}>
+              <div className="w-32">
+                <Input inputMode="numeric" autoComplete="one-time-code" value={code} placeholder="Code" onChange={(e) => setCode(e.target.value)} />
+              </div>
+              <Button type="submit" disabled={!password || !code.trim()}>
                 Show Token
               </Button>
             </form>

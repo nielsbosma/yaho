@@ -1,6 +1,8 @@
 # Yaho Server: the core, the web UI, the yaho CLI, Dopbase, Claude Code and Codex in one image.
 #   docker build -f docker/Dockerfile -t yaho .
 #   docker run -d -p 4700:4700 -v yaho-data:/data -e YAHO_PASSWORD='a long password' yaho
+# Signing in asks for the password and, after the first sign-in sets it up, a code from an authenticator app. Lost the
+# phone: add -e YAHO_TOTP_RESET=1, sign in with the password and set it up again, then start without it.
 # Everything Yaho keeps is in the /data volume, the agents' home included (Claude Code's sessions, gh and git sign-ins:
 # docker exec -it -u yaho-agent <container> gh auth login).
 

@@ -285,6 +285,9 @@ jobs:
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:4700/api/health && break; sleep 2; done; echo
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4700/api/agents)" = 401
           curl -fsS -c jar -H 'Content-Type: application/json' -d '{"password":"smoke-password-1234"}' http://127.0.0.1:4700/api/session
+          test "$(curl -s -o /dev/null -w '%{http_code}' -b jar http://127.0.0.1:4700/api/agents)" = 401
+          key=$(curl -fsS -b jar http://127.0.0.1:4700/api/session/totp | node -p 'JSON.parse(require("fs").readFileSync(0)).secret')
+          curl -fsS -b jar -c jar -H 'Content-Type: application/json' -d "{\"code\":\"$(node tools/totp.mjs "$key")\"}" http://127.0.0.1:4700/api/session/totp
           curl -fsS -b jar -X POST -H 'Content-Type: application/json' -d '{"name":"smoke","briefing":"Smoke test.","enabled":false}' http://127.0.0.1:4700/api/agents > /dev/null
           docker exec yaho-smoke sh -c 'echo kept > /data/home/.claude-smoke'
           docker restart yaho-smoke
