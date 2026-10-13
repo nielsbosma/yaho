@@ -92,12 +92,15 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('PUT', '/api/settings', async (req) => {
     const next = await definition<Settings>(req);
     const slackBefore = JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]);
+    const wa = () => JSON.stringify([ctx.settings.whatsapp?.access_token, ctx.settings.whatsapp?.app_secret, ctx.settings.whatsapp?.phone_number_id, ctx.settings.whatsapp?.number]);
+    const waBefore = wa();
     applySettingsUpdate(ctx.settings, next);
     if (ctx.settings.dopbase.mode === 'bundled' && ctx.localDopbase && !ctx.localDopbase.child) await ctx.localDopbase.start();
     await storeSecrets(ctx);
     ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
     runner(ctx).pump();
     if (JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]) !== slackBefore) void ctx.slack?.start();
+    if (wa() !== waBefore) void ctx.whatsapp?.start();
     return publicSettings(ctx.settings);
   });
 
@@ -139,6 +142,17 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const r = req.params.harness === 'codex' ? await checkCodex(ctx) : await checkClaude(ctx);
     ctx.bus.emitEvent({ type: 'changed', entity: 'checks' });
     return r;
+  });
+
+  // ---- WhatsApp ----
+  r.on('GET', '/api/whatsapp', () => ({
+    ...(ctx.whatsapp?.status ?? { configured: false, connected: false, owner: false, linked: false, window_open: false }),
+    webhook_path: '/api/whatsapp/webhook',
+    verify_token: ctx.whatsapp?.verifyToken(),
+  }));
+  r.on('POST', '/api/whatsapp/reconnect', async () => {
+    await ctx.whatsapp?.start();
+    return ctx.whatsapp?.status;
   });
 
   // ---- Slack ----

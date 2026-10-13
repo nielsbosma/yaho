@@ -377,6 +377,13 @@ function ConnectionsStep({ settings }: { settings: SetupSettings }) {
         </div>
         <p className="mt-1 text-xs text-muted">Get your inbox as Slack messages and answer from there. Set it up in Settings → Integrations; it takes about five minutes.</p>
       </div>
+      <div className="rounded-xl border border-line p-4">
+        <div className="flex items-center gap-2 font-medium">
+          <BrandLogo brand="whatsapp" size="sm" />
+          WhatsApp
+        </div>
+        <p className="mt-1 text-xs text-muted">The same on WhatsApp, through your own WhatsApp Business number. Set it up in Settings → Integrations; Yaho must be reachable from the internet.</p>
+      </div>
       <div className="space-y-3 rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
           <BrandLogo brand="composio" size="sm" />

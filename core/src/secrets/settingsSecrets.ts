@@ -131,6 +131,7 @@ export function applySettingsUpdate(current: Settings, next: Settings & { secret
     onboarded: current.onboarded_at,
     owner: current.slack?.owner,
     since: current.slack?.since,
+    whatsapp: current.whatsapp,
   };
   const { secrets_set: _, ...rest } = next;
   // Provider ids name their keys in Dopbase (PROVIDER_<ID>_API_KEY): two ids must not give the same name.
@@ -152,6 +153,16 @@ export function applySettingsUpdate(current: Settings, next: Settings & { secret
     else current.slack.owner = kept.owner;
     if (kept.since === undefined) delete current.slack.since;
     else current.slack.since = kept.since;
+  }
+  // WhatsApp's link to the person's number, its window and its webhook token; a new number starts the link over.
+  if (current.whatsapp || kept.whatsapp) {
+    const w = (current.whatsapp = { ...current.whatsapp });
+    const same = (w.number ?? '').replace(/\D/g, '') === (kept.whatsapp?.number ?? '').replace(/\D/g, '');
+    for (const f of ['since', 'last_inbound', 'nudged', 'verify_token'] as const) {
+      const v = f === 'verify_token' || same ? kept.whatsapp?.[f] : undefined;
+      if (v === undefined) delete w[f];
+      else w[f] = v;
+    }
   }
   if (next.dopbase && !('token' in next.dopbase)) current.dopbase.token = dopbaseToken;
   else if (next.dopbase && (next.dopbase as { token?: string | null }).token === null) delete current.dopbase.token;

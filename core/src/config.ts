@@ -29,6 +29,25 @@ export interface Settings {
    * expect a response.
    */
   slack?: { bot_token?: string; app_token?: string; owner?: string; since?: string; post?: 'all' | 'expects_response' };
+  /**
+   * WhatsApp: the inbox as messages from the person's own WhatsApp Business number, over the Cloud API (a webhook, so
+   * Yaho must be reachable from the internet). number is the person's own WhatsApp number; since is when they first
+   * wrote to Yaho; last_inbound opens the 24-hour window; template (one {{1}} variable) says messages are waiting when
+   * it is closed. since, last_inbound, nudged and verify_token are managed by the core.
+   */
+  whatsapp?: {
+    access_token?: string;
+    app_secret?: string;
+    phone_number_id?: string;
+    number?: string;
+    verify_token?: string;
+    since?: string;
+    last_inbound?: string;
+    nudged?: string;
+    post?: 'all' | 'expects_response';
+    template?: string;
+    template_language?: string;
+  };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   /** When the first-run setup was finished (or skipped). Until then the app shows it. */
@@ -149,7 +168,7 @@ export interface SecretSlot {
 const keyPart = (id: string) => id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
 export function secretSlots(s: Settings): SecretSlot[] {
-  const section = (name: 'composio' | 'slack') => (x: Settings, create?: boolean) =>
+  const section = (name: 'composio' | 'slack' | 'whatsapp') => (x: Settings, create?: boolean) =>
     (create ? (x[name] ??= {}) : x[name]) as Record<string, unknown> | undefined;
   return [
     ...s.providers.flatMap((p) =>
@@ -163,6 +182,8 @@ export function secretSlots(s: Settings): SecretSlot[] {
     { path: 'composio.api_key', key: 'COMPOSIO_API_KEY', field: 'api_key', holder: section('composio') },
     { path: 'slack.bot_token', key: 'SLACK_BOT_TOKEN', field: 'bot_token', holder: section('slack') },
     { path: 'slack.app_token', key: 'SLACK_APP_TOKEN', field: 'app_token', holder: section('slack') },
+    { path: 'whatsapp.access_token', key: 'WHATSAPP_ACCESS_TOKEN', field: 'access_token', holder: section('whatsapp') },
+    { path: 'whatsapp.app_secret', key: 'WHATSAPP_APP_SECRET', field: 'app_secret', holder: section('whatsapp') },
   ];
 }
 
