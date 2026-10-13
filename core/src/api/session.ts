@@ -5,9 +5,10 @@ import type { Ctx } from '../context.ts';
 import { HttpError } from '../store.ts';
 
 /**
- * The server version's sign-in: the password (YAHO_PASSWORD, set in the deploy and left there) and a code from an
- * authenticator app (TOTP). The authenticator's secret is made on the server and kept in the data folder; until it is
- * set up, the password gives a session that can only set it up. YAHO_TOTP_RESET=1 forgets it, for a lost phone.
+ * The server version's sign-in: the password (YAHO_PASSWORD, set in the deploy and left there) and, with YAHO_TOTP=1,
+ * a code from an authenticator app (TOTP). The authenticator's secret is made on the server and kept in the data
+ * folder; until it is set up, the password gives a session that can only set it up. YAHO_TOTP_RESET=1 forgets it, for
+ * a lost phone.
  * Sessions are signed with a key derived from the password, the authenticator's secret, the API token and a counter,
  * so changing either, or "Sign Out Everywhere", ends every session at once. The desktop does not use any of this: it
  * keeps its API token.
@@ -35,11 +36,12 @@ export function checkServerPassword(): void {
   if (pw.length < MIN_PASSWORD) throw new Error(`YAHO_PASSWORD is too short: use at least ${MIN_PASSWORD} characters.`);
 }
 
-/** Forget the authenticator's secret when the deploy says so (YAHO_TOTP_RESET=1), and read it. */
+/** Whether the deploy asks for an authenticator code (YAHO_TOTP=1); forget its secret when it says so, and read it. */
 export function loadTotp(ctx: Ctx): void {
   secret = null;
   pending = null;
   lastStep = -1;
+  enabled = serverMode() && process.env.YAHO_TOTP === '1';
   if (!serverMode()) return;
   const reset = process.env.YAHO_TOTP_RESET === '1';
   delete process.env.YAHO_TOTP_RESET;
@@ -47,7 +49,7 @@ export function loadTotp(ctx: Ctx): void {
     rmSync(ctx.paths.totp);
     console.warn('[yaho] YAHO_TOTP_RESET=1: the authenticator was removed. Sign in with the password to set it up again, then remove YAHO_TOTP_RESET.');
   }
-  if (existsSync(ctx.paths.totp)) secret = Buffer.from(readFileSync(ctx.paths.totp, 'utf8').trim(), 'hex');
+  if (enabled && existsSync(ctx.paths.totp)) secret = Buffer.from(readFileSync(ctx.paths.totp, 'utf8').trim(), 'hex');
 }
 
 const eq = (a: string, b: string) => {
@@ -92,7 +94,7 @@ function sessionLevel(ctx: Ctx, req: IncomingMessage, res: ServerResponse): Leve
   const [payload, sig] = c.split('.');
   if (!payload || !sig || !eq(sig, sign(ctx, payload))) return null;
   const [expires, level] = payload.split(':');
-  if (level !== 'full' && !(level === 'setup' && !secret)) return null;
+  if (level !== 'full' && !(level === 'setup' && needsSetup())) return null;
   const left = Number(expires) - Date.now();
   if (!(left > 0)) return null;
   if (left < (DAYS / 2) * 864e5) issue(ctx, req, res, level);
@@ -108,7 +110,9 @@ function issue(ctx: Ctx, req: IncomingMessage, res: ServerResponse, level: Level
 }
 
 // ---- the authenticator: RFC 6238, the defaults every app uses (SHA-1, 6 digits, 30 seconds) ----
+let enabled = false;
 let secret: Buffer | null = null;
+const needsSetup = () => enabled && !secret;
 /** The secret being set up, shown as a QR code until a code from it confirms it. */
 let pending: Buffer | null = null;
 /** The last time step a code was used for: a code works once. */
@@ -220,8 +224,9 @@ export async function sessionRoute(
   if (req.method === 'POST') {
     const b = await body();
     checkPassword(req, b.password, b.code);
-    issue(ctx, req, res, secret ? 'full' : 'setup');
-    return { signed_in: !!secret, totp_setup: !secret };
+    const setup = needsSetup();
+    issue(ctx, req, res, setup ? 'setup' : 'full');
+    return { signed_in: !setup, totp_setup: setup };
   }
   if (req.method === 'DELETE') {
     setCookie(req, res, '', 0);

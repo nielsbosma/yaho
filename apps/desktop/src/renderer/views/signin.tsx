@@ -4,7 +4,8 @@ import { renderSVG } from 'uqr';
 import { Wordmark } from '../components/Wordmark.tsx';
 import { Button } from '../components/ui/button.tsx';
 import { ErrorNote } from '../components/ui/display.tsx';
-import { Input } from '../components/ui/form.tsx';
+import { cn } from '../components/ui/cn.ts';
+import { Field, Input } from '../components/ui/form.tsx';
 
 async function post(path: string, body: unknown): Promise<void> {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -30,16 +31,39 @@ function Panel({ title, onSubmit, children }: { title: string; onSubmit: () => P
   );
 }
 
-const CodeInput = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-  <Input
-    inputMode="numeric"
-    autoComplete="one-time-code"
-    placeholder="6-digit code"
-    maxLength={7}
-    value={value}
-    onChange={(e) => onChange(e.target.value.replace(/[^0-9 ]/g, ''))}
-  />
-);
+/** Six boxes, one per digit, over one real input: typing, pasting and the phone's code autofill all just work. */
+function CodeInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <Field label={label}>
+      <div className="relative">
+        <div className="flex gap-2" aria-hidden>
+          {Array.from({ length: 6 }, (_, i) => (
+            <div
+              key={i}
+              className={cn(
+                'flex h-11 flex-1 items-center justify-center rounded-lg border border-line bg-panel font-mono text-lg text-ink',
+                focused && i === Math.min(value.length, 5) && 'border-accent/50 ring-2 ring-accent/30',
+              )}
+            >
+              {value[i] ?? ''}
+            </div>
+          ))}
+        </div>
+        <input
+          className="absolute inset-0 h-full w-full cursor-text opacity-0"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          value={value}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
+        />
+      </div>
+    </Field>
+  );
+}
 
 /**
  * The server version's sign-in: the password set as YAHO_PASSWORD when the server was deployed, and the code from the
@@ -68,9 +92,11 @@ export function SignIn({ totp, onSignedIn }: { totp: boolean; onSignedIn: () => 
   return (
     <Panel title="Sign In" onSubmit={submit}>
       <ErrorNote>{error}</ErrorNote>
-      <Input type="password" autoFocus autoComplete="current-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      {totp && <CodeInput value={code} onChange={setCode} />}
-      <Button type="submit" variant="primary" className="w-full" disabled={!password || (totp && !code.trim()) || busy}>
+      <Field label="Password">
+        <Input type="password" autoFocus autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      {totp && <CodeInput label="Code From Your Authenticator App" value={code} onChange={setCode} />}
+      <Button type="submit" variant="primary" className="w-full" disabled={!password || (totp && code.length < 6) || busy}>
         {busy ? <Loader2 className="animate-spin" /> : null} Sign In <ArrowRight />
       </Button>
       <div className="text-center text-xs">
@@ -120,7 +146,7 @@ export function TotpSetup({ onDone }: { onDone: () => void }) {
   return (
     <Panel title="Set Up Two-Factor" onSubmit={submit}>
       <p className="text-sm text-muted">
-        Scan this with Google Authenticator or another authenticator app, then enter the code it shows. From now on, signing in asks for the password and a code.
+        Scan this with your authenticator app (Microsoft Authenticator, Google Authenticator, 1Password and others all work), then enter the code it shows. From now on, signing in asks for the password and a code.
       </p>
       <ErrorNote>{error}</ErrorNote>
       {setup && (
@@ -132,8 +158,8 @@ export function TotpSetup({ onDone }: { onDone: () => void }) {
           <p className="text-xs text-muted">Keep a copy of the key, for example in a password manager, so a lost phone does not lock you out.</p>
         </>
       )}
-      <CodeInput value={code} onChange={setCode} />
-      <Button type="submit" variant="primary" className="w-full" disabled={!setup || !code.trim() || busy}>
+      <CodeInput label="Code From Your Authenticator App" value={code} onChange={setCode} />
+      <Button type="submit" variant="primary" className="w-full" disabled={!setup || code.length < 6 || busy}>
         {busy ? <Loader2 className="animate-spin" /> : null} Confirm <ArrowRight />
       </Button>
     </Panel>

@@ -34,6 +34,7 @@ const code = (ahead = 0) => {
 beforeAll(async () => {
   process.env.YAHO_SERVER = '1';
   process.env.YAHO_PASSWORD = PASSWORD;
+  process.env.YAHO_TOTP = '1';
   dir = mkdtempSync(join(tmpdir(), 'yaho-session-'));
   ({ ctx, close } = await serve({ dataDir: dir, port: 0, host: '127.0.0.1', embedded: true }));
 });
@@ -41,6 +42,7 @@ afterAll(async () => {
   await close();
   delete process.env.YAHO_SERVER;
   delete process.env.YAHO_PASSWORD;
+  delete process.env.YAHO_TOTP;
   delete process.env.YAHO_DATA_DIR;
   rmSync(dir, { recursive: true, force: true });
 });
@@ -109,6 +111,17 @@ describe('server sign-in', () => {
     expect(process.env.YAHO_TOTP_RESET).toBeUndefined();
     expect((await at('/api/agents', { headers: { Cookie: cookie } })).status).toBe(401);
     expect(await (await signIn(PASSWORD)).json()).toEqual({ signed_in: false, totp_setup: true });
+  });
+
+  it('without YAHO_TOTP=1 the password alone signs in, as before', async () => {
+    delete process.env.YAHO_TOTP;
+    loadTotp(ctx);
+    const res = await signIn(PASSWORD);
+    expect(await res.json()).toEqual({ signed_in: true, totp_setup: false });
+    expect((await at('/api/agents', { headers: { Cookie: cookieOf(res) } })).status).toBe(200);
+    expect(await (await at('/api/session')).json()).toMatchObject({ totp: false });
+    process.env.YAHO_TOTP = '1';
+    loadTotp(ctx);
   });
 
   it('locks an address out after five wrong passwords', async () => {

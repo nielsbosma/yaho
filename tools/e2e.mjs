@@ -1,7 +1,7 @@
 // End-to-end test of a running Yaho (desktop core or server image) with the keys in .plan/secrets.env. Spends a
 // little on each provider. Prints results, never keys.
 //   node tools/e2e.mjs --url http://127.0.0.1:4799 --password <server password> [--totp <authenticator key>]
-// A server whose authenticator is not set up yet gets one set up, and its key printed for the next run.
+// A server with YAHO_TOTP=1 whose authenticator is not set up yet gets one set up, and its key printed for the next run.
 //   node tools/e2e.mjs --url http://127.0.0.1:4791 --token <api token>
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
