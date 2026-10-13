@@ -60,6 +60,14 @@ export interface Settings {
    * gets texts from phones no agent has texted; unset, those are dropped.
    */
   twilio?: { account_sid?: string; auth_token?: string; number?: string; new_agent?: string };
+  /**
+   * Telegram: the inbox as messages from the person's own bot, over long polling (no webhook, so it also works on the
+   * desktop). owner is the chat that opened the bot's link with link_code; since is when that happened. owner, since,
+   * link_code and bot are managed by the core.
+   */
+  telegram?: { bot_token?: string; owner?: string; since?: string; link_code?: string; bot?: string; post?: 'all' | 'expects_response' };
+  /** Run harnesses in their sandbox (writes only to the agent's workspace). Unset: on in the server version, off on the desktop. */
+  sandbox?: boolean;
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   /** When the first-run setup was finished (or skipped). Until then the app shows it. */
@@ -142,6 +150,8 @@ export const paths = (root = dataDir()) => ({
   totp: join(root, 'totp-secret'),
   server: join(root, 'server.yaml'),
   bin: join(root, 'bin'),
+  /** The core's Unix socket, for sandboxed jobs (not on Windows). */
+  socket: join(root, 'bin', 'yaho.sock'),
   agents: join(root, 'agents'),
   projects: join(root, 'projects'),
   agent: (name: string) => join(root, 'agents', name),
@@ -181,7 +191,7 @@ export interface SecretSlot {
 const keyPart = (id: string) => id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
 export function secretSlots(s: Settings): SecretSlot[] {
-  const section = (name: 'composio' | 'slack' | 'whatsapp' | 'resend' | 'twilio') => (x: Settings, create?: boolean) =>
+  const section = (name: 'composio' | 'slack' | 'whatsapp' | 'resend' | 'twilio' | 'telegram') => (x: Settings, create?: boolean) =>
     (create ? (x[name] ??= {}) : x[name]) as Record<string, unknown> | undefined;
   return [
     ...s.providers.flatMap((p) =>
@@ -200,6 +210,7 @@ export function secretSlots(s: Settings): SecretSlot[] {
     { path: 'resend.api_key', key: 'RESEND_API_KEY', field: 'api_key', holder: section('resend') },
     { path: 'resend.webhook_secret', key: 'RESEND_WEBHOOK_SECRET', field: 'webhook_secret', holder: section('resend') },
     { path: 'twilio.auth_token', key: 'TWILIO_AUTH_TOKEN', field: 'auth_token', holder: section('twilio') },
+    { path: 'telegram.bot_token', key: 'TELEGRAM_BOT_TOKEN', field: 'bot_token', holder: section('telegram') },
   ];
 }
 

@@ -6,14 +6,14 @@ import { Field, Input, Select, Switch } from '../components/ui/form.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
 import type { AppState } from '../App.tsx';
 import { ClaudeCheckPanel } from './onboarding.tsx';
+import { Integrations } from './integrations.tsx';
 import { BrandLogo } from '../components/BrandLogo.tsx';
 import { api, useApi } from '../lib/api.ts';
-import { platform } from '../lib/platform.ts';
 import { href } from '../lib/router.ts';
 import { PALETTES, usePalette, useTheme, type Theme } from '../lib/theme.ts';
 import { cn } from '../components/ui/cn.ts';
 
-interface Settings {
+export interface Settings {
   /** Which secrets are stored in Dopbase ("section.field"); their values never come to the UI. */
   secrets_set?: Record<string, boolean>;
   updates?: { auto?: boolean; channel?: 'latest' | 'next' };
@@ -36,11 +36,13 @@ interface Settings {
   };
   resend?: { api_key?: string; webhook_secret?: string; domain?: string; accept_new?: boolean };
   twilio?: { account_sid?: string; auth_token?: string; number?: string; new_agent?: string };
+  telegram?: { bot_token?: string; post?: 'all' | 'expects_response' };
+  sandbox?: boolean;
   ideas?: { enabled?: boolean; repo?: string };
   defaults: { harness: string; models: string[]; budget_usd: number; max_parallel: number; guardrails: Record<string, number | undefined> };
 }
 
-function Check({ label, run }: { label: string; run: () => Promise<string> }) {
+export function Check({ label, run }: { label: string; run: () => Promise<string> }) {
   const [state, setState] = useState<{ ok: boolean; text: string } | null>(null);
   return (
     <div className="flex items-center gap-3">
@@ -150,52 +152,7 @@ export function SettingsView({ route }: { route: string[] }) {
           <ModelProviders settings={s} upd={upd} save={save} />
         </Pane>
         <Pane id="integrations" label="Integrations">
-        <Section title="Slack" icon={<BrandLogo brand="slack" size="sm" />}>
-          <SlackSettings value={s.slack ?? {}} stored={s.secrets_set ?? {}} onChange={(v) => upd((d) => void (d.slack = v))} />
-        </Section>
-        <Section title="WhatsApp" icon={<BrandLogo brand="whatsapp" size="sm" />}>
-          <WhatsAppSettings
-            value={s.whatsapp ?? {}}
-            stored={s.secrets_set ?? {}}
-            server={!!state.data?.server}
-            onChange={(v) => upd((d) => void (d.whatsapp = v))}
-          />
-        </Section>
-        <Section title="Email" icon={<BrandLogo brand="resend" size="sm" />}>
-          <EmailSettings value={s.resend ?? {}} stored={s.secrets_set ?? {}} server={!!state.data?.server} onChange={(v) => upd((d) => void (d.resend = v))} />
-        </Section>
-        <Section title="SMS" icon={<BrandLogo brand="twilio" size="sm" />}>
-          <SmsSettings value={s.twilio ?? {}} stored={s.secrets_set ?? {}} server={!!state.data?.server} onChange={(v) => upd((d) => void (d.twilio = v))} />
-        </Section>
-        <Section title="Composio" icon={<BrandLogo brand="composio" size="sm" />}>
-          <Card className="grid gap-4 p-4 md:grid-cols-2">
-            <ComposioKeyHelp />
-            <Field label="Composio API Key" hint="Agents never see it: Yaho makes their calls.">
-              <Input
-                type="password"
-                value={s.composio?.api_key ?? ''}
-                placeholder={s.secrets_set?.['composio.api_key'] ? 'Value set · type to replace' : undefined}
-                onChange={(e) => upd((d) => void (d.composio = { ...d.composio, api_key: e.target.value || undefined }))}
-              />
-            </Field>
-            <Field label="User ID" hint="Whose connections Yaho uses in your Composio project.">
-              <Input
-                value={s.composio?.user_id ?? 'yaho'}
-                onChange={(e) => upd((d) => void (d.composio = { ...d.composio, user_id: e.target.value || undefined }))}
-              />
-            </Field>
-            <div className="md:col-span-2">
-              <Check
-                label="Test Composio"
-                run={async () => {
-                  if (!(await save())) throw new Error('could not save the settings');
-                  const r = await api<Array<{ toolkit: string }>>('/api/composio/connections');
-                  return `connected · ${r.length} connection${r.length === 1 ? '' : 's'}`;
-                }}
-              />
-            </div>
-          </Card>
-        </Section>
+          <Integrations route={route.slice(2)} settings={s} upd={upd} save={save} server={!!state.data?.server} />
         </Pane>
         <Pane id="guardrails" label="Guard Rails">
         <Section title="Guard Rails">
@@ -208,6 +165,7 @@ export function SettingsView({ route }: { route: string[] }) {
                 onChange={(e) => upd((d) => void (d.global_spend_cap_usd = Number(e.target.value)))}
               />
             </Field>
+            <SandboxMode value={s.sandbox} onChange={(v) => upd((d) => void (d.sandbox = v))} />
           </Card>
         </Section>
         </Pane>
@@ -350,6 +308,36 @@ export function SettingsView({ route }: { route: string[] }) {
   );
 }
 
+/**
+ * Run harnesses in their sandbox: shell commands and file edits may only write in the agent's workspace (and the temp
+ * folder). Unset follows the version: on in the server version, off on the desktop.
+ */
+function SandboxMode({ value, onChange }: { value: boolean | undefined; onChange: (v: boolean) => void }) {
+  const info = useApi<{ default: boolean; problems: Record<string, string | null> }>('/api/sandbox', (e) => e.type === 'changed' && e.entity === 'settings');
+  const on = value ?? info.data?.default ?? false;
+  const problems = Object.entries(info.data?.problems ?? {}).filter(([, p]) => p) as Array<[string, string]>;
+  return (
+    <div className="space-y-2 md:col-span-2">
+      <label className="flex items-start gap-3 text-sm">
+        <Switch checked={on} label="Sandbox Mode" onChange={onChange} />
+        <span>
+          Sandbox Mode
+          <span className="block text-xs text-muted">
+            Agents' commands and file edits may only change their own workspace; the rest of the computer is read-only to them. The network stays
+            open. {info.data?.default ? 'On by default in the server version.' : 'Off by default on the desktop.'}
+          </span>
+        </span>
+      </label>
+      {on &&
+        problems.map(([h, p]) => (
+          <p key={h} className="text-xs text-warn">
+            {p}: jobs on {h} fail while Sandbox Mode is on.
+          </p>
+        ))}
+    </div>
+  );
+}
+
 /** One page of Settings: its place in the list on the left, and its content. */
 function Pane({ children }: { id: string; label: string; icon?: ReactNode; children: ReactNode }) {
   return <>{children}</>;
@@ -396,61 +384,6 @@ function SettingsPanes({ active, error, children }: { active?: string; error: st
         </div>
       </div>
     </div>
-  );
-}
-
-/** How to create a Composio API key, and which permissions Yaho needs. */
-function ComposioKeyHelp() {
-  const rows: Array<[string, string, string]> = [
-    ['Toolkits', 'Read', 'the All Apps list'],
-    ['Tools', 'Read', 'tool lists and their inputs'],
-    ['Connected accounts', 'Read + Write', 'your connections; Write lets the Connect button add new ones'],
-    ['Auth configs', 'Read + Write', 'Write sets up sign-in the first time you connect an app'],
-    ['Tool execution', 'Write', 'agents running tools with yaho tool'],
-  ];
-  return (
-    <details className="group rounded-lg border border-line bg-bg/60 px-3 py-2 text-sm md:col-span-2">
-      <summary className="cursor-pointer font-medium text-ink/90 select-none">How to Get a Composio API Key</summary>
-      <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-ink/85">
-        <li>
-          Sign in at{' '}
-          <button
-            type="button"
-            className="cursor-pointer text-accent underline"
-            onClick={() => platform.openExternal('https://platform.composio.dev')}
-          >
-            platform.composio.dev
-          </button>{' '}
-          (a free account is enough) and open your project.
-        </li>
-        <li>Go to the project's Settings → API Keys and choose Create API key. Name it, for example, "Yaho".</li>
-        <li>Tick these permissions. They can't be changed later, so check them before you create the key:</li>
-      </ol>
-      <table className="mt-2 ml-5 text-xs">
-        <tbody>
-          {rows.map(([perm, level, why]) => (
-            <tr key={perm}>
-              <td className="py-0.5 pr-4 font-medium">{perm}</td>
-              <td className="py-0.5 pr-4 whitespace-nowrap text-accent">{level}</td>
-              <td className="py-0.5 text-muted">{why}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="mt-2 ml-5 text-xs text-muted">
-        Sessions, session tool execution and triggers are not used. Tool execution sits further down Composio's list than the others.
-      </p>
-      <ol start={4} className="mt-2 list-decimal space-y-1.5 pl-5 text-ink/85">
-        <li>Copy the key, paste it below and press Test Composio. Composio shows the key only once.</li>
-        <li>
-          Then open{' '}
-          <a className="text-accent underline" href={href('resources', 'composio')}>
-            Resources → From Composio
-          </a>{' '}
-          to connect apps and add them as resources.
-        </li>
-      </ol>
-    </details>
   );
 }
 
@@ -511,619 +444,6 @@ function Appearance() {
         </Field>
       </Card>
     </Section>
-  );
-}
-
-interface SlackStatus {
-  configured: boolean;
-  connected: boolean;
-  team?: string;
-  owner: boolean;
-  error?: string;
-  create_url: string;
-  manifest: string;
-}
-
-/**
- * Your Yaho inbox as Slack DMs. Setup: create the app from Yaho's manifest, install it, paste its two tokens, then
- * open Yaho in Slack once so it knows it is you. Tokens are saved with Save Settings, which reconnects.
- */
-function SlackSettings({
-  value,
-  stored,
-  onChange,
-}: {
-  value: NonNullable<Settings['slack']>;
-  stored: Record<string, boolean>;
-  onChange: (v: NonNullable<Settings['slack']>) => void }) {
-  const status = useApi<SlackStatus>('/api/slack', (e) => e.type === 'changed' && (e.entity === 'slack' || e.entity === 'settings'));
-  const st = status.data;
-  const set = (patch: Partial<NonNullable<Settings['slack']>>) => onChange({ ...value, ...patch });
-  const line = !st
-    ? ''
-    : !st.configured
-      ? 'Not set up.'
-      : st.error
-        ? `Not connected: ${st.error}`
-        : !st.connected
-          ? 'Connecting…'
-          : !st.owner
-            ? `Connected to ${st.team ?? 'Slack'}. Open Yaho in Slack once (Apps → Yaho) so it knows it is you.`
-            : `Connected to ${st.team ?? 'Slack'}. Your inbox is posted to your DMs.`;
-  const tone = st?.connected && st.owner ? 'bg-ok' : st?.error ? 'bg-danger' : st?.configured ? 'bg-warn' : 'bg-line-strong';
-  return (
-    <Card className="space-y-4 p-4">
-      <div className="flex items-center gap-2 text-sm">
-        <span className={cn('size-2 shrink-0 rounded-full', tone)} />
-        <span className="min-w-0 flex-1">{line}</span>
-        {st?.configured && (
-          <Button size="sm" onClick={() => void api('/api/slack/reconnect', { method: 'POST' }).then(() => status.reload())}>
-            Reconnect
-          </Button>
-        )}
-      </div>
-      <ol className="space-y-3 text-sm">
-        {(
-          [
-            [
-              'Create the app',
-              <>
-                <div className="mt-1.5 flex flex-wrap gap-2">
-                  <Button size="sm" variant="primary" onClick={() => st && platform.openExternal(st.create_url)}>
-                    Open Slack
-                  </Button>
-                  <Button size="sm" onClick={() => st && void navigator.clipboard.writeText(st.manifest)}>
-                    Copy Manifest
-                  </Button>
-                </div>
-                <p className="mt-1.5 text-muted">
-                  In Slack choose <b className="text-ink">Create New App → From a Manifest</b>, pick your workspace, switch to JSON, paste the
-                  manifest over what is there, and click <b className="text-ink">Create</b>.
-                </p>
-              </>,
-            ],
-            [
-              'Install it and copy the Bot Token',
-              <p className="mt-0.5 text-muted">
-                In the app's left menu open <b className="text-ink">OAuth &amp; Permissions</b>, click{' '}
-                <b className="text-ink">Install to Workspace</b> and allow it. Copy the <b className="text-ink">Bot User OAuth Token</b>{' '}
-                (starts with <code>xoxb-</code>) into Bot Token below.
-              </p>,
-            ],
-            [
-              'Make the App Token',
-              <p className="mt-0.5 text-muted">
-                Open <b className="text-ink">Basic Information</b>, scroll to <b className="text-ink">App-Level Tokens</b>, click{' '}
-                <b className="text-ink">Generate Token and Scopes</b>, name it Yaho, add the scope <code>connections:write</code>, and generate.
-                Copy the token (starts with <code>xapp-</code>) into App Token below. The other secrets on that page are not needed.
-              </p>,
-            ],
-            [
-              'Save and say hello',
-              <p className="mt-0.5 text-muted">
-                Click <b className="text-ink">Save Settings</b>. Then in Slack open <b className="text-ink">Apps → Yaho</b> once: the first
-                person to open it becomes its owner, and Yaho DMs you that it is connected.
-              </p>,
-            ],
-          ] as const
-        ).map(([title, body], i) => (
-          <li key={title} className="flex gap-3">
-            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
-              {i + 1}
-            </span>
-            <div className="min-w-0">
-              <div className="font-medium">{title}</div>
-              {body}
-            </div>
-          </li>
-        ))}
-      </ol>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Bot Token" hint="OAuth & Permissions → Bot User OAuth Token (xoxb-…).">
-          <Input type="password" value={value.bot_token ?? ''} placeholder={stored['slack.bot_token'] ? 'Value set · type to replace' : 'xoxb-…'} onChange={(e) => set({ bot_token: e.target.value.trim() || undefined })} />
-        </Field>
-        <Field label="App Token" hint="Basic Information → App-Level Tokens (xapp-…).">
-          <Input type="password" value={value.app_token ?? ''} placeholder={stored['slack.app_token'] ? 'Value set · type to replace' : 'xapp-…'} onChange={(e) => set({ app_token: e.target.value.trim() || undefined })} />
-        </Field>
-      </div>
-      <PostChoice label="Post to Slack" value={value.post} onChange={(post) => set({ post })} />
-      {st?.owner && (
-        <p className="text-xs text-muted">
-          Linked to one Slack user.{' '}
-          <button
-            type="button"
-            className="cursor-pointer text-accent hover:underline"
-            onClick={() => void api('/api/slack/forget-owner', { method: 'POST' }).then(() => status.reload())}
-          >
-            Forget it
-          </button>{' '}
-          to let whoever opens the app next become the owner.
-        </p>
-      )}
-    </Card>
-  );
-}
-
-/** Choose between posting every message or only those that wait for an answer (Slack and WhatsApp). */
-function PostChoice({ label, value, onChange }: { label: string; value: 'all' | 'expects_response' | undefined; onChange: (v: 'all' | 'expects_response') => void }) {
-  return (
-    <Field label={label}>
-      <div className="flex w-fit rounded-lg bg-hover p-0.5 text-sm" role="radiogroup" aria-label={label}>
-        {(
-          [
-            ['all', 'All Messages'],
-            ['expects_response', 'Only Messages That Expect a Response'],
-          ] as const
-        ).map(([v, text]) => (
-          <button
-            key={v}
-            type="button"
-            role="radio"
-            aria-checked={(value ?? 'all') === v}
-            onClick={() => onChange(v)}
-            className={cn('cursor-pointer rounded-md px-3 py-1', (value ?? 'all') === v ? 'bg-panel shadow-sm' : 'text-muted hover:text-ink')}
-          >
-            {text}
-          </button>
-        ))}
-      </div>
-    </Field>
-  );
-}
-
-interface WhatsAppStatus {
-  configured: boolean;
-  connected: boolean;
-  number?: string;
-  name?: string;
-  owner: boolean;
-  linked: boolean;
-  window_open: boolean;
-  last_webhook?: string;
-  error?: string;
-  webhook_path: string;
-  verify_token?: string;
-}
-
-/**
- * Your Yaho inbox on WhatsApp, through the Cloud API and your own Meta app and business number. Meta calls Yaho's
- * webhook, so Yaho must be reachable over HTTPS: the server version as it is, the desktop through a tunnel.
- */
-function WhatsAppSettings({
-  value,
-  stored,
-  server,
-  onChange,
-}: {
-  value: NonNullable<Settings['whatsapp']>;
-  stored: Record<string, boolean>;
-  server: boolean;
-  onChange: (v: NonNullable<Settings['whatsapp']>) => void;
-}) {
-  const status = useApi<WhatsAppStatus>('/api/whatsapp', (e) => e.type === 'changed' && (e.entity === 'whatsapp' || e.entity === 'settings'));
-  const st = status.data;
-  const set = (patch: Partial<NonNullable<Settings['whatsapp']>>) => onChange({ ...value, ...patch });
-  const webhook = st ? (server ? `${location.origin}${st.webhook_path}` : `https://<your tunnel>${st.webhook_path}`) : '';
-  const line = !st
-    ? ''
-    : !st.configured
-      ? 'Not set up.'
-      : st.error
-        ? `Not connected: ${st.error}`
-        : !st.connected
-          ? 'Connecting…'
-          : !st.owner
-            ? `Connected to ${st.number ?? 'WhatsApp'}. Enter your own WhatsApp number below.`
-            : !st.linked
-              ? `Connected to ${st.number ?? 'WhatsApp'}. Send it any message from your WhatsApp so Yaho knows it is you.`
-              : st.window_open
-                ? `Connected to ${st.number ?? 'WhatsApp'}. Your inbox is posted to your WhatsApp.`
-                : `Connected to ${st.number ?? 'WhatsApp'}. Messages wait until you next write to it (WhatsApp's 24-hour rule).`;
-  const tone = st?.connected && st.linked ? 'bg-ok' : st?.error ? 'bg-danger' : st?.configured ? 'bg-warn' : 'bg-line-strong';
-  const steps: Array<[string, ReactNode]> = [
-    [
-      'Create a Meta app with WhatsApp',
-      <>
-        <div className="mt-1.5">
-          <Button size="sm" variant="primary" onClick={() => platform.openExternal('https://developers.facebook.com/apps/create/')}>
-            Open Meta for Developers
-          </Button>
-        </div>
-        <p className="mt-1.5 text-muted">
-          Create an app of type <b className="text-ink">Business</b> and add the <b className="text-ink">WhatsApp</b> product. Under{' '}
-          <b className="text-ink">WhatsApp → API Setup</b> use the free test number (add your own number as a recipient) or add a number of your
-          own. That number becomes Yaho's; it cannot also be on the WhatsApp app. Copy its <b className="text-ink">Phone Number ID</b> below.
-        </p>
-      </>,
-    ],
-    [
-      'Make a lasting token',
-      <p className="mt-0.5 text-muted">
-        The token on API Setup lasts a day. In <b className="text-ink">Business Settings → System Users</b> add a system user, give it the app
-        with full control, and generate a token with <code>whatsapp_business_messaging</code> and <code>whatsapp_business_management</code>.
-        Paste it as Access Token. Copy the <b className="text-ink">App Secret</b> from <b className="text-ink">App Settings → Basic</b>.
-      </p>,
-    ],
-    [
-      'Point the webhook at Yaho',
-      <>
-        <p className="mt-0.5 text-muted">
-          In <b className="text-ink">WhatsApp → Configuration → Webhook</b> enter this callback URL and verify token, verify, then subscribe to{' '}
-          <b className="text-ink">messages</b>.
-          {!server && ' Yaho on this computer needs a tunnel for that, for example cloudflared tunnel --url http://127.0.0.1:4700.'}
-        </p>
-        <div className="mt-1.5 flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => void navigator.clipboard.writeText(webhook)}>
-            Copy Callback URL
-          </Button>
-          <Button size="sm" onClick={() => st?.verify_token && void navigator.clipboard.writeText(st.verify_token)}>
-            Copy Verify Token
-          </Button>
-        </div>
-        {st?.last_webhook && <p className="mt-1 text-xs text-muted">Last heard from Meta {new Date(st.last_webhook).toLocaleString()}.</p>}
-      </>,
-    ],
-    [
-      'Save and say hello',
-      <p className="mt-0.5 text-muted">
-        Enter your own WhatsApp number, click <b className="text-ink">Save Settings</b>, and send Yaho's number any message from WhatsApp. Yaho
-        answers that it is connected. Only your number can use it.
-      </p>,
-    ],
-  ];
-  return (
-    <Card className="space-y-4 p-4">
-      <div className="flex items-center gap-2 text-sm">
-        <span className={cn('size-2 shrink-0 rounded-full', tone)} />
-        <span className="min-w-0 flex-1">{line}</span>
-        {st?.configured && (
-          <Button size="sm" onClick={() => void api('/api/whatsapp/reconnect', { method: 'POST' }).then(() => status.reload())}>
-            Reconnect
-          </Button>
-        )}
-      </div>
-      <ol className="space-y-3 text-sm">
-        {steps.map(([title, body], i) => (
-          <li key={title} className="flex gap-3">
-            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
-              {i + 1}
-            </span>
-            <div className="min-w-0">
-              <div className="font-medium">{title}</div>
-              {body}
-            </div>
-          </li>
-        ))}
-      </ol>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Phone Number ID" hint="WhatsApp → API Setup, under the number.">
-          <Input value={value.phone_number_id ?? ''} onChange={(e) => set({ phone_number_id: e.target.value.trim() || undefined })} />
-        </Field>
-        <Field label="Your WhatsApp Number" hint="With country code. Only this number can use Yaho.">
-          <Input value={value.number ?? ''} placeholder="+46 70 123 45 67" onChange={(e) => set({ number: e.target.value.trim() || undefined })} />
-        </Field>
-        <Field label="Access Token" hint="A system user's token.">
-          <Input
-            type="password"
-            value={value.access_token ?? ''}
-            placeholder={stored['whatsapp.access_token'] ? 'Value set · type to replace' : 'EAA…'}
-            onChange={(e) => set({ access_token: e.target.value.trim() || undefined })}
-          />
-        </Field>
-        <Field label="App Secret" hint="App Settings → Basic. Checks that webhook calls come from Meta.">
-          <Input
-            type="password"
-            value={value.app_secret ?? ''}
-            placeholder={stored['whatsapp.app_secret'] ? 'Value set · type to replace' : undefined}
-            onChange={(e) => set({ app_secret: e.target.value.trim() || undefined })}
-          />
-        </Field>
-        <Field
-          label="Waiting Template (Optional)"
-          hint={
-            <>
-              WhatsApp only lets Yaho write freely within 24 hours of your last message. With an approved Utility template whose body has one
-              variable, such as “Your Yaho agents have new messages: {'{{1}}'}”, Yaho tells you once when messages are waiting.
-            </>
-          }
-        >
-          <Input value={value.template ?? ''} placeholder="yaho_waiting" onChange={(e) => set({ template: e.target.value.trim() || undefined })} />
-        </Field>
-        <Field label="Template Language" hint="The language code it was approved in.">
-          <Input value={value.template_language ?? ''} placeholder="en" onChange={(e) => set({ template_language: e.target.value.trim() || undefined })} />
-        </Field>
-      </div>
-      <PostChoice label="Post to WhatsApp" value={value.post} onChange={(post) => set({ post })} />
-    </Card>
-  );
-}
-
-interface EmailStatus {
-  configured: boolean;
-  connected: boolean;
-  domain?: string;
-  domain_status?: string;
-  last_webhook?: string;
-  last_ignored?: string;
-  error?: string;
-  webhook_path: string;
-}
-
-/**
- * Email for agents through Resend: agents with Email on get <name>@<domain>, and replies come back through Resend's
- * inbound webhook, so Yaho must be reachable over HTTPS like for WhatsApp.
- */
-function EmailSettings({
-  value,
-  stored,
-  server,
-  onChange,
-}: {
-  value: NonNullable<Settings['resend']>;
-  stored: Record<string, boolean>;
-  server: boolean;
-  onChange: (v: NonNullable<Settings['resend']>) => void;
-}) {
-  const status = useApi<EmailStatus>('/api/resend', (e) => e.type === 'changed' && (e.entity === 'resend' || e.entity === 'settings'));
-  const st = status.data;
-  const set = (patch: Partial<NonNullable<Settings['resend']>>) => onChange({ ...value, ...patch });
-  const webhook = st ? (server ? `${location.origin}${st.webhook_path}` : `https://<your tunnel>${st.webhook_path}`) : '';
-  const line = !st
-    ? ''
-    : !st.configured
-      ? 'Not set up.'
-      : st.error
-        ? `Not connected: ${st.error}`
-        : !st.connected
-          ? 'Connecting…'
-          : st.domain_status === 'verified'
-            ? `Connected. Agents with Email on send from <name>@${st.domain}.`
-            : `Connected, but ${st.domain} is ${st.domain_status?.replace(/_/g, ' ') ?? 'not verified'} in Resend.`;
-  const tone = st?.connected && st.domain_status === 'verified' ? 'bg-ok' : st?.error ? 'bg-danger' : st?.configured ? 'bg-warn' : 'bg-line-strong';
-  const steps: Array<[string, ReactNode]> = [
-    [
-      'Add your domain to Resend',
-      <>
-        <div className="mt-1.5">
-          <Button size="sm" variant="primary" onClick={() => platform.openExternal('https://resend.com/domains')}>
-            Open Resend Domains
-          </Button>
-        </div>
-        <p className="mt-1.5 text-muted">
-          Add a domain (a subdomain such as <code>agents.example.com</code> keeps it apart from your own mail), add the DNS records Resend shows,
-          and turn on <b className="text-ink">Receiving</b> for it, which adds an MX record. Every address on it then reaches Yaho.
-        </p>
-      </>,
-    ],
-    [
-      'Make an API key',
-      <p className="mt-0.5 text-muted">
-        In <b className="text-ink">API Keys</b> create a key with <b className="text-ink">Full access</b> (Yaho reads received emails, which a
-        sending-only key cannot) and paste it below.
-      </p>,
-    ],
-    [
-      'Point the webhook at Yaho',
-      <>
-        <p className="mt-0.5 text-muted">
-          In <b className="text-ink">Webhooks</b> add an endpoint with this URL and the <b className="text-ink">email.received</b> event, then
-          paste its <b className="text-ink">Signing Secret</b> below.
-          {!server && ' Yaho on this computer needs a tunnel for that, for example cloudflared tunnel --url http://127.0.0.1:4700.'}
-        </p>
-        <div className="mt-1.5">
-          <Button size="sm" onClick={() => void navigator.clipboard.writeText(webhook)}>
-            Copy Webhook URL
-          </Button>
-        </div>
-        {st?.last_webhook && <p className="mt-1 text-xs text-muted">Last heard from Resend {new Date(st.last_webhook).toLocaleString()}.</p>}
-        {st?.last_ignored && <p className="mt-1 text-xs text-muted">Last email not delivered: {st.last_ignored}</p>}
-      </>,
-    ],
-    [
-      'Turn on Email for an agent',
-      <p className="mt-0.5 text-muted">
-        In the agent's settings under <b className="text-ink">Access</b>. With its Inbox Trigger on, a reply starts a job right away.
-      </p>,
-    ],
-  ];
-  return (
-    <Card className="space-y-4 p-4">
-      <div className="flex items-center gap-2 text-sm">
-        <span className={cn('size-2 shrink-0 rounded-full', tone)} />
-        <span className="min-w-0 flex-1">{line}</span>
-        {st?.configured && (
-          <Button size="sm" onClick={() => void api('/api/resend/reconnect', { method: 'POST' }).then(() => status.reload())}>
-            Reconnect
-          </Button>
-        )}
-      </div>
-      <ol className="space-y-3 text-sm">
-        {steps.map(([title, body], i) => (
-          <li key={title} className="flex gap-3">
-            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
-              {i + 1}
-            </span>
-            <div className="min-w-0">
-              <div className="font-medium">{title}</div>
-              {body}
-            </div>
-          </li>
-        ))}
-      </ol>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Domain" hint="Verified in Resend, with receiving on.">
-          <Input value={value.domain ?? ''} placeholder="agents.example.com" onChange={(e) => set({ domain: e.target.value.trim() || undefined })} />
-        </Field>
-        <Field label="API Key" hint="Full access.">
-          <Input
-            type="password"
-            value={value.api_key ?? ''}
-            placeholder={stored['resend.api_key'] ? 'Value set · type to replace' : 're_…'}
-            onChange={(e) => set({ api_key: e.target.value.trim() || undefined })}
-          />
-        </Field>
-        <Field label="Webhook Signing Secret" hint="Checks that webhook calls come from Resend.">
-          <Input
-            type="password"
-            value={value.webhook_secret ?? ''}
-            placeholder={stored['resend.webhook_secret'] ? 'Value set · type to replace' : 'whsec_…'}
-            onChange={(e) => set({ webhook_secret: e.target.value.trim() || undefined })}
-          />
-        </Field>
-        <Field label="Accept New Emails" hint="Off: agents only get replies to emails they sent. On: anyone who writes to an agent's address reaches it.">
-          <div className="flex h-9 items-center">
-            <Switch checked={!!value.accept_new} onChange={(v) => set({ accept_new: v || undefined })} label="Accept New Emails" />
-          </div>
-        </Field>
-      </div>
-    </Card>
-  );
-}
-
-interface SmsStatus {
-  configured: boolean;
-  connected: boolean;
-  number?: string;
-  sms_url?: string;
-  last_webhook?: string;
-  last_ignored?: string;
-  error?: string;
-  webhook_path: string;
-}
-
-/**
- * SMS for agents through Twilio: agents with SMS on share one number, and texts to it come back through Twilio's
- * webhook to the agent that last texted that phone, so Yaho must be reachable over HTTPS like for Email.
- */
-function SmsSettings({
-  value,
-  stored,
-  server,
-  onChange,
-}: {
-  value: NonNullable<Settings['twilio']>;
-  stored: Record<string, boolean>;
-  server: boolean;
-  onChange: (v: NonNullable<Settings['twilio']>) => void;
-}) {
-  const status = useApi<SmsStatus>('/api/twilio', (e) => e.type === 'changed' && (e.entity === 'twilio' || e.entity === 'settings'));
-  const agents = useApi<Array<{ name: string; sms?: boolean }>>('/api/agents');
-  const st = status.data;
-  const set = (patch: Partial<NonNullable<Settings['twilio']>>) => onChange({ ...value, ...patch });
-  const webhook = st ? (server ? `${location.origin}${st.webhook_path}` : `https://<your tunnel>${st.webhook_path}`) : '';
-  const pointed = !!st?.sms_url && st.sms_url.endsWith(st.webhook_path);
-  const line = !st
-    ? ''
-    : !st.configured
-      ? 'Not set up.'
-      : st.error
-        ? `Not connected: ${st.error}`
-        : !st.connected
-          ? 'Connecting…'
-          : pointed
-            ? `Connected. Agents with SMS on text from ${st.number}.`
-            : `Connected, but texts to ${st.number} go ${st.sms_url ? `to ${st.sms_url}` : 'nowhere'}; point its webhook at Yaho (step 3).`;
-  const tone = st?.connected && pointed ? 'bg-ok' : st?.error ? 'bg-danger' : st?.configured ? 'bg-warn' : 'bg-line-strong';
-  const steps: Array<[string, ReactNode]> = [
-    [
-      'Get a Twilio number',
-      <>
-        <div className="mt-1.5">
-          <Button size="sm" variant="primary" onClick={() => platform.openExternal('https://console.twilio.com/us1/develop/phone-numbers/manage/incoming')}>
-            Open Twilio Numbers
-          </Button>
-        </div>
-        <p className="mt-1.5 text-muted">
-          Buy a number that can send and receive <b className="text-ink">SMS</b> in the country of the people your agents will text (some countries
-          need a registration first), and type it below in international form.
-        </p>
-      </>,
-    ],
-    [
-      'Copy the account keys',
-      <p className="mt-0.5 text-muted">
-        The <b className="text-ink">Account SID</b> and <b className="text-ink">Auth Token</b> on the Twilio Console's home page; paste them below.
-        The token also checks that webhook calls come from Twilio.
-      </p>,
-    ],
-    [
-      'Point the number at Yaho',
-      <>
-        <p className="mt-0.5 text-muted">
-          On the number's page under <b className="text-ink">Messaging Configuration</b>, set <b className="text-ink">A message comes in</b> to
-          Webhook, this URL, HTTP POST, and save.
-          {!server && ' Yaho on this computer needs a tunnel for that, for example cloudflared tunnel --url http://127.0.0.1:4700.'}
-        </p>
-        <div className="mt-1.5">
-          <Button size="sm" onClick={() => void navigator.clipboard.writeText(webhook)}>
-            Copy Webhook URL
-          </Button>
-        </div>
-        {st?.last_webhook && <p className="mt-1 text-xs text-muted">Last heard from Twilio {new Date(st.last_webhook).toLocaleString()}.</p>}
-        {st?.last_ignored && <p className="mt-1 text-xs text-muted">Last text not delivered: {st.last_ignored}</p>}
-      </>,
-    ],
-    [
-      'Turn on SMS for an agent',
-      <p className="mt-0.5 text-muted">
-        In the agent's settings under <b className="text-ink">Access</b>. A reply goes to the agent that texted that phone last, and with its Inbox
-        Trigger on it starts a job right away.
-      </p>,
-    ],
-  ];
-  return (
-    <Card className="space-y-4 p-4">
-      <div className="flex items-center gap-2 text-sm">
-        <span className={cn('size-2 shrink-0 rounded-full', tone)} />
-        <span className="min-w-0 flex-1">{line}</span>
-        {st?.configured && (
-          <Button size="sm" onClick={() => void api('/api/twilio/reconnect', { method: 'POST' }).then(() => status.reload())}>
-            Reconnect
-          </Button>
-        )}
-      </div>
-      <ol className="space-y-3 text-sm">
-        {steps.map(([title, body], i) => (
-          <li key={title} className="flex gap-3">
-            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
-              {i + 1}
-            </span>
-            <div className="min-w-0">
-              <div className="font-medium">{title}</div>
-              {body}
-            </div>
-          </li>
-        ))}
-      </ol>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Phone Number" hint="The Twilio number, in international form.">
-          <Input value={value.number ?? ''} placeholder="+46701234567" onChange={(e) => set({ number: e.target.value.trim() || undefined })} />
-        </Field>
-        <Field label="Account SID">
-          <Input value={value.account_sid ?? ''} placeholder="AC…" onChange={(e) => set({ account_sid: e.target.value.trim() || undefined })} />
-        </Field>
-        <Field label="Auth Token">
-          <Input
-            type="password"
-            value={value.auth_token ?? ''}
-            placeholder={stored['twilio.auth_token'] ? 'Value set · type to replace' : 'Auth Token'}
-            onChange={(e) => set({ auth_token: e.target.value.trim() || undefined })}
-          />
-        </Field>
-        <Field label="New Texts Go To" hint="Texts from phones no agent has texted. Nobody: they are dropped.">
-          <Select value={value.new_agent ?? ''} onChange={(e) => set({ new_agent: e.target.value || undefined })}>
-            <option value="">Nobody</option>
-            {(agents.data ?? [])
-              .filter((a) => a.sms || a.name === value.new_agent)
-              .map((a) => (
-                <option key={a.name} value={a.name}>
-                  {a.name}
-                </option>
-              ))}
-          </Select>
-        </Field>
-      </div>
-    </Card>
   );
 }
 

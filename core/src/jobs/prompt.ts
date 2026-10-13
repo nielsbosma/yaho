@@ -5,6 +5,7 @@ import YAML from 'yaml';
 import type { Ctx } from '../context.ts';
 import type { Agent, Job } from '../store.ts';
 import { getProject, getResource, listMessages } from '../store.ts';
+import { sandboxOn } from '../harness/sandbox.ts';
 
 function briefingsDir(): string {
   if (process.env.YAHO_BRIEFINGS_DIR) return process.env.YAHO_BRIEFINGS_DIR;
@@ -63,6 +64,10 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
   if (ctx.sms?.enabledFor(agent.name))
     parts.push(
       `## SMS\nYou text from \`${ctx.sms.number}\`. Send with \`yaho sms send\`, answer with \`yaho sms reply\`. Replies arrive in your inbox from \`sms:<phone>\`.`,
+    );
+  if (sandboxOn(ctx.settings))
+    parts.push(
+      '## Sandbox\nYou run in Sandbox Mode: you can only write inside your workspace (the current folder) and the temp folder; everything else is read-only. The network is open. Share files with `yaho artifact add`.',
     );
   const unread = listMessages(ctx, { to: `agent:${agent.name}`, unread: true, limit: 50 });
   parts.push(

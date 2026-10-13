@@ -170,4 +170,8 @@ export const migrations: string[] = [
    CREATE INDEX sms_phone ON sms(phone, created);
    CREATE INDEX sms_agent ON sms(agent, created);
    CREATE UNIQUE INDEX sms_sid ON sms(sid) WHERE sid IS NOT NULL;`,
+  // 10: the Telegram messages each inbox message was posted as (actions: the one with its buttons), so answers,
+  // replies and reactions find their message.
+  `CREATE TABLE telegram_posts (chat TEXT NOT NULL, tg_id INTEGER NOT NULL, message TEXT NOT NULL, actions INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, PRIMARY KEY (chat, tg_id));
+   CREATE INDEX telegram_posts_message ON telegram_posts(message);`,
 ];

@@ -8,6 +8,7 @@ import { checkClaude, checkCodex, lastClaudeCheck, lastCodexCheck } from '../che
 import { PROVIDERS, defaultProvider, litellmProvider } from '../providers.ts';
 import { allModels, listModels } from '../providerApi.ts';
 import { revealToken, serverMode } from './session.ts';
+import { sandboxOn, sandboxProblem } from '../harness/sandbox.ts';
 import { applySettingsUpdate, publicSettings, storeSecrets } from '../secrets/settingsSecrets.ts';
 import type { Ctx } from '../context.ts';
 import { chat, type ChatFocus, type ChatMessage } from '../assistant/index.ts';
@@ -99,15 +100,18 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const rsBefore = rs();
     const tw = () => JSON.stringify([ctx.settings.twilio?.account_sid, ctx.settings.twilio?.auth_token, ctx.settings.twilio?.number]);
     const twBefore = tw();
+    const tg = () => JSON.stringify([ctx.settings.telegram?.bot_token]);
+    const tgBefore = tg();
     applySettingsUpdate(ctx.settings, next);
     if (ctx.settings.dopbase.mode === 'bundled' && ctx.localDopbase && !ctx.localDopbase.child) await ctx.localDopbase.start();
     await storeSecrets(ctx);
     ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
     runner(ctx).pump();
     if (JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]) !== slackBefore) void ctx.slack?.start();
-    if (wa() !== waBefore) void ctx.whatsapp?.start();
-    if (rs() !== rsBefore) void ctx.email?.start();
-    if (tw() !== twBefore) void ctx.sms?.start();
+    if (serverMode() && wa() !== waBefore) void ctx.whatsapp?.start();
+    if (serverMode() && rs() !== rsBefore) void ctx.email?.start();
+    if (serverMode() && tw() !== twBefore) void ctx.sms?.start();
+    if (tg() !== tgBefore) void ctx.telegram?.start();
     return publicSettings(ctx.settings);
   });
 
@@ -161,22 +165,47 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     verify_token: ctx.whatsapp?.verifyToken(),
   }));
   r.on('POST', '/api/whatsapp/reconnect', async () => {
-    await ctx.whatsapp?.start();
+    if (serverMode()) await ctx.whatsapp?.start();
     return ctx.whatsapp?.status;
   });
 
   // ---- Email (Resend) ----
   r.on('GET', '/api/resend', () => ({ ...(ctx.email?.status ?? { configured: false, connected: false }), webhook_path: '/api/resend/webhook' }));
   r.on('POST', '/api/resend/reconnect', async () => {
-    await ctx.email?.start();
+    if (serverMode()) await ctx.email?.start();
     return ctx.email?.status;
   });
 
   // ---- SMS (Twilio) ----
   r.on('GET', '/api/twilio', () => ({ ...(ctx.sms?.status ?? { configured: false, connected: false }), webhook_path: TWILIO_WEBHOOK }));
   r.on('POST', '/api/twilio/reconnect', async () => {
-    await ctx.sms?.start();
+    if (serverMode()) await ctx.sms?.start();
     return ctx.sms?.status;
+  });
+
+  // ---- Guard Rails: Sandbox Mode ----
+  r.on('GET', '/api/sandbox', () => ({
+    on: sandboxOn(ctx.settings),
+    default: serverMode(),
+    problems: Object.fromEntries(Object.keys(ctx.settings.harnesses).map((h) => [h, sandboxProblem(h)])),
+  }));
+
+  // ---- Telegram ----
+  r.on('GET', '/api/telegram', () => ({ ...(ctx.telegram?.status ?? { configured: false, connected: false, linked: false }), link_url: ctx.telegram?.linkUrl() }));
+  r.on('POST', '/api/telegram/reconnect', async () => {
+    await ctx.telegram?.start();
+    return ctx.telegram?.status;
+  });
+  r.on('POST', '/api/telegram/forget-owner', async () => {
+    // A new owner is whoever opens the bot's new link next.
+    if (ctx.settings.telegram) {
+      delete ctx.settings.telegram.owner;
+      delete ctx.settings.telegram.since;
+      delete ctx.settings.telegram.link_code;
+      saveSettings(ctx.settings);
+    }
+    await ctx.telegram?.start();
+    return ctx.telegram?.status;
   });
 
   // ---- Slack ----

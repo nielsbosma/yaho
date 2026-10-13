@@ -132,6 +132,7 @@ export function applySettingsUpdate(current: Settings, next: Settings & { secret
     owner: current.slack?.owner,
     since: current.slack?.since,
     whatsapp: current.whatsapp,
+    telegram: current.telegram,
   };
   const { secrets_set: _, ...rest } = next;
   // Provider ids name their keys in Dopbase (PROVIDER_<ID>_API_KEY): two ids must not give the same name.
@@ -162,6 +163,16 @@ export function applySettingsUpdate(current: Settings, next: Settings & { secret
       const v = f === 'verify_token' || same ? kept.whatsapp?.[f] : undefined;
       if (v === undefined) delete w[f];
       else w[f] = v;
+    }
+  }
+  // Telegram's link to the person's chat; a new bot starts the link over.
+  if (current.telegram || kept.telegram) {
+    const t = (current.telegram = { ...current.telegram });
+    const sameBot = !t.bot_token || t.bot_token === kept.telegram?.bot_token;
+    for (const f of ['owner', 'since', 'link_code', 'bot'] as const) {
+      const v = sameBot ? kept.telegram?.[f] : undefined;
+      if (v === undefined) delete t[f];
+      else t[f] = v;
     }
   }
   if (next.dopbase && !('token' in next.dopbase)) current.dopbase.token = dopbaseToken;

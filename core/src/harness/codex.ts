@@ -32,8 +32,10 @@ export const codex: HarnessAdapter = {
     const common = [
       '--json',
       '--skip-git-repo-check',
-      // Jobs run unattended in the agent's own workspace, as Claude Code's bypassPermissions does.
-      '--dangerously-bypass-approvals-and-sandbox',
+      // Jobs run unattended: sandboxed, writes only in the workspace (network open); otherwise as Claude Code's bypassPermissions.
+      ...(run.sandbox
+        ? ['-c', 'sandbox_mode="workspace-write"', '-c', 'sandbox_workspace_write.network_access=true', '-c', 'approval_policy="never"']
+        : ['--dangerously-bypass-approvals-and-sandbox']),
       '--ignore-user-config',
       '-m',
       run.model,

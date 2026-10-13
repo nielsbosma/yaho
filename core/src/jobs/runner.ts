@@ -5,6 +5,7 @@ import { delimiter, join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { newId, now } from '../db/index.ts';
 import { adapters, killTree } from '../harness/index.ts';
+import { sandboxGuardCommand, sandboxOn, sandboxProblem } from '../harness/sandbox.ts';
 import type { HarnessEvent, HarnessProcess } from '../harness/types.ts';
 import { envForAgent } from '../secrets/dopbase.ts';
 import type { Agent, Job } from '../store.ts';
@@ -166,6 +167,9 @@ export class JobRunner {
     const harnessCfg = settings.harnesses[agent.harness];
     const adapter = adapters[agent.harness];
     if (!harnessCfg || !adapter) throw new Error(`harness ${agent.harness} is not available`);
+    const sandbox = sandboxOn(settings);
+    const unsandboxable = sandbox ? sandboxProblem(agent.harness) : null;
+    if (unsandboxable) throw new Error(`Sandbox Mode is on, but ${unsandboxable}. Turn it off in Settings → Guard Rails to run without it.`);
     const model = agent.models[0] ?? settings.defaults.models[0];
     if (!model) throw new Error('the agent has no allowed models');
     const ses = this.session(agent, job);
@@ -212,6 +216,8 @@ export class JobRunner {
       YAHO_AGENT: agent.name,
       YAHO_JOB: job.id,
       YAHO_AGENT_DB: join(cwd, 'agent.db'),
+      // The sandbox has its own network, where 127.0.0.1 is not this machine: yaho goes through the core's socket.
+      ...(sandbox && agent.harness === 'claude-code' && process.platform !== 'win32' ? { YAHO_API_SOCKET: ctx.paths.socket } : {}),
       ...access.env,
       // Codex keeps its sessions and settings here, apart from the person's own ~/.codex; one folder per agent, so one
       // agent cannot read another's.
@@ -249,6 +255,7 @@ export class JobRunner {
         resumeSessionId: ses.harnessId,
         transcriptPath: transcript,
         maxBudgetUsd: remaining,
+        sandbox: sandbox ? { guard: sandboxGuardCommand(ctx.paths.bin) } : undefined,
       },
       (e) => this.onEvent(r, ses.id, e),
     );

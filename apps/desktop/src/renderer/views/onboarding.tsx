@@ -379,24 +379,31 @@ function ConnectionsStep({ settings }: { settings: SetupSettings }) {
       </div>
       <div className="rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
+          <BrandLogo brand="telegram" size="sm" />
+          Telegram
+        </div>
+        <p className="mt-1 text-xs text-muted">The same in a chat with your own Telegram bot. Set it up in Settings → Integrations; it takes two minutes.</p>
+      </div>
+      <div className="rounded-xl border border-line p-4">
+        <div className="flex items-center gap-2 font-medium">
           <BrandLogo brand="whatsapp" size="sm" />
           WhatsApp
         </div>
-        <p className="mt-1 text-xs text-muted">The same on WhatsApp, through your own WhatsApp Business number. Set it up in Settings → Integrations; Yaho must be reachable from the internet.</p>
+        <p className="mt-1 text-xs text-muted">The same on WhatsApp, through your own WhatsApp Business number. Set it up in Settings → Integrations; it needs the server version of Yaho, reachable from the internet.</p>
       </div>
       <div className="rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
           <BrandLogo brand="resend" size="sm" />
           Email
         </div>
-        <p className="mt-1 text-xs text-muted">Give agents their own email address on your domain through Resend, so they can email people and act on the replies. Set it up in Settings → Integrations; Yaho must be reachable from the internet.</p>
+        <p className="mt-1 text-xs text-muted">Give agents their own email address on your domain through Resend, so they can email people and act on the replies. Set it up in Settings → Integrations; it needs the server version of Yaho, reachable from the internet.</p>
       </div>
       <div className="rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
           <BrandLogo brand="twilio" size="sm" />
           SMS
         </div>
-        <p className="mt-1 text-xs text-muted">Let agents text people from a Twilio number and act on the replies. Set it up in Settings → Integrations; Yaho must be reachable from the internet.</p>
+        <p className="mt-1 text-xs text-muted">Let agents text people from a Twilio number and act on the replies. Set it up in Settings → Integrations; it needs the server version of Yaho, reachable from the internet.</p>
       </div>
       <div className="space-y-3 rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">

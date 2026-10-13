@@ -4,6 +4,7 @@ import { delimiter, extname, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
 import { asAgent } from './asAgent.ts';
+import { claudeSandboxSettings } from './sandbox.ts';
 
 const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more chars)` : s);
 
@@ -62,6 +63,7 @@ export const claudeCode: HarnessAdapter = {
       run.model,
       '--permission-mode',
       'bypassPermissions',
+      ...(run.sandbox ? ['--settings', JSON.stringify(claudeSandboxSettings(run.sandbox.guard))] : []),
       '--append-system-prompt',
       run.systemPrompt,
     ];
