@@ -48,6 +48,12 @@ export interface Settings {
     template?: string;
     template_language?: string;
   };
+  /**
+   * Email through Resend: agents with email on get <agent>@<domain>, send from it, and replies come back through
+   * Resend's inbound webhook (so Yaho must be reachable from the internet). accept_new: also take emails that are not
+   * replies to one an agent sent.
+   */
+  resend?: { api_key?: string; webhook_secret?: string; domain?: string; accept_new?: boolean };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   /** When the first-run setup was finished (or skipped). Until then the app shows it. */
@@ -169,7 +175,7 @@ export interface SecretSlot {
 const keyPart = (id: string) => id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
 export function secretSlots(s: Settings): SecretSlot[] {
-  const section = (name: 'composio' | 'slack' | 'whatsapp') => (x: Settings, create?: boolean) =>
+  const section = (name: 'composio' | 'slack' | 'whatsapp' | 'resend') => (x: Settings, create?: boolean) =>
     (create ? (x[name] ??= {}) : x[name]) as Record<string, unknown> | undefined;
   return [
     ...s.providers.flatMap((p) =>
@@ -185,6 +191,8 @@ export function secretSlots(s: Settings): SecretSlot[] {
     { path: 'slack.app_token', key: 'SLACK_APP_TOKEN', field: 'app_token', holder: section('slack') },
     { path: 'whatsapp.access_token', key: 'WHATSAPP_ACCESS_TOKEN', field: 'access_token', holder: section('whatsapp') },
     { path: 'whatsapp.app_secret', key: 'WHATSAPP_APP_SECRET', field: 'app_secret', holder: section('whatsapp') },
+    { path: 'resend.api_key', key: 'RESEND_API_KEY', field: 'api_key', holder: section('resend') },
+    { path: 'resend.webhook_secret', key: 'RESEND_WEBHOOK_SECRET', field: 'webhook_secret', holder: section('resend') },
   ];
 }
 

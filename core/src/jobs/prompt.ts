@@ -56,6 +56,10 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
       );
     }
   }
+  if (ctx.email?.enabledFor(agent.name))
+    parts.push(
+      `## Email\nYour address is \`${ctx.email.addressOf(agent.name)}\`. Send with \`yaho email send\`, answer with \`yaho email reply\`. Replies arrive in your inbox from \`email:<address>\`.`,
+    );
   const unread = listMessages(ctx, { to: `agent:${agent.name}`, unread: true, limit: 50 });
   parts.push(
     unread.length

@@ -24,6 +24,8 @@ const HELP = `yaho - talk to the Yaho orchestrator from inside a job
   yaho tools <resource> [--search words]   tools of a Composio resource
   yaho tool <resource> <TOOL_SLUG> < args.yaml   run one (arguments as YAML)
   yaho idea --title "..." < idea.md     suggest a feature for Yaho itself (a GitHub issue)
+  yaho email send --to a@b.com[,c@d.com] [--cc ...] --subject "..." [--body B] < body.txt
+  yaho email reply <message-id> [--to ...] [--cc ...] [--body B] < body.txt
   yaho budget
   yaho sleep <duration>                 e.g. 30m, 2h, 1d; ends this job now
   yaho finish [--summary "..."]         ends this job now
@@ -83,6 +85,8 @@ async function main(argv: string[]): Promise<void> {
       kind: { type: 'string' },
       summary: { type: 'string' },
       search: { type: 'string' },
+      subject: { type: 'string' },
+      cc: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -166,6 +170,16 @@ async function main(argv: string[]): Promise<void> {
     case 'idea': {
       const body = readStdin().trim() || f.body;
       return out(await call('POST', '/idea', { title: need(f.title, '--title "..."'), body: need(body, 'the idea as Markdown on stdin (or --body)') }));
+    }
+    case 'email': {
+      if (sub !== 'send' && sub !== 'reply') break;
+      const body = readStdin().trim() || f.body;
+      const reply_to = sub === 'reply' ? need(a1, 'the message id to reply to') : undefined;
+      if (sub === 'send') {
+        need(f.to, '--to a@b.com');
+        need(f.subject, '--subject "..."');
+      }
+      return out(await call('POST', '/email', { to: f.to, cc: f.cc, subject: f.subject, body: need(body, 'the body on stdin (or --body)'), reply_to }));
     }
     case 'budget':
       return out(await call('GET', '/budget'));

@@ -9,6 +9,7 @@ import { Router, parseBody, readBytes, send, type Req } from './http.ts';
 import { serverMode, sessionRoute, sessionValid } from './session.ts';
 import { handleBridge } from '../bridge.ts';
 import { handleWhatsAppWebhook } from '../whatsapp/bridge.ts';
+import { handleResendWebhook } from '../email/resend.ts';
 
 export const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -110,6 +111,8 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
       if (path.startsWith('/bridge/') && (await handleBridge(ctx, raw, res, path, () => readBytes(raw)))) return;
       // Meta's webhook for WhatsApp; it checks the app secret's signature itself.
       if (path === '/api/whatsapp/webhook') return await handleWhatsAppWebhook(ctx, raw, res, url.searchParams, () => readBytes(raw, 4 * 1024 * 1024));
+      // Resend's webhook for inbound email; it checks the signing secret itself.
+      if (path === '/api/resend/webhook') return await handleResendWebhook(ctx, raw, res, () => readBytes(raw, 4 * 1024 * 1024));
 
       if (path.startsWith('/api/')) {
         // Sign in and out (server version) are open, like health.

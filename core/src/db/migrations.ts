@@ -156,4 +156,11 @@ export const migrations: string[] = [
   // reactions find their message.
   `CREATE TABLE whatsapp_posts (wamid TEXT PRIMARY KEY, message TEXT NOT NULL, actions INTEGER NOT NULL DEFAULT 0, outcome TEXT NOT NULL DEFAULT '', created TEXT NOT NULL);
    CREATE INDEX whatsapp_posts_message ON whatsapp_posts(message);`,
+  // 8: email through Resend. agents.email opts an agent in; email_threads are the conversations an agent has by email
+  // (token is in the Reply-To address, so replies find their thread); emails ties each message to its email.
+  `ALTER TABLE agents ADD COLUMN email INTEGER NOT NULL DEFAULT 0;
+   CREATE TABLE email_threads (token TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE ON UPDATE CASCADE, subject TEXT NOT NULL, created TEXT NOT NULL);
+   CREATE TABLE emails (message TEXT PRIMARY KEY, thread TEXT NOT NULL REFERENCES email_threads(token) ON DELETE CASCADE, direction TEXT NOT NULL, addresses TEXT NOT NULL, resend_id TEXT, message_id TEXT, created TEXT NOT NULL);
+   CREATE INDEX emails_thread ON emails(thread, created);
+   CREATE INDEX emails_message_id ON emails(message_id);`,
 ];

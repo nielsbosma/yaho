@@ -50,6 +50,7 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
   on('POST', '/send', async (req, w) => {
     const m = await req.body<s.SendInput>();
     if (!m.to) throw new HttpError(400, 'to is required: human or agent:<name>');
+    if (String(m.to).startsWith('email:')) throw new HttpError(400, 'send email with yaho email send (or yaho email reply)');
     const job = s.getJob(ctx, w.job);
     if (m.artifacts !== undefined) {
       if (!Array.isArray(m.artifacts)) throw new HttpError(400, 'artifacts must be a list of artifact ids');
@@ -61,6 +62,12 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     }
     const msg = s.sendMessage(ctx, { ...m, from: `agent:${w.agent}`, job: w.job, hop: m.to === 'human' ? 0 : job.hop + 1 });
     return { id: msg.id, to: msg.to, type: msg.type };
+  });
+
+  // ---- email through Resend ----
+  on('POST', '/email', async (req, w) => {
+    if (!ctx.email) throw new HttpError(400, 'email is not set up in Yaho');
+    return ctx.email.send(w.agent, w.job, await req.body());
   });
 
   // ---- query (read-only, scoped) ----

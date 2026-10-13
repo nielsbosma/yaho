@@ -117,6 +117,7 @@ export interface Agent {
   models: string[];
   budget_usd: number;
   max_parallel: number;
+  email?: boolean;
   guardrails: { rate_per_hour?: number; cooldown_seconds?: number; hop_limit?: number; wait_for_inbox?: boolean };
   triggers: TriggerSpec[];
   projects: string[];
