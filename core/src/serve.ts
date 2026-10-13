@@ -18,7 +18,7 @@ import { WhatsAppBridge } from './whatsapp/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
-import { checkServerPassword, serverMode } from './api/session.ts';
+import { checkServerPassword, loadTotp, serverMode } from './api/session.ts';
 
 // node:sqlite prints an ExperimentalWarning on Node 22; it is expected.
 process.removeAllListeners('warning');
@@ -33,6 +33,7 @@ export async function serve(
   checkServerPassword();
   const settings = loadSettings();
   const ctx: Ctx = { db: openDb(p.db), settings, paths: p, apiToken: apiToken(), bus: new Bus(), apiUrl: '' };
+  loadTotp(ctx);
 
   const runner = new JobRunner(ctx);
   runner.recover();

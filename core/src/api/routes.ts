@@ -118,14 +118,17 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return { onboarded: false };
   });
   r.on('GET', '/api/providers', () => PROVIDERS);
-  // Server version: end every session (the current one too), and show the API token after the password.
+  // Server version: end every session (the current one too), and show the API token after the password and code.
   r.on('POST', '/api/session/revoke-all', () => {
     ctx.settings.server.session_epoch = (ctx.settings.server.session_epoch ?? 0) + 1;
     saveSettings(ctx.settings);
     ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
     return { revoked: true };
   });
-  r.on('POST', '/api/session/token', async (req) => revealToken(ctx, req.raw, (await req.body<{ password?: string }>()).password));
+  r.on('POST', '/api/session/token', async (req) => {
+    const b = await req.body<{ password?: string; code?: string }>();
+    return revealToken(ctx, req.raw, b.password, b.code);
+  });
   r.on('GET', '/api/update', () => ctx.updates?.state ?? null);
   r.on('POST', '/api/update/check', () => ctx.updates?.check());
   r.on('POST', '/api/update/install', () => {

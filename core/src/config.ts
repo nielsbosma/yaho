@@ -127,6 +127,7 @@ export const paths = (root = dataDir()) => ({
   db: join(root, 'yaho.db'),
   settings: join(root, 'settings.yaml'),
   token: join(root, 'api-token'),
+  totp: join(root, 'totp-secret'),
   server: join(root, 'server.yaml'),
   bin: join(root, 'bin'),
   agents: join(root, 'agents'),
