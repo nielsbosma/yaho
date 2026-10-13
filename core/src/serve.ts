@@ -15,6 +15,7 @@ import { JobRunner } from './jobs/runner.ts';
 import { Scheduler } from './scheduler/index.ts';
 import { SlackBridge } from './slack/bridge.ts';
 import { WhatsAppBridge } from './whatsapp/bridge.ts';
+import { EmailBridge } from './email/resend.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
@@ -51,6 +52,7 @@ export async function serve(
   ctx.scheduler = scheduler;
   ctx.slack = new SlackBridge(ctx);
   ctx.whatsapp = new WhatsAppBridge(ctx);
+  ctx.email = new EmailBridge(ctx);
 
   const router = new Router();
   humanRoutes(ctx, router);
@@ -74,6 +76,7 @@ export async function serve(
   // Slack and WhatsApp connect in the background; a bad token shows in Settings, never blocks the core.
   if (!opts.embedded) void ctx.slack.start();
   if (!opts.embedded) void ctx.whatsapp.start();
+  if (!opts.embedded) void ctx.email.start();
   ctx.updates = new Updates(ctx, yahoVersion());
   if (!opts.embedded) ctx.updates.start();
 
@@ -81,6 +84,7 @@ export async function serve(
     scheduler.stop();
     await ctx.slack?.stop();
     ctx.whatsapp?.stop();
+    ctx.email?.stop();
     ctx.updates?.stop();
     ctx.localDopbase?.stop();
     await runner.shutdown();

@@ -34,6 +34,7 @@ interface Settings {
     template?: string;
     template_language?: string;
   };
+  resend?: { api_key?: string; webhook_secret?: string; domain?: string; accept_new?: boolean };
   ideas?: { enabled?: boolean; repo?: string };
   defaults: { harness: string; models: string[]; budget_usd: number; max_parallel: number; guardrails: Record<string, number | undefined> };
 }
@@ -158,6 +159,9 @@ export function SettingsView({ route }: { route: string[] }) {
             server={!!state.data?.server}
             onChange={(v) => upd((d) => void (d.whatsapp = v))}
           />
+        </Section>
+        <Section title="Email" icon={<BrandLogo brand="resend" size="sm" />}>
+          <EmailSettings value={s.resend ?? {}} stored={s.secrets_set ?? {}} server={!!state.data?.server} onChange={(v) => upd((d) => void (d.resend = v))} />
         </Section>
         <Section title="Composio" icon={<BrandLogo brand="composio" size="sm" />}>
           <Card className="grid gap-4 p-4 md:grid-cols-2">
@@ -826,6 +830,148 @@ function WhatsAppSettings({
         </Field>
       </div>
       <PostChoice label="Post to WhatsApp" value={value.post} onChange={(post) => set({ post })} />
+    </Card>
+  );
+}
+
+interface EmailStatus {
+  configured: boolean;
+  connected: boolean;
+  domain?: string;
+  domain_status?: string;
+  last_webhook?: string;
+  last_ignored?: string;
+  error?: string;
+  webhook_path: string;
+}
+
+/**
+ * Email for agents through Resend: agents with Email on get <name>@<domain>, and replies come back through Resend's
+ * inbound webhook, so Yaho must be reachable over HTTPS like for WhatsApp.
+ */
+function EmailSettings({
+  value,
+  stored,
+  server,
+  onChange,
+}: {
+  value: NonNullable<Settings['resend']>;
+  stored: Record<string, boolean>;
+  server: boolean;
+  onChange: (v: NonNullable<Settings['resend']>) => void;
+}) {
+  const status = useApi<EmailStatus>('/api/resend', (e) => e.type === 'changed' && (e.entity === 'resend' || e.entity === 'settings'));
+  const st = status.data;
+  const set = (patch: Partial<NonNullable<Settings['resend']>>) => onChange({ ...value, ...patch });
+  const webhook = st ? (server ? `${location.origin}${st.webhook_path}` : `https://<your tunnel>${st.webhook_path}`) : '';
+  const line = !st
+    ? ''
+    : !st.configured
+      ? 'Not set up.'
+      : st.error
+        ? `Not connected: ${st.error}`
+        : !st.connected
+          ? 'Connecting…'
+          : st.domain_status === 'verified'
+            ? `Connected. Agents with Email on send from <name>@${st.domain}.`
+            : `Connected, but ${st.domain} is ${st.domain_status?.replace(/_/g, ' ') ?? 'not verified'} in Resend.`;
+  const tone = st?.connected && st.domain_status === 'verified' ? 'bg-ok' : st?.error ? 'bg-danger' : st?.configured ? 'bg-warn' : 'bg-line-strong';
+  const steps: Array<[string, ReactNode]> = [
+    [
+      'Add your domain to Resend',
+      <>
+        <div className="mt-1.5">
+          <Button size="sm" variant="primary" onClick={() => platform.openExternal('https://resend.com/domains')}>
+            Open Resend Domains
+          </Button>
+        </div>
+        <p className="mt-1.5 text-muted">
+          Add a domain (a subdomain such as <code>agents.example.com</code> keeps it apart from your own mail), add the DNS records Resend shows,
+          and turn on <b className="text-ink">Receiving</b> for it, which adds an MX record. Every address on it then reaches Yaho.
+        </p>
+      </>,
+    ],
+    [
+      'Make an API key',
+      <p className="mt-0.5 text-muted">
+        In <b className="text-ink">API Keys</b> create a key with <b className="text-ink">Full access</b> (Yaho reads received emails, which a
+        sending-only key cannot) and paste it below.
+      </p>,
+    ],
+    [
+      'Point the webhook at Yaho',
+      <>
+        <p className="mt-0.5 text-muted">
+          In <b className="text-ink">Webhooks</b> add an endpoint with this URL and the <b className="text-ink">email.received</b> event, then
+          paste its <b className="text-ink">Signing Secret</b> below.
+          {!server && ' Yaho on this computer needs a tunnel for that, for example cloudflared tunnel --url http://127.0.0.1:4700.'}
+        </p>
+        <div className="mt-1.5">
+          <Button size="sm" onClick={() => void navigator.clipboard.writeText(webhook)}>
+            Copy Webhook URL
+          </Button>
+        </div>
+        {st?.last_webhook && <p className="mt-1 text-xs text-muted">Last heard from Resend {new Date(st.last_webhook).toLocaleString()}.</p>}
+        {st?.last_ignored && <p className="mt-1 text-xs text-muted">Last email not delivered: {st.last_ignored}</p>}
+      </>,
+    ],
+    [
+      'Turn on Email for an agent',
+      <p className="mt-0.5 text-muted">
+        In the agent's settings under <b className="text-ink">Access</b>. With its Inbox Trigger on, a reply starts a job right away.
+      </p>,
+    ],
+  ];
+  return (
+    <Card className="space-y-4 p-4">
+      <div className="flex items-center gap-2 text-sm">
+        <span className={cn('size-2 shrink-0 rounded-full', tone)} />
+        <span className="min-w-0 flex-1">{line}</span>
+        {st?.configured && (
+          <Button size="sm" onClick={() => void api('/api/resend/reconnect', { method: 'POST' }).then(() => status.reload())}>
+            Reconnect
+          </Button>
+        )}
+      </div>
+      <ol className="space-y-3 text-sm">
+        {steps.map(([title, body], i) => (
+          <li key={title} className="flex gap-3">
+            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
+              {i + 1}
+            </span>
+            <div className="min-w-0">
+              <div className="font-medium">{title}</div>
+              {body}
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Domain" hint="Verified in Resend, with receiving on.">
+          <Input value={value.domain ?? ''} placeholder="agents.example.com" onChange={(e) => set({ domain: e.target.value.trim() || undefined })} />
+        </Field>
+        <Field label="API Key" hint="Full access.">
+          <Input
+            type="password"
+            value={value.api_key ?? ''}
+            placeholder={stored['resend.api_key'] ? 'Value set · type to replace' : 're_…'}
+            onChange={(e) => set({ api_key: e.target.value.trim() || undefined })}
+          />
+        </Field>
+        <Field label="Webhook Signing Secret" hint="Checks that webhook calls come from Resend.">
+          <Input
+            type="password"
+            value={value.webhook_secret ?? ''}
+            placeholder={stored['resend.webhook_secret'] ? 'Value set · type to replace' : 'whsec_…'}
+            onChange={(e) => set({ webhook_secret: e.target.value.trim() || undefined })}
+          />
+        </Field>
+        <Field label="Accept New Emails" hint="Off: agents only get replies to emails they sent. On: anyone who writes to an agent's address reaches it.">
+          <div className="flex h-9 items-center">
+            <Switch checked={!!value.accept_new} onChange={(v) => set({ accept_new: v || undefined })} label="Accept New Emails" />
+          </div>
+        </Field>
+      </div>
     </Card>
   );
 }

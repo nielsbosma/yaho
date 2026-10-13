@@ -16,6 +16,7 @@ export interface Ctx {
   /** The Slack bridge, when the core runs as a server. */
   slack?: import('./slack/bridge.ts').SlackBridge;
   whatsapp?: import('./whatsapp/bridge.ts').WhatsAppBridge;
+  email?: import('./email/resend.ts').EmailBridge;
   updates?: import('./updates.ts').Updates;
   scheduler?: { upcoming(agent: string): Array<{ type: string; at: string; cron?: string }>; tick(at?: Date): void };
   /** Set by the job runner; lets the scheduler and API start and stop jobs without import cycles. */

@@ -94,6 +94,8 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const slackBefore = JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]);
     const wa = () => JSON.stringify([ctx.settings.whatsapp?.access_token, ctx.settings.whatsapp?.app_secret, ctx.settings.whatsapp?.phone_number_id, ctx.settings.whatsapp?.number]);
     const waBefore = wa();
+    const rs = () => JSON.stringify([ctx.settings.resend?.api_key, ctx.settings.resend?.domain]);
+    const rsBefore = rs();
     applySettingsUpdate(ctx.settings, next);
     if (ctx.settings.dopbase.mode === 'bundled' && ctx.localDopbase && !ctx.localDopbase.child) await ctx.localDopbase.start();
     await storeSecrets(ctx);
@@ -101,6 +103,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     runner(ctx).pump();
     if (JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]) !== slackBefore) void ctx.slack?.start();
     if (wa() !== waBefore) void ctx.whatsapp?.start();
+    if (rs() !== rsBefore) void ctx.email?.start();
     return publicSettings(ctx.settings);
   });
 
@@ -156,6 +159,13 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('POST', '/api/whatsapp/reconnect', async () => {
     await ctx.whatsapp?.start();
     return ctx.whatsapp?.status;
+  });
+
+  // ---- Email (Resend) ----
+  r.on('GET', '/api/resend', () => ({ ...(ctx.email?.status ?? { configured: false, connected: false }), webhook_path: '/api/resend/webhook' }));
+  r.on('POST', '/api/resend/reconnect', async () => {
+    await ctx.email?.start();
+    return ctx.email?.status;
   });
 
   // ---- Slack ----
@@ -385,6 +395,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   });
   r.on('POST', '/api/messages', async (req) => {
     const m = await req.body<s.SendInput>();
+    if (String(m.to ?? '').startsWith('email:')) throw new HttpError(400, 'email is sent by agents (yaho email), not from the inbox');
     const msg = s.sendMessage(ctx, { ...m, from: 'human' });
     if (m.reply_to) s.markRead(ctx, m.reply_to, true);
     return msg;

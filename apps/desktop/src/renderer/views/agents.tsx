@@ -330,6 +330,7 @@ const definitionOf = (a: Agent) => ({
   projects: a.projects,
   resources: a.resources,
   guardrails: a.guardrails,
+  ...(a.email ? { email: true } : {}),
 });
 
 export function AgentEditor({ existing }: { existing?: Agent }) {
@@ -347,6 +348,7 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
   const [saving, setSaving] = useState(false);
   const projects = useApi<Project[]>('/api/projects');
   const resources = useApi<Resource[]>('/api/resources');
+  const email = useApi<{ configured: boolean; domain?: string }>('/api/resend');
   useEffect(() => {
     if (existing) setDraft({ ...existing });
   }, [existing]);
@@ -506,6 +508,18 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
                   value={draft.resources}
                   onChange={(v) => set('resources', v)}
                 />
+              </Field>
+              <Field
+                label="Email"
+                hint={
+                  email.data?.configured
+                    ? `Its own address, ${draft.name || '<name>'}@${email.data.domain}, to email people and get their replies in its inbox.`
+                    : 'Its own email address to email people and get their replies. Set up Email in Settings → Integrations first.'
+                }
+              >
+                <div className="flex h-9 items-center">
+                  <Switch checked={!!draft.email} onChange={(v) => set('email', v || undefined)} label="Email" />
+                </div>
               </Field>
             </Card>
           </Section>
