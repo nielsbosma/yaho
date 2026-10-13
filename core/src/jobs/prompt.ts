@@ -60,6 +60,10 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
     parts.push(
       `## Email\nYour address is \`${ctx.email.addressOf(agent.name)}\`. Send with \`yaho email send\`, answer with \`yaho email reply\`. Replies arrive in your inbox from \`email:<address>\`.`,
     );
+  if (ctx.sms?.enabledFor(agent.name))
+    parts.push(
+      `## SMS\nYou text from \`${ctx.sms.number}\`. Send with \`yaho sms send\`, answer with \`yaho sms reply\`. Replies arrive in your inbox from \`sms:<phone>\`.`,
+    );
   const unread = listMessages(ctx, { to: `agent:${agent.name}`, unread: true, limit: 50 });
   parts.push(
     unread.length

@@ -72,6 +72,7 @@ Then open **Settings**:
 | Dopbase                       | **Bundled** (default): Yaho runs its own Dopbase on 127.0.0.1:4702, data in `<data dir>\dopbase`, set up automatically on first start. **External**: an existing Dopbase server and a token that can create projects and set secrets. Either way each resource becomes the Dopbase project `yaho-<resource>`, environment `production`. |
 | Composio (optional)           | An API key from composio.dev. Then **Resources → From Composio** lists your connections and every app you can connect; any connection becomes a resource agents use with `yaho tools` / `yaho tool`. Yaho makes those calls, so the key never reaches an agent.                                                                         |
 | Email (optional)              | A domain in [Resend](https://resend.com) with receiving on, a full-access API key and the signing secret of a webhook for `email.received` pointed at `/api/resend/webhook`. Agents with **Email** on get `<name>@<domain>`; replies land in their inbox and start a job. Yaho must be reachable from the internet.                     |
+| SMS (optional)                | A [Twilio](https://twilio.com) number that can send SMS, the account SID and auth token, and the number's **A message comes in** webhook pointed at `/api/twilio/webhook`. Agents with **SMS** on text from it; a reply goes to the agent that texted that phone last and starts a job.                                                 |
 | Global spend cap              | When total spend reaches it, no job starts and running jobs stop.                                                                                                                                                                                                                                                                       |
 
 Create an agent from **Agents → New agent**: fill in the form, paste a YAML definition, or install one of the
@@ -109,6 +110,7 @@ Each job gets `yaho` on its PATH and a short-lived job token that scopes what it
 | `yaho briefing show` / `update < briefing.md`         | Read or rewrite its own briefing               |
 | `yaho resource keys <resource>`                       | Key names, and values only for non-secret keys |
 | `yaho email send` / `reply <id>`                      | Email people, answer their replies             |
+| `yaho sms send` / `reply <id>`                        | Text people, answer their replies              |
 | `yaho budget`                                         | Budget, spend and this job's cost              |
 | `yaho sleep <duration>` / `yaho finish [--summary …]` | End the job                                    |
 

@@ -16,6 +16,7 @@ import { Scheduler } from './scheduler/index.ts';
 import { SlackBridge } from './slack/bridge.ts';
 import { WhatsAppBridge } from './whatsapp/bridge.ts';
 import { EmailBridge } from './email/resend.ts';
+import { SmsBridge } from './sms/twilio.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
@@ -53,6 +54,7 @@ export async function serve(
   ctx.slack = new SlackBridge(ctx);
   ctx.whatsapp = new WhatsAppBridge(ctx);
   ctx.email = new EmailBridge(ctx);
+  ctx.sms = new SmsBridge(ctx);
 
   const router = new Router();
   humanRoutes(ctx, router);
@@ -77,6 +79,7 @@ export async function serve(
   if (!opts.embedded) void ctx.slack.start();
   if (!opts.embedded) void ctx.whatsapp.start();
   if (!opts.embedded) void ctx.email.start();
+  if (!opts.embedded) void ctx.sms.start();
   ctx.updates = new Updates(ctx, yahoVersion());
   if (!opts.embedded) ctx.updates.start();
 
@@ -85,6 +88,7 @@ export async function serve(
     await ctx.slack?.stop();
     ctx.whatsapp?.stop();
     ctx.email?.stop();
+    ctx.sms?.stop();
     ctx.updates?.stop();
     ctx.localDopbase?.stop();
     await runner.shutdown();
