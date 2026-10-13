@@ -1,4 +1,5 @@
 import { Markdown } from './Markdown.tsx';
+import { uploadAttachment, useAttachments } from './Attachments.tsx';
 import { Bot, Check, Copy, Trash2, CornerDownRight, ExternalLink, HelpCircle, Info, ListChecks, Send, User, Reply } from 'lucide-react';
 import { useState } from 'react';
 import { useApi, type Artifact, type Message } from '../lib/api.ts';
@@ -43,7 +44,7 @@ function CopyValue({ value }: { value: string }) {
 export interface MessageCardProps {
   message: Message;
   /** Sends a reply. Resolves when stored. */
-  onReply?: (body: string) => Promise<void>;
+  onReply?: (body: string, attachments?: string[]) => Promise<void>;
   onMarkRead?: (read: boolean) => void;
   onDiscard?: () => void;
   /** False when the sender no longer exists: replying is pointless, discarding is not. */
@@ -60,6 +61,7 @@ export interface MessageCardProps {
 export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canReply = true, compact, answered }: MessageCardProps) {
   const meta = typeMeta[m.type] ?? typeMeta.info;
   const [text, setText] = useState('');
+  const files = useAttachments();
   const [sending, setSending] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const fromHuman = m.from === 'human';
@@ -68,12 +70,15 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
   const longChoices = (m.choices ?? []).some((c) => c.length > 28);
 
   const reply = async (body: string) => {
-    if (!onReply || !body.trim()) return;
+    const n = files.items.length;
+    if (!onReply || (!body.trim() && !n)) return;
     setSending(body);
     try {
-      await onReply(body.trim());
-      setSent(body.trim());
+      const paths = n ? await Promise.all(files.items.map((x) => uploadAttachment(x.file))) : undefined;
+      await onReply(body.trim(), paths);
+      setSent(body.trim() || `${n} file${n === 1 ? '' : 's'}`);
       setText('');
+      files.clear();
     } finally {
       setSending(null);
     }
@@ -216,20 +221,23 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
                     </Button>
                   )}
                 </div>
+                {(expects || replying) && files.list}
                 {(expects || replying) && (
                   <div className="flex items-end gap-2">
                     <Textarea
                       autoFocus={replying}
-                      className="min-h-10"
-                      rows={1}
+                      className="min-h-24"
+                      rows={4}
+                      onPaste={files.paste}
                       value={text}
-                      placeholder={m.type === 'question' ? 'Answer in your own words…' : expects ? 'Optional feedback…' : 'Write a reply…'}
+                      placeholder={m.type === 'question' ? 'Answer in your own words…' : expects ? 'Optional feedback…' : 'Write a reply… (paste screenshots or attach files)'}
                       onChange={(e) => setText(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void reply(text);
                       }}
                     />
-                    <Button disabled={!text.trim() || !!sending} onClick={() => void reply(text)} title="Send (Ctrl+Enter)">
+                    {files.button}
+                    <Button disabled={(!text.trim() && !files.items.length) || !!sending} onClick={() => void reply(text)} title="Send (Ctrl+Enter)">
                       <Send />
                     </Button>
                   </div>

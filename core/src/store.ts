@@ -7,7 +7,7 @@ import { newId, now } from './db/index.ts';
 
 // ---------- shapes (what the API and YAML speak) ----------
 
-export type TriggerSpec = { cron: string } | { inbox: true } | { delay: string; next_fire: string };
+export type TriggerSpec = { cron: string } | { inbox: boolean } | { delay: string; next_fire: string };
 
 export interface Agent {
   name: string;
@@ -195,7 +195,10 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
     budget_usd: input.budget_usd ?? (prev?.budget_usd as number) ?? d.budget_usd,
     max_parallel: Math.max(1, input.max_parallel ?? (prev?.max_parallel as number) ?? d.max_parallel),
     guardrails: input.guardrails ?? json(prev?.guardrails as string, d.guardrails),
-    triggers: input.triggers ?? (prev ? agentFromRow(ctx, prev).triggers : []),
+    // A new agent starts when a message arrives for it, unless it says otherwise ({ inbox: false }).
+    triggers: prev
+      ? (input.triggers ?? agentFromRow(ctx, prev).triggers)
+      : [...(input.triggers ?? []), ...((input.triggers ?? []).some((t) => 'inbox' in t) ? [] : [{ inbox: true as const }])],
     projects: input.projects ?? (prev ? agentFromRow(ctx, prev).projects : []),
     resources: input.resources ?? (prev ? agentFromRow(ctx, prev).resources : []),
   };

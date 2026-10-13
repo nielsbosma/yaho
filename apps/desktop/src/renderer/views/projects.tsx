@@ -1,8 +1,8 @@
 import { Markdown } from '../components/Markdown.tsx';
 import { useConfirmDelete } from '../components/ConfirmDelete.tsx';
 import { useContextMenu } from '../components/ContextMenu.tsx';
-import { DataTable, LayoutSwitch, openDeleteMenu, useLayout } from '../components/ListLayout.tsx';
-import { FileText, FolderKanban, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
+import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
+import { FileText, FolderKanban, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
 import { chatAboutProject } from '../lib/chat.ts';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
@@ -33,11 +33,11 @@ function ProjectList() {
     "The project's context files and artifacts are deleted from disk. Agents lose access to it.",
   );
   const cardMenu = useContextMenu();
-  const rowMenu = (name: string) =>
-    openDeleteMenu(
-      () => go('projects', name),
-      () => del.ask(name),
-    );
+  const [renaming, setRenaming] = useState<Project | null>(null);
+  const rowMenu = (p: Project) => [
+    { label: 'Rename', icon: <Pencil />, onSelect: () => setRenaming(p) },
+    { label: 'Delete', icon: <Trash2 />, danger: true, onSelect: () => del.ask(p.name) },
+  ];
   const [layout, setLayout] = useLayout('projects');
   return (
     <>
@@ -57,7 +57,7 @@ function ProjectList() {
         <div className="p-8">
           <DataTable
             rows={projects.data}
-            menu={(p) => rowMenu(p.name)}
+            menu={(p) => rowMenu(p)}
             rowKey={(p) => p.name}
             to={(p) => ['projects', p.name]}
             columns={[
@@ -76,9 +76,10 @@ function ProjectList() {
       )}
       {del.dialog}
       {cardMenu.element}
+      {renaming && <RenameProject project={renaming} onClose={() => setRenaming(null)} />}
       <div className={cn('grid gap-3 p-8 md:grid-cols-2', layout === 'table' && 'hidden')}>
         {projects.data?.map((p) => (
-          <a key={p.name} href={href('projects', p.name)} onContextMenu={(e) => cardMenu.open(e, rowMenu(p.name))}>
+          <a key={p.name} href={href('projects', p.name)} onContextMenu={(e) => cardMenu.open(e, rowMenu(p))}>
             <Card className="p-4 transition-colors hover:border-line-strong">
               <div className="flex items-center gap-2">
                 <FolderKanban className="size-4 text-muted" />
@@ -97,6 +98,48 @@ function ProjectList() {
       </div>
       {projects.data?.length === 0 && <Empty icon={<FolderKanban />} title="No projects yet" />}
     </>
+  );
+}
+
+/** Rename a project: its title, what people see. The name agents use stays. */
+function RenameProject({ project, onClose }: { project: Project; onClose: () => void }) {
+  const [title, setTitle] = useState(project.title);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    if (!title.trim() || title.trim() === project.title) return onClose();
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/projects/${encodeURIComponent(project.name)}`, { method: 'PUT', body: { title: title.trim() } });
+      onClose();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Rename ${project.title}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!title.trim() || busy} onClick={() => void save()}>
+            Rename
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-2">
+        <ErrorNote>{error}</ErrorNote>
+        <Field label="Title" hint={`Agents keep using the name ${project.name}.`}>
+          <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onFocus={(e) => e.target.select()} onKeyDown={(e) => e.key === 'Enter' && void save()} />
+        </Field>
+      </div>
+    </Dialog>
   );
 }
 

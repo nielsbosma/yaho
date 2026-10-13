@@ -8,6 +8,7 @@ import { ErrorNote } from '../components/ui/display.tsx';
 import { Field, Input, Select, Switch } from '../components/ui/form.tsx';
 import { api, useApi } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
+import { defaultModel } from '../lib/defaultModel.ts';
 
 /** The parts of the settings the setup touches. Secret fields are only sent, never read back. */
 interface SetupSettings {
@@ -186,7 +187,7 @@ function ModelsStep({ settings }: { settings: SetupSettings }) {
       // OpenRouter serves Claude Code Anthropic's models only.
       const usable = kind === 'openrouter' ? r.models.filter((m) => m.startsWith('anthropic/')) : r.models;
       setModels(usable);
-      if (!usable.includes(model)) setModel(usable.find((m) => /sonnet/.test(m)) ?? usable[0] ?? '');
+      if (!usable.includes(model)) setModel(defaultModel(usable));
       if (chatModel && !usable.includes(chatModel)) setChatModel('');
     } catch (e) {
       setModels(null);
@@ -295,6 +296,11 @@ export function ClaudeCheckPanel({ auto = true, harness = 'claude-code' }: { aut
   useEffect(() => {
     if (auto) void run();
   }, []);
+  // Without auto (Settings), check once when it has never been checked, so the panel is not left blank.
+  const never = !!last.data && !last.data.checked_at;
+  useEffect(() => {
+    if (!auto && never) void run();
+  }, [never]);
   // Before the first check the API has no result (it answers {ok: true}); only a real check has a time.
   const c = busy || !last.data?.checked_at ? null : last.data;
   const state = (ok: boolean | undefined, reached: boolean): 'ok' | 'fail' | 'busy' | 'idle' =>
@@ -427,9 +433,11 @@ function FinishStep() {
         </div>
       )}
       {platform.os === 'darwin' && <p className="text-xs text-muted">Yaho is in your Applications folder, so Launchpad and Spotlight find it.</p>}
-      <p className="text-xs text-muted">
-        From a terminal, <code>yaho</code> opens this window and <code>yaho doctor</code> checks the install.
-      </p>
+      {platform.kind === 'desktop' && (
+        <p className="text-xs text-muted">
+          From a terminal, <code>yaho</code> opens this window and <code>yaho doctor</code> checks the install.
+        </p>
+      )}
     </div>
   );
 }

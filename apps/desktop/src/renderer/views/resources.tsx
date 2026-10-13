@@ -1,7 +1,7 @@
 import { Markdown } from '../components/Markdown.tsx';
 import { useConfirmDelete } from '../components/ConfirmDelete.tsx';
 import { useContextMenu } from '../components/ContextMenu.tsx';
-import { DataTable, LayoutSwitch, openDeleteMenu, useLayout } from '../components/ListLayout.tsx';
+import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
 import { MultiPicker } from '../components/MultiPicker.tsx';
 import { AppLogo, ComposioExplorer, ComposioTools } from './composio.tsx';
 import { Blocks, KeyRound, Lock, Pencil, Plus, Trash2, Unlock } from 'lucide-react';
@@ -34,13 +34,10 @@ function ResourceList() {
   );
   const cardMenu = useContextMenu();
   const [renaming, setRenaming] = useState<string | null>(null);
-  const rowMenu = (name: string) => {
-    const [open, remove] = openDeleteMenu(
-      () => go('resources', name),
-      () => del.ask(name),
-    );
-    return [open!, { label: 'Rename', icon: <Pencil />, onSelect: () => setRenaming(name) }, remove!];
-  };
+  const rowMenu = (name: string) => [
+    { label: 'Rename', icon: <Pencil />, onSelect: () => setRenaming(name) },
+    { label: 'Delete', icon: <Trash2 />, danger: true, onSelect: () => del.ask(name) },
+  ];
   const [layout, setLayout] = useLayout('resources');
   return (
     <>

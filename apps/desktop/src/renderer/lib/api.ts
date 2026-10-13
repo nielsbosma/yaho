@@ -16,7 +16,7 @@ export const url = (path: string, params: Record<string, string> = {}) => {
   return u.toString();
 };
 
-export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; raw?: BodyInit } = {}): Promise<T> {
+export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; raw?: BodyInit; signal?: AbortSignal } = {}): Promise<T> {
   const res = await fetch(new URL(path, platform.apiUrl), {
     method: init.method ?? (init.body !== undefined || init.raw !== undefined ? 'POST' : 'GET'),
     headers: {
@@ -24,6 +24,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
       ...(init.raw !== undefined ? { 'Content-Type': 'application/octet-stream' } : { 'Content-Type': 'application/json' }),
     },
     body: init.raw ?? (init.body === undefined ? undefined : JSON.stringify(init.body)),
+    signal: init.signal,
   });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
@@ -107,7 +108,7 @@ export function useApi<T>(path: string | null, refresh: (e: LiveEvent) => boolea
 
 // ---------- shapes ----------
 
-export type TriggerSpec = { cron: string } | { inbox: true };
+export type TriggerSpec = { cron: string } | { inbox: boolean };
 
 export interface Agent {
   name: string;

@@ -129,13 +129,15 @@ export interface ChatReply {
 export async function chatRound(
   p: ProviderConfig,
   body: { model: string; messages: OAIMessage[]; tools: OAITool[]; max_tokens: number },
+  signal?: AbortSignal,
 ): Promise<ChatReply> {
   const key = needKey(p);
-  if (p.kind === 'anthropic') return anthropicChat(chatBase(p)!, key, body);
+  if (p.kind === 'anthropic') return anthropicChat(chatBase(p)!, key, body, signal);
   const base = chatBase(p);
   if (!base) throw new HttpError(400, `unknown provider kind ${p.kind}`);
   const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
+    signal,
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     // Only the standard fields: some providers reject what others add to their replies (Berget: function_call: null).
     body: JSON.stringify({ ...forProvider(p.kind, body), messages: body.messages.map(clean) }),
@@ -146,7 +148,12 @@ export async function chatRound(
 }
 
 /** Anthropic's Messages API behind the same shape: system apart, tool calls as content blocks, tool results as user turns. */
-async function anthropicChat(base: string, key: string, body: { model: string; messages: OAIMessage[]; tools: OAITool[]; max_tokens: number }): Promise<ChatReply> {
+async function anthropicChat(
+  base: string,
+  key: string,
+  body: { model: string; messages: OAIMessage[]; tools: OAITool[]; max_tokens: number },
+  signal?: AbortSignal,
+): Promise<ChatReply> {
   const system = body.messages.filter((m) => m.role === 'system').map((m) => (typeof m.content === 'string' ? m.content : '')).join('\n\n');
   type Block = Record<string, unknown>;
   const turns: Array<{ role: 'user' | 'assistant'; content: Block[] }> = [];
@@ -174,6 +181,7 @@ async function anthropicChat(base: string, key: string, body: { model: string; m
     } else push('user', blocksOf(m.content));
   }
   const res = await fetch(`${base.replace(/\/$/, '')}/v1/messages`, {
+    signal,
     method: 'POST',
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
     body: JSON.stringify({

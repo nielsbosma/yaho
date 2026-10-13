@@ -1,4 +1,4 @@
-import { ExternalLink, LayoutGrid, List, Trash2 } from 'lucide-react';
+import { LayoutGrid, List } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { go } from '../lib/router.ts';
 import { useContextMenu, type MenuItem } from './ContextMenu.tsx';
@@ -110,9 +110,3 @@ export function DataTable<T>({
     </Card>
   );
 }
-
-/** The usual row menu: open it, or delete it (after a confirmation). */
-export const openDeleteMenu = (open: () => void, remove: () => void): MenuItem[] => [
-  { label: 'Open', icon: <ExternalLink />, onSelect: open },
-  { label: 'Delete', icon: <Trash2 />, danger: true, onSelect: remove },
-];

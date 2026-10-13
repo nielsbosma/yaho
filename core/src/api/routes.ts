@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, relative } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
@@ -176,7 +176,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('POST', '/api/assistant', async (req) => {
     const { messages, focus } = await req.body<{ messages?: ChatMessage[]; focus?: ChatFocus }>();
     if (!Array.isArray(messages) || !messages.length) throw new HttpError(400, 'messages is required');
-    return chat(ctx, messages, focus);
+    // The app stops a chat by dropping the request; stop the model and tool calls with it.
+    const stop = new AbortController();
+    req.res.on('close', () => !req.res.writableFinished && stop.abort());
+    return chat(ctx, messages, focus, stop.signal);
   });
 
   // ---- agents ----
@@ -366,8 +369,33 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     }
     return m.job ? s.listArtifacts(ctx, { job: m.job }) : [];
   });
+  // A file added in the app (an inbox reply or the chat): kept under attachments/, and its path comes back.
+  r.on('POST', '/api/attachments', async (req) => {
+    const dir = join(ctx.paths.root, 'attachments', new Date().toISOString().replace(/[:.]/g, '-'));
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, cleanFileName(req.query.get('name') ?? 'file'));
+    writeFileSync(path, await req.bytes());
+    return { path };
+  });
   r.on('POST', '/api/messages', async (req) => {
-    const m = await req.body<s.SendInput>();
+    const { attachments, ...m } = await req.body<s.SendInput & { attachments?: string[] }>();
+    // Files added to a message go into the agent's workspace, and the message says where.
+    if (attachments?.length && m.to && m.to !== 'human') {
+      const agent = s.getAgent(ctx, m.to.replace(/^agent:/, '')).name;
+      const root = join(ctx.paths.root, 'attachments');
+      const dir = join(s.ensureAgentWorkspace(ctx, agent), 'inbox-attachments');
+      mkdirSync(dir, { recursive: true });
+      const saved: string[] = [];
+      for (const from of attachments) {
+        const rel = relative(root, from);
+        if (rel.startsWith('..') || isAbsolute(rel) || !existsSync(from)) throw new HttpError(400, `not an attachment: ${from}`);
+        const file = `${basename(dirname(from))}-${basename(from)}`;
+        // Written fresh, not copied: a copy keeps the core's group, and an agent on a server could not read it.
+        writeFileSync(join(dir, file), readFileSync(from));
+        saved.push(`inbox-attachments/${file}`);
+      }
+      m.body = [m.body?.trim(), `Attached (in your workspace): ${saved.join(', ')}`].filter(Boolean).join('\n\n');
+    }
     const msg = s.sendMessage(ctx, { ...m, from: 'human' });
     if (m.reply_to) s.markRead(ctx, m.reply_to, true);
     return msg;
@@ -537,7 +565,7 @@ export function storeArtifactFile(ctx: Ctx, project: string, source: string): st
   const name = cleanFileName(source);
   let target = name;
   for (let i = 2; existsSync(join(dir, target)); i++) target = name.replace(/(\.[^.]*)?$/, `-${i}$1`);
-  copyFileSync(source, join(dir, target));
+  writeFileSync(join(dir, target), readFileSync(source)); // not copyFileSync: it keeps the source's group, which agents cannot read
   return target;
 }
 

@@ -153,7 +153,8 @@ export class SlackBridge {
     const channel = await this.channel();
     if (!channel || !this.api) return;
     const { text, blocks } = messageBlocks(m, { answer: this.answerOf(m.id) });
-    const res = await this.api.post({ channel, text, blocks, username: senderName(m), icon_emoji: ':robot_face:' });
+    const thread_ts = this.threadOf(m);
+    const res = await this.api.post({ channel, text, blocks, username: senderName(m), icon_emoji: ':robot_face:', ...(thread_ts ? { thread_ts } : {}) });
     this.ctx.db.prepare('INSERT OR REPLACE INTO slack_posts (message, channel, ts, created) VALUES (?, ?, ?, ?)').run(m.id, channel, res.ts, new Date().toISOString());
   }
 
@@ -276,10 +277,33 @@ export class SlackBridge {
       const text = String(e.text ?? '').trim();
       if (!text) return;
       const thread = e.thread_ts as string | undefined;
-      const id = thread && thread !== e.ts ? this.messageAt(thread) : undefined;
+      const id = thread && thread !== e.ts ? this.latestIn(thread) : undefined;
       if (id) return this.reply(id, text);
       return this.ask(e.channel as string, text, (e.thread_ts as string) ?? undefined);
     }
+  }
+
+  /** A message that answers another goes in the Slack thread of the first message of that conversation in Slack. */
+  private threadOf(m: Message): string | undefined {
+    let ts: string | undefined;
+    for (let id = m.reply_to, n = 0; id && n < 50; n++) {
+      const p = this.postFor(id);
+      if (p) ts = p.ts;
+      try {
+        id = s.getMessage(this.ctx, id).reply_to;
+      } catch {
+        break;
+      }
+    }
+    return ts;
+  }
+
+  /** The message a Slack thread answers: its newest message from an agent, so a reply follows the conversation. */
+  private latestIn(threadTs: string): string | undefined {
+    const root = this.messageAt(threadTs);
+    if (!root) return undefined;
+    const fromAgents = s.thread(this.ctx, root).filter((m) => m.from !== 'human');
+    return fromAgents.sort((a, b) => a.created.localeCompare(b.created)).at(-1)?.id ?? root;
   }
 
   private messageAt(ts: string): string | undefined {

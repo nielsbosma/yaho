@@ -4,7 +4,7 @@ import { Markdown } from '../components/Markdown.tsx';
 import { useContextMenu, type MenuItem } from '../components/ContextMenu.tsx';
 import { RunDialog, useAgentMenu } from '../components/AgentMenu.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../components/ListLayout.tsx';
-import { Bot, BotOff, ExternalLink, History, LibraryBig, Play, Plus, Sparkles, Trash2, Wallet } from 'lucide-react';
+import { Bot, BotOff, History, LibraryBig, Play, Plus, Sparkles, Trash2, Wallet } from 'lucide-react';
 import { chatAboutAgent } from '../lib/chat.ts';
 import { useEffect, useState } from 'react';
 import YAML from 'yaml';
@@ -34,7 +34,7 @@ export function AgentsView({ route }: ViewProps) {
 function AgentList() {
   const agents = useApi<Agent[]>('/api/agents', agentChanged());
   const menu = useAgentMenu();
-  const rowMenu = (a: Agent): MenuItem[] => [{ label: 'Open', icon: <ExternalLink />, onSelect: () => go('agents', a.name) }, ...menu.items(a)];
+  const rowMenu = (a: Agent): MenuItem[] => menu.items(a);
   const cardMenu = useContextMenu();
   const [layout, setLayout] = useLayout('agents');
   return (
@@ -383,9 +383,9 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
 
   const set = <K extends keyof Agent>(k: K, v: Agent[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const crons = draft.triggers.filter((t): t is { cron: string } => 'cron' in t).map((t) => t.cron);
-  const inbox = draft.triggers.some((t) => 'inbox' in t);
+  const inbox = draft.triggers.some((t) => 'inbox' in t && t.inbox);
   const setTriggers = (c: string[], i: boolean) =>
-    set('triggers', [...c.map((cron) => ({ cron })), ...(i ? [{ inbox: true as const }] : [])]);
+    set('triggers', [...c.map((cron) => ({ cron })), { inbox: i }]);
 
   const body = (
     <div className="max-w-3xl space-y-5">

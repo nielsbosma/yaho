@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chownSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { cp, mkdir, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { safeJoin } from '../api/server.ts';
@@ -106,7 +106,7 @@ export function addProjectFile(ctx: Ctx, project: string, path: string, name?: s
   if (!file || file === '.' || file === '..') throw new HttpError(400, 'bad file name');
   const dir = join(ctx.paths.project(project), 'files');
   mkdirSync(dir, { recursive: true });
-  copyFileSync(p, join(dir, file));
+  writeFileSync(join(dir, file), readFileSync(p)); // not copyFileSync: it keeps the source's group, which agents cannot read
   ctx.bus.emitEvent({ type: 'changed', entity: 'projects', name: project });
   return { project, name: file };
 }
@@ -173,8 +173,17 @@ export async function copyToAgentWorkspace(
 
   await mkdir(dirname(target), { recursive: true });
   await cp(src, target, { recursive: true, force: true, filter: (from) => !SKIP.has(basename(from)) || from === src });
+  shareWithAgents(target);
   ctx.bus.emitEvent({ type: 'changed', entity: 'workspace', name: agent });
   return { agent, dest: relative(root, target).replaceAll('\\', '/') || '.', files, bytes };
+}
+
+/** On a server a copy keeps the core's group; give it the agents' group (YAHO_AGENT_GID) so they can read it. */
+function shareWithAgents(path: string): void {
+  const gid = Number(process.env.YAHO_AGENT_GID);
+  if (!gid || process.platform === 'win32') return;
+  chownSync(path, -1, gid);
+  if (statSync(path).isDirectory()) for (const e of readdirSync(path)) shareWithAgents(join(path, e));
 }
 
 /** Write a text file in an agent's workspace, e.g. a script rewritten for Yaho or a memory note. */
