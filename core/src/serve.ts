@@ -14,6 +14,7 @@ import { openDb } from './db/index.ts';
 import { JobRunner } from './jobs/runner.ts';
 import { Scheduler } from './scheduler/index.ts';
 import { SlackBridge } from './slack/bridge.ts';
+import { WhatsAppBridge } from './whatsapp/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
@@ -49,6 +50,7 @@ export async function serve(
   const scheduler = new Scheduler(ctx);
   ctx.scheduler = scheduler;
   ctx.slack = new SlackBridge(ctx);
+  ctx.whatsapp = new WhatsAppBridge(ctx);
 
   const router = new Router();
   humanRoutes(ctx, router);
@@ -69,14 +71,16 @@ export async function serve(
   ctx.apiUrl = `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${actualPort}`;
   writeFileSync(p.server, YAML.stringify({ url: ctx.apiUrl, pid: process.pid, started: new Date().toISOString() }));
 
-  // Slack connects in the background; a bad token shows in Settings, never blocks the core.
+  // Slack and WhatsApp connect in the background; a bad token shows in Settings, never blocks the core.
   if (!opts.embedded) void ctx.slack.start();
+  if (!opts.embedded) void ctx.whatsapp.start();
   ctx.updates = new Updates(ctx, yahoVersion());
   if (!opts.embedded) ctx.updates.start();
 
   const close = async () => {
     scheduler.stop();
     await ctx.slack?.stop();
+    ctx.whatsapp?.stop();
     ctx.updates?.stop();
     ctx.localDopbase?.stop();
     await runner.shutdown();

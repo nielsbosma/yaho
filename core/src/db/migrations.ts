@@ -152,4 +152,8 @@ export const migrations: string[] = [
    CREATE INDEX slack_posts_ts ON slack_posts(ts);`,
   // 6: the provider a job's token may reach through the bridge.
   `ALTER TABLE job_tokens ADD COLUMN provider TEXT;`,
+  // 7: the WhatsApp messages each inbox message was posted as (actions: the one with its buttons), so answers and
+  // reactions find their message.
+  `CREATE TABLE whatsapp_posts (wamid TEXT PRIMARY KEY, message TEXT NOT NULL, actions INTEGER NOT NULL DEFAULT 0, outcome TEXT NOT NULL DEFAULT '', created TEXT NOT NULL);
+   CREATE INDEX whatsapp_posts_message ON whatsapp_posts(message);`,
 ];
