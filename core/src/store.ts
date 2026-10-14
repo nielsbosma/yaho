@@ -44,6 +44,8 @@ export interface Agent {
   email?: boolean;
   /** Text people from Yaho's Twilio number and get their replies. */
   sms?: boolean;
+  /** A browser of its own in each job (yaho browser). */
+  browser?: boolean;
 }
 
 export interface Project {
@@ -167,6 +169,7 @@ function agentFromRow(ctx: Ctx, r: Row): Agent {
     ),
     ...(r.email ? { email: true } : {}),
     ...(r.sms ? { sms: true } : {}),
+    ...(r.browser ? { browser: true } : {}),
   };
 }
 
@@ -235,6 +238,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
     resources: input.resources ?? (prev ? agentFromRow(ctx, prev).resources : []),
     email: input.email ?? !!prev?.email,
     sms: input.sms ?? !!prev?.sms,
+    browser: input.browser ?? !!prev?.browser,
   };
   if (!ctx.settings.harnesses[a.harness]) throw new HttpError(400, `unknown harness ${a.harness}`);
   if (a.guardrails.command_rules !== undefined)
@@ -263,11 +267,11 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
   db.exec('BEGIN');
   try {
     db.prepare(
-      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, sms, created, updated)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, sms, browser, created, updated)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(name) DO UPDATE SET enabled=excluded.enabled, briefing=excluded.briefing, harness=excluded.harness,
          models=excluded.models, budget_usd=excluded.budget_usd, max_parallel=excluded.max_parallel,
-         guardrails=excluded.guardrails, email=excluded.email, sms=excluded.sms, updated=excluded.updated`,
+         guardrails=excluded.guardrails, email=excluded.email, sms=excluded.sms, browser=excluded.browser, updated=excluded.updated`,
     ).run(
       a.name,
       a.enabled ? 1 : 0,
@@ -279,6 +283,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
       JSON.stringify(a.guardrails),
       a.email ? 1 : 0,
       a.sms ? 1 : 0,
+      a.browser ? 1 : 0,
       ts,
       ts,
     );

@@ -88,6 +88,11 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     });
   });
   on('GET', '/history/:job', (req, w) => showHistory(ctx, w.agent, req.params.job!));
+  // ---- the browser (yaho browser) ----
+  on('POST', '/browser', async (req, w) => {
+    if (!ctx.browser) throw new HttpError(400, 'the browser is not available in Yaho');
+    return ctx.browser.run(w.agent, w.job, await req.body());
+  });
 
   // ---- query (read-only, scoped) ----
   on('GET', '/query/:what', (req, w) => {

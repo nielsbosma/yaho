@@ -18,6 +18,7 @@ export interface Ctx {
   whatsapp?: import('./whatsapp/bridge.ts').WhatsAppBridge;
   email?: import('./email/resend.ts').EmailBridge;
   sms?: import('./sms/twilio.ts').SmsBridge;
+  browser?: import('./browser/index.ts').BrowserManager;
   telegram?: import('./telegram/bridge.ts').TelegramBridge;
   updates?: import('./updates.ts').Updates;
   scheduler?: { upcoming(agent: string): Array<{ type: string; at: string; cron?: string }>; tick(at?: Date): void };

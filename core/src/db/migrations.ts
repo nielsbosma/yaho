@@ -192,4 +192,6 @@ export const migrations: string[] = [
   `CREATE TABLE command_approvals (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE ON UPDATE CASCADE, job TEXT NOT NULL, session TEXT, command TEXT NOT NULL, message TEXT, status TEXT NOT NULL DEFAULT 'pending', used INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, decided TEXT);
    CREATE INDEX command_approvals_message ON command_approvals(message);
    CREATE INDEX command_approvals_session ON command_approvals(session, command);`,
+  // 14: the browser for agents (yaho browser); agents.browser opts an agent in.
+  `ALTER TABLE agents ADD COLUMN browser INTEGER NOT NULL DEFAULT 0;`,
 ];

@@ -29,10 +29,10 @@ FROM node:22-bookworm-slim
 ARG CLAUDE_CODE_VERSION=2.1.296
 ARG CODEX_VERSION=0.162.1
 # Tools agents use: git, gh, Python, curl, jq, ripgrep. bubblewrap and socat are Claude Code's sandbox (Sandbox Mode,
-# on by default here; the container needs user namespaces for it, or turn it off in Settings → Guard Rails). tini passes
-# signals and reaps child processes.
+# on by default here; the container needs user namespaces for it, or turn it off in Settings → Guard Rails). Chromium
+# and its fonts are the agents' browser (yaho browser). tini passes signals and reaps child processes.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends bubblewrap ca-certificates curl git jq ripgrep python3 python3-pip python3-venv socat tini \
+ && apt-get install -y --no-install-recommends bubblewrap ca-certificates chromium curl fonts-liberation fonts-noto-color-emoji git jq ripgrep python3 python3-pip python3-venv socat tini \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
  && apt-get update && apt-get install -y --no-install-recommends gh \
@@ -60,6 +60,7 @@ ENV YAHO_SERVER=1 \
     YAHO_AGENT_UID=1001 \
     YAHO_AGENT_GID=1001 \
     YAHO_AGENT_HOME=/data/home \
+    YAHO_BROWSER=/usr/bin/chromium \
     HOME=/data/home \
     CLAUDE_CONFIG_DIR=/data/home/.claude \
     XDG_CACHE_HOME=/tmp/cache \

@@ -143,6 +143,7 @@ export interface Agent {
   max_parallel: number;
   email?: boolean;
   sms?: boolean;
+  browser?: boolean;
   guardrails: {
     rate_per_hour?: number;
     cooldown_seconds?: number;

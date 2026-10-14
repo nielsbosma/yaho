@@ -76,6 +76,21 @@ export interface Settings {
   command_rules?: { enabled?: boolean; rules?: CommandRule[] };
   /** Past jobs: recaps by the agent's last model when a job ends, for yaho history search (default on). */
   history?: { recaps?: boolean };
+  /**
+   * A browser for agents with browser on (yaho browser). provider: local (Chrome, Edge or Chromium on this machine;
+   * executable overrides which, headless false shows its window on the desktop) or a cloud browser over CDP: Browserbase
+   * (api_key, project_id), Steel (api_key) or any CDP endpoint (cdp_url). allowed_sites (Guard Rails): the sites its
+   * tabs may open; empty means any.
+   */
+  browser?: {
+    provider?: 'local' | 'browserbase' | 'steel' | 'cdp';
+    executable?: string;
+    headless?: boolean;
+    api_key?: string;
+    project_id?: string;
+    cdp_url?: string;
+    allowed_sites?: string[];
+  };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   /** When the first-run setup was finished (or skipped). Until then the app shows it. */
@@ -201,8 +216,9 @@ export interface SecretSlot {
 const keyPart = (id: string) => id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
 export function secretSlots(s: Settings): SecretSlot[] {
-  const section = (name: 'composio' | 'slack' | 'whatsapp' | 'resend' | 'twilio' | 'telegram') => (x: Settings, create?: boolean) =>
-    (create ? (x[name] ??= {}) : x[name]) as Record<string, unknown> | undefined;
+  const section =
+    (name: 'composio' | 'slack' | 'whatsapp' | 'resend' | 'twilio' | 'telegram' | 'browser') => (x: Settings, create?: boolean) =>
+      (create ? (x[name] ??= {}) : x[name]) as Record<string, unknown> | undefined;
   return [
     ...s.providers.flatMap((p) =>
       (['api_key', 'master_key'] as const).map((field) => ({
@@ -220,6 +236,8 @@ export function secretSlots(s: Settings): SecretSlot[] {
     { path: 'resend.api_key', key: 'RESEND_API_KEY', field: 'api_key', holder: section('resend') },
     { path: 'resend.webhook_secret', key: 'RESEND_WEBHOOK_SECRET', field: 'webhook_secret', holder: section('resend') },
     { path: 'twilio.auth_token', key: 'TWILIO_AUTH_TOKEN', field: 'auth_token', holder: section('twilio') },
+    { path: 'browser.api_key', key: 'BROWSER_API_KEY', field: 'api_key', holder: section('browser') },
+    { path: 'browser.cdp_url', key: 'BROWSER_CDP_URL', field: 'cdp_url', holder: section('browser') },
     { path: 'telegram.bot_token', key: 'TELEGRAM_BOT_TOKEN', field: 'bot_token', holder: section('telegram') },
   ];
 }

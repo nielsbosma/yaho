@@ -194,6 +194,9 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('GET', '/api/webhooks', (req) => listWebhooks(ctx, req.query.get('agent') ?? undefined));
   r.on('POST', '/api/webhooks/:id/rotate', (req) => rotateUrl(ctx, req.params.id!));
   r.on('PUT', '/api/webhooks/:id/secret', async (req) => setSecret(ctx, req.params.id!, (await req.body<{ secret?: string }>()).secret));
+  // ---- the browser for agents ----
+  r.on('GET', '/api/browser', () => ctx.browser?.status() ?? { provider: 'local', ready: false, detail: 'not available', running: 0 });
+  r.on('POST', '/api/browser/test', async () => (ctx.browser ? ctx.browser.test() : { ok: false, error: 'not available' }));
 
   // ---- Guard Rails: Sandbox Mode ----
   r.on('GET', '/api/command-rules/defaults', () => DEFAULT_COMMAND_RULES);
@@ -282,6 +285,11 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return s.saveAgent(ctx, { ...patch, name: req.params.name! });
   });
   r.on('DELETE', '/api/agents/:name', (req) => s.deleteAgent(ctx, req.params.name!));
+  r.on('DELETE', '/api/agents/:name/browser', async (req) => {
+    s.getAgent(ctx, req.params.name!);
+    await ctx.browser?.forget(req.params.name!);
+    return { forgotten: true };
+  });
   r.on('PUT', '/api/agents/:name/folder', async (req) => {
     s.moveAgentToFolder(ctx, req.params.name!, (await req.body<{ folder?: string | null }>()).folder ?? null);
     ctx.bus.emitEvent({ type: 'changed', entity: 'agents' });

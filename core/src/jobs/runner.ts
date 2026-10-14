@@ -358,6 +358,7 @@ export class JobRunner {
     if (r.poll) clearInterval(r.poll);
     if (r.capped) void r.capped.release().catch(() => undefined);
     ctx.db.prepare('DELETE FROM job_tokens WHERE job = ?').run(r.job);
+    void ctx.browser?.close(r.job);
     if (this.shuttingDown) return this.requeueInterrupted(r.job, 'the Yaho core restarted');
     const job = getJob(ctx, r.job);
     if (end.summary && job.session_id)
