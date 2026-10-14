@@ -1,7 +1,21 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, shell, Tray } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  Notification,
+  session,
+  shell,
+  Tray,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from 'electron';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import nodeModule from 'node:module';
+import { dirname, join } from 'node:path';
 import { startCore, type CoreConnection } from './core.ts';
 import { appIcon, overlayBadge } from './icons.ts';
 import { createShortcuts, removeShortcuts } from './shortcuts.ts';
@@ -15,8 +29,16 @@ const desktopRoot = join(here, '../..');
 const packaged = existsSync(join(here, '../core/main.mjs'));
 const root = join(here, '..');
 const coreMain = process.env.YAHO_CORE_MAIN ?? (packaged ? join(root, 'core/main.mjs') : join(desktopRoot, '../../core/src/main.ts'));
-const preload = packaged ? join(root, 'preload/index.cjs') : join(here, '../preload/index.cts');
 const rendererIndex = packaged ? join(root, 'renderer/index.html') : join(desktopRoot, 'dist/renderer/index.html');
+
+/** A sandboxed preload must be plain JavaScript, so in the repo the types are stripped from its source first. */
+function preloadScript(): string {
+  if (packaged) return join(root, 'preload/index.cjs');
+  const out = join(desktopRoot, 'dist/preload/index.cjs');
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, nodeModule.stripTypeScriptTypes(readFileSync(join(here, '../preload/index.cts'), 'utf8')));
+  return out;
+}
 if (packaged) {
   // The core finds briefings/ and examples/ next to itself; it needs telling where the CLI and the web UI are.
   process.env.YAHO_CLI_MAIN ??= join(root, 'cli/main.mjs');
@@ -47,7 +69,7 @@ let notified = 0;
   icon: (size = 64) => appIcon(size, true).toPNG().toString('base64'),
 });
 
-function createWindow(conn: CoreConnection): BrowserWindow {
+function createWindow(): BrowserWindow {
   const w = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -71,10 +93,9 @@ function createWindow(conn: CoreConnection): BrowserWindow {
           },
         }),
     webPreferences: {
-      preload,
-      sandbox: false,
+      preload: preloadScript(),
+      sandbox: true,
       contextIsolation: true,
-      additionalArguments: [`--yaho-api=${conn.url}`, `--yaho-token=${conn.token}`],
     },
   });
   // Links the renderer opens go to the default browser, never a new Electron window.
@@ -130,7 +151,8 @@ function buildTrayMenu(): void {
       { label: `Running Jobs (${state.running})`, click: () => show('jobs') },
       { type: 'separator' },
       {
-        label: 'Start With Windows',
+        label: process.platform === 'darwin' ? 'Open at Login' : 'Start With Windows',
+        visible: process.platform !== 'linux',
         type: 'checkbox',
         checked: login.openAtLogin,
         click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] }),
@@ -197,37 +219,64 @@ function quit(): void {
   app.quit();
 }
 
-ipcMain.on('yaho:badge', () => void refreshState());
-ipcMain.on('yaho:notify', (_e, title: string, body: string) => {
+/** Only the app's own page may use the bridge: not a frame inside it, and not a page it was navigated to. */
+function fromApp(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  const frame = e.senderFrame;
+  if (!win || e.sender !== win.webContents || !frame || frame.parent) return false;
+  const devUrl = process.env.YAHO_RENDERER_URL;
+  try {
+    // The window never navigates to another file (see will-navigate), so a file: page is the app's own.
+    return devUrl ? new URL(frame.url).origin === new URL(devUrl).origin : new URL(frame.url).protocol === 'file:';
+  } catch {
+    return false;
+  }
+}
+const on = <A extends unknown[]>(channel: string, fn: (...args: A) => void) =>
+  ipcMain.on(channel, (e, ...args) => {
+    if (fromApp(e)) fn(...(args as A));
+  });
+
+// Read once by the preload as the page starts; never on the command line, where other local users could see it.
+ipcMain.on('yaho:connection', (e) => {
+  e.returnValue = fromApp(e) && core ? { url: core.url, token: core.token } : null;
+});
+on('yaho:badge', () => void refreshState());
+on('yaho:notify', (title: string, body: string) => {
   new Notification({ title, body, icon: appIcon(64) }).show();
 });
 // The desktop and Start menu shortcuts, from the first-run setup. The dev session runs plain electron.exe, which a
 // shortcut cannot start Yaho with, so it only says so.
-ipcMain.handle('yaho:shortcut', () =>
-  packaged ? { files: createShortcuts(winIcon, pngIcon) } : { files: [], error: 'Shortcuts are made by the installed app, not the dev session.' },
-);
+ipcMain.handle('yaho:shortcut', (e) => {
+  if (!fromApp(e)) return { files: [], error: 'Not allowed.' };
+  return packaged
+    ? { files: createShortcuts(winIcon, pngIcon) }
+    : { files: [], error: 'Shortcuts are made by the installed app, not the dev session.' };
+});
 // Restart after an update. Started from the yaho command, the launcher opens the new version once this one has
 // exited (it waits for this pid); otherwise Electron restarts the same build.
-ipcMain.on('yaho:restart', () => {
+on('yaho:restart', () => {
   const launcher = process.env.YAHO_LAUNCHER;
   if (launcher && existsSync(launcher)) {
-    spawn(process.env.YAHO_NODE ?? 'node', [launcher, 'open', '--wait-pid', String(process.pid)], { detached: true, stdio: 'ignore' }).unref();
+    spawn(process.env.YAHO_NODE ?? 'node', [launcher, 'open', '--wait-pid', String(process.pid)], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
   } else app.relaunch();
   quitting = true;
   app.quit();
 });
-ipcMain.on('yaho:reveal', (_e, path: string) => {
-  if (existsSync(path)) shell.showItemInFolder(path);
+on('yaho:reveal', (path: string) => {
+  if (typeof path === 'string' && existsSync(path)) shell.showItemInFolder(path);
 });
-ipcMain.on('yaho:theme', (_e, theme: string) => {
+on('yaho:theme', (theme: string) => {
   if (theme === 'light' || theme === 'dark' || theme === 'system') nativeTheme.themeSource = theme;
 });
-ipcMain.on('yaho:titlebar', (_e, color: string, symbolColor: string) => {
+on('yaho:titlebar', (color: string, symbolColor: string) => {
   if (process.platform === 'darwin' || !/^#[0-9a-f]{6}$/i.test(color) || !/^#[0-9a-f]{6}$/i.test(symbolColor)) return;
   win?.setTitleBarOverlay({ color, symbolColor, height: TITLEBAR_HEIGHT });
 });
-ipcMain.on('yaho:open', (_e, url: string) => {
-  if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+on('yaho:open', (url: string) => {
+  if (typeof url === 'string' && /^(https?:\/\/|mailto:)/i.test(url)) void shell.openExternal(url);
 });
 
 /**
@@ -236,7 +285,10 @@ ipcMain.on('yaho:open', (_e, url: string) => {
  */
 const oneShot = ['--create-shortcut', '--remove-shortcut', '--serve'].find((f) => process.argv.includes(f));
 if (oneShot === '--serve') {
-  const child = spawn(process.execPath, ['--no-warnings', coreMain, 'serve'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'inherit' });
+  const child = spawn(process.execPath, ['--no-warnings', coreMain, 'serve'], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    stdio: 'inherit',
+  });
   child.on('exit', (code) => app.exit(code ?? 0));
 } else if (oneShot) {
   void app.whenReady().then(() => {
@@ -262,7 +314,11 @@ app.whenReady().then(async () => {
   }
   tray = new Tray(appIcon(32));
   tray.on('click', () => show());
-  win = createWindow(core);
+  // Nothing the app does needs a camera, location or the like; only copying to the clipboard and full-screen video.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, done) =>
+    done(permission === 'clipboard-sanitized-write' || permission === 'fullscreen'),
+  );
+  win = createWindow();
   applyBadge();
   void followCore();
 });

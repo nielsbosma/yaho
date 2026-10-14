@@ -10,11 +10,24 @@ const env = Object.fromEntries(
     .filter((l) => /^[A-Z_]+=/.test(l))
     .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]),
 );
-const p: ProviderConfig = { id: 'openrouter', kind: 'openrouter', api_key: env.OPENROUTER_API_KEY, master_key: env.OPENROUTER_MANAGEMENT_KEY };
+const p: ProviderConfig = {
+  id: 'openrouter',
+  kind: 'openrouter',
+  api_key: env.OPENROUTER_API_KEY,
+  master_key: env.OPENROUTER_MANAGEMENT_KEY,
+};
 const s = { providers: [p] } as unknown as Settings;
-const access = await jobAccess(s, p, { models: [], remaining: 0.05, agent: 'live-check', job: `job_${Date.now()}`, harness: "claude-code" });
+const access = await jobAccess(s, p, {
+  models: [],
+  remaining: 0.05,
+  agent: 'live-check',
+  job: `job_${Date.now()}`,
+  harness: 'claude-code',
+});
 console.log(`budget: ${access.budget}, minted a job key: ${access.env.ANTHROPIC_AUTH_TOKEN !== p.api_key}`);
-const info = await fetch('https://openrouter.ai/api/v1/key', { headers: { Authorization: `Bearer ${access.env.ANTHROPIC_AUTH_TOKEN}` } }).then((r) => r.json());
+const info = await fetch('https://openrouter.ai/api/v1/key', {
+  headers: { Authorization: `Bearer ${access.env.ANTHROPIC_AUTH_TOKEN}` },
+}).then((r) => r.json());
 console.log(`job key limit: $${info.data?.limit}, remaining $${info.data?.limit_remaining}`);
 const call = await fetch('https://openrouter.ai/api/v1/chat/completions', {
   method: 'POST',

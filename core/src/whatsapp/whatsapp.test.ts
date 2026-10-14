@@ -27,7 +27,11 @@ describe('messagePayloads', () => {
   };
 
   it('uses buttons for a few short actions and a list for more', () => {
-    expect(ids({ ...base, type: 'question', read: false, expects_response: true, choices: ['Yes', 'No'] })).toEqual(['choice:m:0', 'choice:m:1', 'read:m']);
+    expect(ids({ ...base, type: 'question', read: false, expects_response: true, choices: ['Yes', 'No'] })).toEqual([
+      'choice:m:0',
+      'choice:m:1',
+      'read:m',
+    ]);
     expect(ids({ ...base, type: 'instruction', read: false, expects_response: true })).toEqual(['done:m', 'read:m']);
     expect(ids({ ...base, type: 'info', read: true, expects_response: false })).toEqual([]);
     const list = messagePayloads({ ...base, type: 'question', read: false, expects_response: true, choices: ['A', 'B', 'C', 'D'] });
@@ -65,7 +69,10 @@ const tick = () => new Promise((r) => setTimeout(r, 50));
 const OWNER = '46701234567';
 
 function delivery(messages: unknown[]) {
-  return { object: 'whatsapp_business_account', entry: [{ changes: [{ field: 'messages', value: { metadata: { phone_number_id: 'P1' }, messages } }] }] };
+  return {
+    object: 'whatsapp_business_account',
+    entry: [{ changes: [{ field: 'messages', value: { metadata: { phone_number_id: 'P1' }, messages } }] }],
+  };
 }
 
 beforeAll(async () => {
@@ -104,12 +111,28 @@ describe('WhatsAppBridge', () => {
     expect(JSON.stringify(wa.sent[0]!.payload)).toContain('Yaho is connected.');
 
     // A question is posted with its choices as buttons; tapping one answers it and reacts ✅.
-    const q = sendMessage(ctx, { from: 'agent:scout', to: 'human', type: 'question', title: 'Spend $5?', body: 'For **ads**', choices: ['Yes', 'No'] });
+    const q = sendMessage(ctx, {
+      from: 'agent:scout',
+      to: 'human',
+      type: 'question',
+      title: 'Spend $5?',
+      body: 'For **ads**',
+      choices: ['Yes', 'No'],
+    });
     await tick();
     const posted = wa.sent.at(-1)!;
     expect(posted.payload.interactive.body.text).toContain('*scout* via Yaho');
     expect(posted.payload.interactive.body.text).toContain('For *ads*');
-    await bridge.webhook(delivery([{ from: OWNER, id: 'in.2', type: 'interactive', interactive: { type: 'button_reply', button_reply: { id: `choice:${q.id}:0`, title: 'Yes' } } }]));
+    await bridge.webhook(
+      delivery([
+        {
+          from: OWNER,
+          id: 'in.2',
+          type: 'interactive',
+          interactive: { type: 'button_reply', button_reply: { id: `choice:${q.id}:0`, title: 'Yes' } },
+        },
+      ]),
+    );
     await tick();
     const answer = ctx.db.prepare("SELECT body FROM messages WHERE reply_to = ? AND from_addr = 'human'").get(q.id) as { body: string };
     expect(answer.body).toBe('Yes');
@@ -120,14 +143,20 @@ describe('WhatsAppBridge', () => {
     const ins = sendMessage(ctx, { from: 'agent:scout', to: 'human', type: 'instruction', title: 'Add the DNS record' });
     await tick();
     const insPost = wa.sent.at(-1)!.id;
-    await bridge.webhook(delivery([{ from: OWNER, id: 'in.3', type: 'text', text: { body: 'Done, took a minute' }, context: { id: insPost } }]));
-    const insAnswer = ctx.db.prepare("SELECT body FROM messages WHERE reply_to = ? AND from_addr = 'human'").get(ins.id) as { body: string };
+    await bridge.webhook(
+      delivery([{ from: OWNER, id: 'in.3', type: 'text', text: { body: 'Done, took a minute' }, context: { id: insPost } }]),
+    );
+    const insAnswer = ctx.db.prepare("SELECT body FROM messages WHERE reply_to = ? AND from_addr = 'human'").get(ins.id) as {
+      body: string;
+    };
     expect(insAnswer.body).toBe('Done, took a minute');
 
     // A ✅ reaction on an info message marks it read.
     const info = sendMessage(ctx, { from: 'agent:scout', to: 'human', type: 'info', title: 'Weekly report' });
     await tick();
-    await bridge.webhook(delivery([{ from: OWNER, id: 'in.4', type: 'reaction', reaction: { message_id: wa.sent.at(-1)!.id, emoji: '✅' } }]));
+    await bridge.webhook(
+      delivery([{ from: OWNER, id: 'in.4', type: 'reaction', reaction: { message_id: wa.sent.at(-1)!.id, emoji: '✅' } }]),
+    );
     expect(getMessage(ctx, info.id).read).toBe(true);
   });
 
@@ -158,7 +187,11 @@ describe('WhatsAppBridge', () => {
     expect((await fetch(`${ctx.apiUrl}/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=42`)).status).toBe(403);
 
     const body = JSON.stringify(delivery([]));
-    const bad = await fetch(`${ctx.apiUrl}/api/whatsapp/webhook`, { method: 'POST', body, headers: { 'X-Hub-Signature-256': 'sha256=00' } });
+    const bad = await fetch(`${ctx.apiUrl}/api/whatsapp/webhook`, {
+      method: 'POST',
+      body,
+      headers: { 'X-Hub-Signature-256': 'sha256=00' },
+    });
     expect(bad.status).toBe(401);
     const sig = `sha256=${createHmac('sha256', 'shh').update(body).digest('hex')}`;
     const good = await fetch(`${ctx.apiUrl}/api/whatsapp/webhook`, { method: 'POST', body, headers: { 'X-Hub-Signature-256': sig } });

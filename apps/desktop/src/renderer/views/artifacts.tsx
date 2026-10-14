@@ -6,7 +6,7 @@ import { Dialog } from '../components/ui/dialog.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { ago, Badge, Card, Empty, ErrorNote, PageHeader } from '../components/ui/display.tsx';
 import { Input, Select } from '../components/ui/form.tsx';
-import { api, url, useApi, type Agent, type Artifact, type Project } from '../lib/api.ts';
+import { api, downloadFile, openExternalFile, url, useApi, type Agent, type Artifact, type Project } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
 import { href } from '../lib/router.ts';
 
@@ -29,6 +29,7 @@ type FileType = (typeof TYPES)[number][0] | 'other';
 export const fileTypeOf = (p: string): FileType => TYPES.find(([, , test]) => test(p))?.[0] ?? 'other';
 
 const fileUrl = (a: Artifact) => url(`/api/artifacts/${a.id}/file`);
+const filePath = (a: Artifact) => `/api/artifacts/${a.id}/file`;
 
 function Preview({ a, large }: { a: Artifact; large?: boolean }) {
   const h = large ? 'h-[60vh]' : 'h-36';
@@ -118,6 +119,15 @@ export function ArtifactGrid({ artifacts, compact }: { artifacts: Artifact[]; co
 
 function ArtifactViewer({ a, onClose, onDelete }: { a: Artifact; onClose: () => void; onDelete: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const attempt = (fn: () => Promise<void> | void) => async () => {
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   const copyPath = async () => {
     const { path } = await api<{ path: string }>(`/api/artifacts/${a.id}/path`);
     await navigator.clipboard.writeText(path);
@@ -154,17 +164,16 @@ function ArtifactViewer({ a, onClose, onDelete }: { a: Artifact; onClose: () => 
             </div>
           </div>
           <div className="ml-auto flex gap-2">
-            <Button size="sm" onClick={() => platform.openExternal(fileUrl(a))}>
+            <Button size="sm" onClick={attempt(() => openExternalFile(filePath(a)))}>
               <ExternalLink /> Open
             </Button>
             <Button
               size="sm"
-              onClick={async () =>
-                platform.reveal(
-                  (await api<{ path: string }>(`/api/artifacts/${a.id}/path`)).path,
-                  url(`/api/artifacts/${a.id}/file`, { download: '1' }),
-                )
-              }
+              onClick={attempt(async () =>
+                platform.reveal((await api<{ path: string }>(`/api/artifacts/${a.id}/path`)).path, () =>
+                  downloadFile(filePath(a), {}, a.file_path.split(/[\\/]/).pop() ?? 'artifact'),
+                ),
+              )}
             >
               <FolderOpen /> {platform.kind === 'desktop' ? 'Show in Folder' : 'Download'}
             </Button>
@@ -179,6 +188,11 @@ function ArtifactViewer({ a, onClose, onDelete }: { a: Artifact; onClose: () => 
             </Button>
           </div>
         </div>
+        {error && (
+          <div className="px-4 pt-3">
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        )}
         <Preview a={a} large />
       </Card>
     </div>

@@ -194,4 +194,17 @@ export const migrations: string[] = [
    CREATE INDEX command_approvals_session ON command_approvals(session, command);`,
   // 14: the browser for agents (yaho browser); agents.browser opts an agent in.
   `ALTER TABLE agents ADD COLUMN browser INTEGER NOT NULL DEFAULT 0;`,
+  // 15: each job's row in job_search, so replacing or deleting it goes by rowid instead of scanning the index
+  // (job is UNINDEXED there).
+  `CREATE TABLE job_search_rows (job TEXT PRIMARY KEY, row INTEGER NOT NULL);
+   INSERT OR REPLACE INTO job_search_rows (job, row) SELECT job, rowid FROM job_search;
+   DROP TRIGGER jobs_search_delete;
+   CREATE TRIGGER jobs_search_delete AFTER DELETE ON jobs BEGIN
+     DELETE FROM job_search WHERE rowid = (SELECT row FROM job_search_rows WHERE job = old.id);
+     DELETE FROM job_search_rows WHERE job = old.id;
+   END;`,
+  // 16: indexes for a message's thread, a job's messages and a session's jobs.
+  `CREATE INDEX messages_reply_to ON messages(reply_to);
+   CREATE INDEX messages_job ON messages(job);
+   CREATE INDEX jobs_session ON jobs(session_id, created);`,
 ];

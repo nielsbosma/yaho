@@ -20,7 +20,11 @@ const settings = args.includes('--settings') ? JSON.parse(args[args.indexOf('--s
 const bashHooks = (settings.hooks?.PreToolUse ?? []).filter((h) => new RegExp(`^(${h.matcher})$`).test('Bash')).flatMap((h) => h.hooks);
 const refused = (command) => {
   for (const h of bashHooks) {
-    const r = spawnSync(h.command, { shell: true, encoding: 'utf8', input: JSON.stringify({ cwd: process.cwd(), tool_name: 'Bash', tool_input: { command } }) });
+    const r = spawnSync(h.command, {
+      shell: true,
+      encoding: 'utf8',
+      input: JSON.stringify({ cwd: process.cwd(), tool_name: 'Bash', tool_input: { command } }),
+    });
     if (r.status === 2) return r.stderr;
   }
   return null;

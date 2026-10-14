@@ -11,24 +11,47 @@ describe('Anthropic Messages to Chat Completions', () => {
       tools: [{ name: 'Write', description: 'Write a file', input_schema: { type: 'object' } }],
       messages: [
         { role: 'user', content: 'Write hello.txt' },
-        { role: 'assistant', content: [{ type: 'text', text: 'Writing.' }, { type: 'tool_use', id: 'toolu_1', name: 'Write', input: { file_path: 'hello.txt' } }] },
-        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: [{ type: 'text', text: 'ok' }] }, { type: 'text', text: 'Thanks' }] },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'Writing.' },
+            { type: 'tool_use', id: 'toolu_1', name: 'Write', input: { file_path: 'hello.txt' } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_1', content: [{ type: 'text', text: 'ok' }] },
+            { type: 'text', text: 'Thanks' },
+          ],
+        },
       ],
     });
     expect(out.messages).toEqual([
       { role: 'system', content: 'Be brief.' },
       { role: 'user', content: 'Write hello.txt' },
-      { role: 'assistant', content: 'Writing.', tool_calls: [{ id: 'toolu_1', type: 'function', function: { name: 'Write', arguments: '{"file_path":"hello.txt"}' } }] },
+      {
+        role: 'assistant',
+        content: 'Writing.',
+        tool_calls: [{ id: 'toolu_1', type: 'function', function: { name: 'Write', arguments: '{"file_path":"hello.txt"}' } }],
+      },
       { role: 'tool', tool_call_id: 'toolu_1', content: 'ok' },
       { role: 'user', content: 'Thanks' },
     ]);
-    expect(out.tools).toEqual([{ type: 'function', function: { name: 'Write', description: 'Write a file', parameters: { type: 'object' } } }]);
+    expect(out.tools).toEqual([
+      { type: 'function', function: { name: 'Write', description: 'Write a file', parameters: { type: 'object' } } },
+    ]);
     expect(out.stream_options).toEqual({ include_usage: true });
   });
 
   it('turns a reply back into content blocks, with tool ids Anthropic accepts', () => {
     const back = fromChatCompletion('m', {
-      choices: [{ message: { content: 'Done', tool_calls: [{ id: 'Write:0', function: { name: 'Write', arguments: '{"a":1}' } }] }, finish_reason: 'tool_calls' }],
+      choices: [
+        {
+          message: { content: 'Done', tool_calls: [{ id: 'Write:0', function: { name: 'Write', arguments: '{"a":1}' } }] },
+          finish_reason: 'tool_calls',
+        },
+      ],
       usage: { prompt_tokens: 10, completion_tokens: 3 },
     });
     expect(back.content).toEqual([

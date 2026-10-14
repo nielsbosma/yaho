@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type { Settings } from '../config.ts';
-import { asAgent } from '../harness/asAgent.ts';
+import { agentEnv, asAgent } from '../harness/asAgent.ts';
 import { killTree, resolveCommand } from '../harness/claudeCode.ts';
 import { Cdp } from './cdp.ts';
 
@@ -18,6 +18,8 @@ export interface Launched {
   liveUrl?: string;
   /** Sign-ins are kept by the profile folder (local) or by saving cookies (cloud). */
   keepsProfile: boolean;
+  /** A browser shared with others (a CDP endpoint): the job's own browser context in it, with its own tabs and cookies. */
+  context?: string;
   close(): Promise<void>;
 }
 
@@ -80,6 +82,7 @@ export async function launchLocal(s: Settings, profile: string, opts: { download
       'about:blank',
     ];
     const child = spawn(...asAgent(exe, args), {
+      env: agentEnv(),
       stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'],
       windowsHide: true,
       detached: process.platform !== 'win32',
@@ -187,10 +190,21 @@ export async function connectCloud(s: Settings): Promise<Launched> {
     url = String(v.webSocketDebuggerUrl);
   }
   const cdp = await Cdp.overWebSocket(url);
+  let context: string;
+  try {
+    ({ browserContextId: context } = await cdp.send<{ browserContextId: string }>('Target.createBrowserContext', {
+      disposeOnDetach: true,
+    }));
+  } catch (e) {
+    cdp.close();
+    throw new Error(`the browser at the CDP endpoint cannot give the job its own context: ${(e as Error).message}`);
+  }
   return {
     cdp,
+    context,
     keepsProfile: false,
     async close() {
+      await stillAlive(cdp.send('Target.disposeBrowserContext', { browserContextId: context }), 3000).catch(() => undefined);
       cdp.close();
     },
   };

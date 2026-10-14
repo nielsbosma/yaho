@@ -30,6 +30,11 @@ export function InboxView({ route }: ViewProps) {
   );
   const [compose, setCompose] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const attempt = (p: Promise<unknown>) => {
+    setError(null);
+    p.catch((e) => setError((e as Error).message));
+  };
   const selected = route[1];
   const menu = useContextMenu();
   const [listWidth, setListWidth] = usePanelWidth('inbox-list', 380, 260, 720);
@@ -49,7 +54,7 @@ export function InboxView({ route }: ViewProps) {
             title="More"
             onClick={(e) =>
               menu.open(e, [
-                { label: 'Mark All Read', icon: <MailOpen />, onSelect: () => void api('/api/inbox/read-all', { method: 'POST' }) },
+                { label: 'Mark All Read', icon: <MailOpen />, onSelect: () => attempt(api('/api/inbox/read-all', { method: 'POST' })) },
                 { label: 'Delete All', icon: <Trash2 />, danger: true, onSelect: () => setDeletingAll(true) },
               ])
             }
@@ -85,6 +90,11 @@ export function InboxView({ route }: ViewProps) {
             </button>
           ))}
         </div>
+        {error && (
+          <div className="px-5 pb-2">
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        )}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {inbox.data?.map((m) => (
             <a
@@ -95,16 +105,18 @@ export function InboxView({ route }: ViewProps) {
                   {
                     label: m.read ? 'Mark Unread' : 'Mark Read',
                     icon: m.read ? <MailOpen /> : <Mail />,
-                    onSelect: () => void api(`/api/messages/${m.id}/read`, { body: { read: !m.read } }),
+                    onSelect: () => attempt(api(`/api/messages/${m.id}/read`, { body: { read: !m.read } })),
                   },
                   {
                     label: 'Delete',
                     icon: <Trash2 />,
                     danger: true,
-                    onSelect: async () => {
-                      await api(`/api/messages/${m.id}`, { method: 'DELETE' });
-                      if (selected === m.id) go('inbox');
-                    },
+                    onSelect: () =>
+                      attempt(
+                        api(`/api/messages/${m.id}`, { method: 'DELETE' }).then(() => {
+                          if (selected === m.id) go('inbox');
+                        }),
+                      ),
                   },
                 ])
               }
@@ -134,9 +146,7 @@ export function InboxView({ route }: ViewProps) {
       </div>
       {/* The space above the message, beside the window controls, moves the window like a title bar. */}
       <div aria-hidden className="titlebar-strip app-drag absolute top-0 right-0 z-10" style={{ left: listWidth }} />
-      <div className="titlebar-below min-w-0 flex-1 overflow-y-auto">
-        {selected && <Thread id={selected} />}
-      </div>
+      <div className="titlebar-below min-w-0 flex-1 overflow-y-auto">{selected && <Thread id={selected} />}</div>
       <Compose open={compose} onClose={() => setCompose(false)} />
       <Dialog
         open={deletingAll}
@@ -159,8 +169,8 @@ export function InboxView({ route }: ViewProps) {
         }
       >
         <p className="text-sm text-muted">
-          Every message your agents sent you is deleted{inbox.data?.length ? ` (${inbox.data.length})` : ''}, here and in Slack. Messages you sent
-          to agents stay in their inboxes.
+          Every message your agents sent you is deleted{inbox.data?.length ? ` (${inbox.data.length})` : ''}, here and in Slack. Messages
+          you sent to agents stay in their inboxes.
         </p>
       </Dialog>
       {menu.element}

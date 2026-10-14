@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { isAbsolute, join, normalize, sep } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import type { Ctx } from '../context.ts';
+import { resolveUnder, UnsafePathError } from '../fsSafe.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
 import { connectCloud, findBrowser, launchLocal, providerOf } from './launch.ts';
@@ -165,6 +166,7 @@ export class BrowserManager {
     try {
       return await BrowserSession.start(launched, {
         allowed: (url) => siteAllowed(url, this.ctx.settings.browser?.allowed_sites),
+        root: this.ctx.paths.agent(agent),
         downloads,
         cookieFile: join(profile, 'cookies.json'),
       });
@@ -177,6 +179,14 @@ export class BrowserManager {
   private async session(agent: string, job: string): Promise<BrowserSession> {
     let e = this.jobs.get(job);
     if (e?.session && !e.session.closed && !e.session.cdp.closed) return e.session;
+    // A local browser keeps one profile per agent, which one Chromium at a time can open.
+    if (!e?.starting && providerOf(this.ctx.settings) === 'local')
+      for (const [other, x] of this.jobs)
+        if (other !== job && x.agent === agent && (x.starting || (x.session && !x.session.closed)))
+          throw new HttpError(
+            409,
+            `another job of ${agent} (${other}) has the browser open, and a local browser opens the agent's profile one job at a time. Wait for that job to end, or go on without the browser.`,
+          );
     if (!e) this.jobs.set(job, (e = { queue: Promise.resolve(), agent }));
     const entry = e;
     entry.starting ??= this.open(agent, job).finally(() => (entry.starting = undefined));
@@ -189,10 +199,14 @@ export class BrowserManager {
 
   /** A file the agent named, which must be in its workspace. */
   private file(agent: string, cwd: string | undefined, path: string | undefined, fallback: string): string {
-    const root = normalize(this.ctx.paths.agent(agent));
-    const full = normalize(isAbsolute(path ?? '') ? path! : join(cwd && isAbsolute(cwd) ? cwd : root, path || fallback));
-    if (full !== root && !full.startsWith(root + sep)) throw new HttpError(400, `save files in your workspace (${root})`);
-    return full;
+    const root = this.ctx.paths.agent(agent);
+    const want = isAbsolute(path ?? '') ? path! : join(cwd && isAbsolute(cwd) ? cwd : root, path || fallback);
+    try {
+      return resolveUnder(root, want);
+    } catch (e) {
+      if (e instanceof UnsafePathError) throw new HttpError(400, `save files in your workspace (${root}), not through a link out of it`);
+      throw e;
+    }
   }
 
   /** Run one yaho browser command for a job; commands of the same job wait for each other. */

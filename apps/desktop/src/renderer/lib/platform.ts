@@ -10,7 +10,8 @@ export interface Platform {
   setBadge(count: number): void;
   notify(title: string, body: string, onClick?: () => void): void;
   /** Show a file in Explorer/Finder. Web: download it instead. */
-  reveal(path: string, downloadUrl: string): void;
+  reveal(path: string, download: () => Promise<void>): void | Promise<void>;
+  /** Web and mail links only; anything else (file:, javascript:, a custom scheme) is ignored. */
   openExternal(url: string): void;
   /** Desktop: match native chrome (title bar, menus) to the chosen theme. */
   setTheme?(theme: 'system' | 'light' | 'dark'): void;
@@ -45,8 +46,16 @@ declare global {
   }
 }
 
+const linkOk = (url: string) => /^(https?:\/\/|mailto:)/i.test(url);
+
 function webToken(): string {
   const fromUrl = new URLSearchParams(location.search).get('token');
+  // Out of the address bar and the history once read.
+  if (fromUrl) {
+    const u = new URL(location.href);
+    u.searchParams.delete('token');
+    history.replaceState(history.state, '', u);
+  }
   try {
     if (fromUrl) localStorage.setItem('yaho-token', fromUrl);
     return fromUrl ?? localStorage.getItem('yaho-token') ?? '';
@@ -67,7 +76,9 @@ function makePlatform(): Platform {
       setBadge: (n) => d.setBadge(n),
       notify: (t, b) => d.notify(t, b),
       reveal: (p) => d.reveal(p),
-      openExternal: (u) => d.openExternal(u),
+      openExternal: (u) => {
+        if (linkOk(u)) d.openExternal(u);
+      },
       setTheme: (t) => d.setTheme(t),
       setTitleBar: (c, s) => d.setTitleBar?.(c, s),
       os: d.os,
@@ -96,13 +107,10 @@ function makePlatform(): Platform {
       if (Notification.permission === 'granted') show();
       else if (Notification.permission !== 'denied') void Notification.requestPermission().then((p) => p === 'granted' && show());
     },
-    reveal: (_path, url) => {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = '';
-      a.click();
+    reveal: (_path, download) => download(),
+    openExternal: (url) => {
+      if (linkOk(url)) window.open(url, '_blank', 'noopener');
     },
-    openExternal: (url) => window.open(url, '_blank', 'noopener'),
   };
 }
 

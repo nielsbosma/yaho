@@ -121,7 +121,11 @@ describe("Yaho's own keys", () => {
     const { loadSecrets, storeSecrets, publicSettings, applySettingsUpdate, SETTINGS_PROJECT } = await import('./settingsSecrets.ts');
     // An old file: a litellm block with its key, and Slack tokens. Dopbase already holds LITELLM_MASTER_KEY, the name
     // the first secrets release used.
-    const old = { ...ctx.settings, litellm: { url: 'http://llm', api_key: 'sk-file' }, slack: { bot_token: 'xoxb-1', app_token: 'xapp-1', owner: 'U1' } } as Record<string, unknown>;
+    const old = {
+      ...ctx.settings,
+      litellm: { url: 'http://llm', api_key: 'sk-file' },
+      slack: { bot_token: 'xoxb-1', app_token: 'xapp-1', owner: 'U1' },
+    } as Record<string, unknown>;
     delete old.providers;
     writeFileSync(ctx.paths.settings, YAML.stringify(old));
     await new Dopbase(ctx).setProjectValue(SETTINGS_PROJECT, 'LITELLM_MASTER_KEY', 'mk-old');
@@ -160,7 +164,13 @@ describe("Yaho's own keys", () => {
 
   it('finds the provider in a model name only when it is a configured provider', async () => {
     const { resolveModel } = await import('../providers.ts');
-    const s = { ...ctx.settings, providers: [{ id: 'litellm', kind: 'litellm', url: 'u' }, { id: 'berget', kind: 'berget' }] };
+    const s = {
+      ...ctx.settings,
+      providers: [
+        { id: 'litellm', kind: 'litellm', url: 'u' },
+        { id: 'berget', kind: 'berget' },
+      ],
+    };
     expect(resolveModel(s, 'claude-sonnet').provider.id).toBe('litellm');
     expect(resolveModel(s, 'berget/llama-4')).toMatchObject({ provider: { id: 'berget' }, model: 'llama-4' });
     // A LiteLLM name with a slash stays whole.

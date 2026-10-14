@@ -28,6 +28,7 @@ export interface Ctx {
     pump(): void;
     stop(jobId: string, status: string, reason?: string, extra?: { summary?: string; resumeAt?: string; grace?: number }): void;
     continueJob(jobId: string): void;
+    detach(jobId: string): void;
     sleep(jobId: string, ms: number): string;
   };
 }

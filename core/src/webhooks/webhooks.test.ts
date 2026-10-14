@@ -7,7 +7,7 @@ import type { Ctx } from '../context.ts';
 import { serve } from '../serve.ts';
 import { contextPrompt } from '../jobs/prompt.ts';
 import { getAgent, getMessage, saveAgent } from '../store.ts';
-import { listWebhooks, rotateUrl, setSecret, stripeSignature, verifySignature, type WebhookInfo } from './hooks.ts';
+import { deliveryId, listWebhooks, rotateUrl, setSecret, stripeSignature, verifySignature, type WebhookInfo } from './hooks.ts';
 
 const body = Buffer.from('{"action":"opened","issue":{"number":7}}');
 
@@ -152,5 +152,42 @@ describe('webhook triggers', () => {
     expect(setSecret(ctx, w.id, 'whsec_from_the_sender_123').secret).toBe('whsec_from_the_sender_123');
     expect(setSecret(ctx, w.id).secret).toMatch(/^[0-9a-f]{64}$/);
     expect(() => setSecret(ctx, w.id, 'short')).toThrow(/16 characters/);
+  });
+
+  it('drop a replayed signed delivery, whatever id headers it carries', async () => {
+    saveAgent(ctx, {
+      name: 'triage',
+      triggers: [
+        { webhook: 'signed', verify: 'yaho', limit: 100 },
+        { webhook: 'gh', verify: 'github' },
+      ],
+    });
+    const w = hook('signed');
+    const sign = (t: number, data = body) => `t=${t},v1=${stripeSignature(w.secret, t, data)}`;
+    const t = Math.floor(Date.now() / 1000);
+    expect((await post(w, body, { 'x-yaho-signature': sign(t), 'x-yaho-delivery': 'a' })).status).toBe(202);
+    const replay = await post(w, body, { 'x-yaho-signature': `v1=00,${sign(t)}`, 'x-yaho-delivery': 'b', 'idempotency-key': 'c' });
+    expect(await replay.json()).toMatchObject({ duplicate: true });
+    expect((await post(w, body, { 'x-yaho-signature': sign(t + 1) })).status).toBe(202);
+    expect(started).toHaveLength(2);
+
+    const gh = hook('gh');
+    const sig = `sha256=${createHmac('sha256', gh.secret).update(body).digest('hex')}`;
+    expect((await post(gh, body, { 'x-hub-signature-256': sig, 'x-github-delivery': 'one' })).status).toBe(202);
+    expect(await (await post(gh, body, { 'x-hub-signature-256': sig, 'x-github-delivery': 'two' })).json()).toMatchObject({
+      duplicate: true,
+    });
+
+    const stripeHeaders = (secret: string, data: Buffer) => ({ 'stripe-signature': `t=${t},v1=${stripeSignature(secret, t, data)}` });
+    expect(deliveryId('stripe', 's', stripeHeaders('s', Buffer.from('{"id":"evt_1"}')), Buffer.from('{"id":"evt_1"}'))).toBe('evt:evt_1');
+    expect(deliveryId('none', '', { 'idempotency-key': 'k' }, body)).toBe('k');
+  });
+
+  it('stop answering a flood of rejected deliveries', async () => {
+    const w = hook('signed');
+    for (let i = 0; i < 20; i++) expect((await post(w, body, { 'x-yaho-signature': 't=1,v1=00' })).status).toBe(401);
+    const before = hook('signed').last_rejected;
+    expect((await post(w, body, { 'x-yaho-signature': 't=1,v1=00' })).status).toBe(429);
+    expect(hook('signed').last_rejected).toBe(before);
   });
 });

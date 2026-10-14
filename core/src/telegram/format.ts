@@ -1,3 +1,4 @@
+import { splitText } from '../mirror/util.ts';
 import type { Message } from '../store.ts';
 
 /** Telegram's limit on one message's text (after entities are parsed; the HTML tags do not count, so stay well under). */
@@ -66,19 +67,17 @@ export function toTelegram(md: string): string {
     .trim();
 }
 
+/** A hard cut moves back to before a tag or an entity (&amp;) it would split. */
+function safeCut(text: string, at: number): number {
+  const amp = text.lastIndexOf('&', at - 1);
+  if (amp >= 0 && amp > at - 8 && !text.slice(amp, at).includes(';')) at = amp;
+  const open = text.lastIndexOf('<', at - 1);
+  return open > text.lastIndexOf('>', at - 1) && open > 0 ? open : at;
+}
+
 /** Cut text into message-sized pieces at paragraph or line breaks, never inside a tag's pair (pre blocks are kept whole when they fit). */
 export function chunks(text: string, max = TEXT_MAX): string[] {
-  const out: string[] = [];
-  let rest = text;
-  while (rest.length > max) {
-    let at = rest.lastIndexOf('\n\n', max);
-    if (at < max / 2) at = rest.lastIndexOf('\n', max);
-    if (at < max / 2) at = max;
-    out.push(rest.slice(0, at));
-    rest = rest.slice(at).replace(/^\n+/, '');
-  }
-  if (rest) out.push(rest);
-  return out.map(balance);
+  return splitText(text, max, safeCut).map(balance);
 }
 
 /** Close tags a cut left open, and drop closing tags whose opening went to the previous piece. */
@@ -116,7 +115,13 @@ export function messageText(m: Message, opts: { answer?: string } = {}): string 
     m.body ? toTelegram(m.body) : '',
   ];
   for (const s of m.steps ?? []) {
-    if ('open' in s && s.open) parts.push(`Open: <a href="${attr(s.open)}">${escapeHtml(s.open)}</a>`);
+    // Telegram refuses a whole message over a link it does not support, so only http(s) becomes one.
+    if ('open' in s && s.open)
+      parts.push(
+        /^https?:\/\//i.test(s.open)
+          ? `Open: <a href="${attr(s.open)}">${escapeHtml(s.open)}</a>`
+          : `Open: <code>${escapeHtml(s.open)}</code>`,
+      );
     if ('copy' in s && s.copy) parts.push(`<pre>${escapeHtml(s.copy)}</pre>`);
   }
   if (m.artifacts?.length) parts.push(`<i>${m.artifacts.length} artifact${m.artifacts.length === 1 ? '' : 's'} in Yaho</i>`);

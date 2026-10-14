@@ -22,7 +22,10 @@ process.stdin.on('data', (d) => (input += d)).on('end', () => {
     return refuse('Command Rules: could not read the command.');
   }
   let c = (j.tool_input || {}).command;
-  if (Array.isArray(c)) c = c.length >= 3 && /^-[a-z]*c$/.test(c[1]) ? c[2] : c.join(' ');
+  // Codex gives argv: [shell, -lc, script] is the script; anything else is quoted back into one line.
+  const q = (a) => (/^[\\w@%+=:,./-]+$/.test(a) ? a : "'" + String(a).replace(/'/g, "'\\\\''") + "'");
+  const shell = (a) => /(^|[\\\\/])(ba|da|k|z|mk)?sh(\\.exe)?$/i.test(String(a));
+  if (Array.isArray(c)) c = c.length === 3 && shell(c[0]) && /^-[a-z]*c$/.test(c[1]) ? c[2] : c.map(q).join(' ');
   if (typeof c !== 'string' || !c.trim()) return;
   const body = JSON.stringify({ command: c });
   const socket = process.env.YAHO_API_SOCKET;
@@ -53,8 +56,11 @@ process.stdin.on('data', (d) => (input += d)).on('end', () => {
 `;
 }
 
+/** A path as one shell word: single quotes on POSIX, where $ and ` inside double quotes would expand. */
+const shellWord = (p: string) => (process.platform === 'win32' ? `"${p}"` : `'${p.replace(/'/g, `'\\''`)}'`);
+
 /** The shell command that runs a hook script from the bin folder, with the core's own Node (or Electron as Node). */
 export function hookCommand(bin: string, script: string): string {
   const electron = process.versions.electron ? 'ELECTRON_RUN_AS_NODE=1 ' : '';
-  return `${electron}"${process.execPath}" "${join(bin, script)}"`;
+  return `${electron}${shellWord(process.execPath)} ${shellWord(join(bin, script))}`;
 }

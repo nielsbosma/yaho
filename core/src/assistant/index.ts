@@ -3,7 +3,7 @@ import { resolveModel } from '../providers.ts';
 import { chatRound } from '../providerApi.ts';
 import { join } from 'node:path';
 import YAML from 'yaml';
-import { saveSettings, type Settings } from '../config.ts';
+import { saveSettings, type Guardrails, type Settings } from '../config.ts';
 import { publicSettings } from '../secrets/settingsSecrets.ts';
 import type { Ctx } from '../context.ts';
 import { HttpError } from '../store.ts';
@@ -42,7 +42,7 @@ interface Tool {
 const str = (d: string) => ({ type: 'string', description: d });
 const obj = (props: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties: props, required });
 
-function tools(ctx: Ctx): Record<string, Tool> {
+export function tools(ctx: Ctx): Record<string, Tool> {
   const runner = () => {
     if (!ctx.runner) throw new HttpError(503, 'job runner not started');
     return ctx.runner;
@@ -66,10 +66,21 @@ function tools(ctx: Ctx): Record<string, Tool> {
     },
     save_agent: {
       description:
-        'Create or update an agent from a YAML definition (fields: name, enabled, briefing, harness, models, budget_usd, max_parallel, triggers [{cron: "..."} | {inbox: true}], projects, resources, email (true: its own email address through Resend), sms (true: text people from the shared Twilio number), browser (true: a real browser in each job, yaho browser), guardrails {rate_per_hour, cooldown_seconds, hop_limit, wait_for_inbox: skip scheduled runs while the human has unread messages from the agent, command_rules: [{pattern, action: block|ask|allow, note}] checked with the global Command Rules when those are on}). Omitted fields keep their current value. To rename, pass rename_from.',
+        'Create or update an agent from a YAML definition (fields: name, enabled, briefing, harness, models, budget_usd, max_parallel, triggers [{cron: "..."} | {inbox: true}], projects, resources, email (true: its own email address through Resend), sms (true: text people from the shared Twilio number), browser (true: a real browser in each job, yaho browser), guardrails {rate_per_hour, cooldown_seconds, hop_limit, wait_for_inbox: skip scheduled runs while the human has unread messages from the agent, command_rules: [{pattern, action: block|ask|allow, note}] checked with the global Command Rules when those are on}). Omitted fields keep their current value. To rename, pass rename_from. Raising a budget or loosening guardrails is left to the human, on the agent page.',
       parameters: obj({ yaml: str('the agent definition in YAML'), rename_from: str('current name, when renaming') }, ['yaml']),
       run: (a, out) => {
         const def = yamlDef<s.Agent>(a);
+        const from = a.rename_from ? String(a.rename_from) : def.name;
+        const prev = from && s.agentExists(ctx, from) ? s.getAgent(ctx, from) : null;
+        const d = ctx.settings.defaults;
+        if (def.budget_usd !== undefined && typeof def.budget_usd !== 'number') throw new HttpError(400, 'budget_usd is a number');
+        if (typeof def.budget_usd === 'number' && def.budget_usd > (prev?.budget_usd ?? d.budget_usd))
+          throw new HttpError(403, `${INUI} raise a budget: the human does that on the agent's page`);
+        // Guardrail fields left out keep their value here too, rather than dropping the limit.
+        const base = prev?.guardrails ?? d.guardrails;
+        if (def.guardrails) def.guardrails = { ...base, ...def.guardrails };
+        const looser = def.guardrails && loosens(base, def.guardrails);
+        if (looser) throw new HttpError(403, `${INUI} loosen guardrails (${looser}): the human does that on the agent's page`);
         const agent = s.saveAgent(ctx, def, { rename: a.rename_from ? String(a.rename_from) : undefined });
         out.navigate = ['agents', agent.name];
         return agent;
@@ -127,7 +138,7 @@ function tools(ctx: Ctx): Record<string, Tool> {
       description:
         'Read a file on this computer by its full path. PDFs and Office files (docx, xlsx, pptx) are extracted to text; text formats (md, txt, csv, json, yaml, html, code...) are read as they are; images (png, jpg, gif, webp, such as screenshots) are shown to you to look at. Use it when the human points at a file, e.g. to write a briefing from a document or to see a screenshot.',
       parameters: obj({ path: str('full path, e.g. D:\\Docs\\plan.pdf') }, ['path']),
-      run: (a) => readLocalFile(String(a.path)),
+      run: (a) => readLocalFile(ctx, String(a.path)),
     },
     add_project_file: {
       description: "Copy a file on this computer into a project's context files, where its agents can read it.",
@@ -138,9 +149,10 @@ function tools(ctx: Ctx): Record<string, Tool> {
       run: (a) => addProjectFile(ctx, String(a.project), String(a.path), a.name ? String(a.name) : undefined),
     },
     list_folder: {
-      description: 'List a folder on this computer by its full path (names, sizes, subfolders; one level). Use it to see what a folder holds before reading or copying.',
+      description:
+        'List a folder on this computer by its full path (names, sizes, subfolders; one level). Use it to see what a folder holds before reading or copying.',
       parameters: obj({ path: str('full path, e.g. D:\\Workspaces\\Jobs') }, ['path']),
-      run: (a) => listLocalFolder(String(a.path)),
+      run: (a) => listLocalFolder(ctx, String(a.path)),
     },
     copy_to_agent_workspace: {
       description:
@@ -149,7 +161,9 @@ function tools(ctx: Ctx): Record<string, Tool> {
         {
           agent: str('agent name'),
           path: str('full path of the file or folder'),
-          dest: str('where in the workspace, relative to its root: e.g. scripts/ or agent.db (default: same name at the root; a folder copies its contents into the root)'),
+          dest: str(
+            'where in the workspace, relative to its root: e.g. scripts/ or agent.db (default: same name at the root; a folder copies its contents into the root)',
+          ),
         },
         ['agent', 'path'],
       ),
@@ -158,11 +172,14 @@ function tools(ctx: Ctx): Record<string, Tool> {
     write_agent_file: {
       description:
         "Create or overwrite a text file in an agent's workspace, e.g. a script adapted to Yaho (keys from environment variables, the database at agent.db) or a memory/ note. Read the original first and write the whole file.",
-      parameters: obj({ agent: str('agent name'), path: str('path relative to the workspace root, e.g. scripts/run.py'), content: str('the full file content') }, [
-        'agent',
-        'path',
-        'content',
-      ]),
+      parameters: obj(
+        {
+          agent: str('agent name'),
+          path: str('path relative to the workspace root, e.g. scripts/run.py'),
+          content: str('the full file content'),
+        },
+        ['agent', 'path', 'content'],
+      ),
       run: (a) => writeAgentFile(ctx, String(a.agent), String(a.path), String(a.content)),
     },
     save_project: {
@@ -259,7 +276,10 @@ function tools(ctx: Ctx): Record<string, Tool> {
       description:
         'Put agents in a sidebar folder (creating the folder if it does not exist), or take them out with folder: null. Folders are not part of an agent definition; this is the only way to change them.',
       parameters: obj(
-        { agents: { type: 'array', items: { type: 'string' } }, folder: { type: ['string', 'null'], description: 'folder name, or null for no folder' } },
+        {
+          agents: { type: 'array', items: { type: 'string' } },
+          folder: { type: ['string', 'null'], description: 'folder name, or null for no folder' },
+        },
         ['agents'],
       ),
       run: (a) => {
@@ -288,7 +308,8 @@ function tools(ctx: Ctx): Record<string, Tool> {
         const f = String(a.folder);
         let out: string[];
         if (a.delete === true) {
-          if (a.delete_agents === true && a.confirmed !== true) throw new HttpError(400, 'ask the human to confirm deleting the agents first');
+          if (a.delete_agents === true && a.confirmed !== true)
+            throw new HttpError(400, 'ask the human to confirm deleting the agents first');
           out = s.deleteFolder(ctx, f, { agents: a.delete_agents === true });
         } else if (a.rename_to) out = s.renameFolder(ctx, f, a.rename_to);
         else throw new HttpError(400, 'pass rename_to or delete: true');
@@ -348,15 +369,18 @@ function tools(ctx: Ctx): Record<string, Tool> {
         { to: str('agent name'), title: str('short title'), body: str('the message'), reply_to: str('message id being answered') },
         ['to', 'body'],
       ),
-      run: (a) =>
-        s.sendMessage(ctx, {
+      run: (a) => {
+        if (a.reply_to && ctx.db.prepare('SELECT 1 FROM command_approvals WHERE message = ?').get(String(a.reply_to)))
+          throw new HttpError(403, `${INUI} answer a request to run a command: the human answers it in the inbox`);
+        return s.sendMessage(ctx, {
           from: 'human',
           to: `agent:${String(a.to).replace(/^agent:/, '')}`,
           type: a.reply_to ? 'reply' : 'info',
           title: a.title ? String(a.title) : '',
           body: String(a.body),
           reply_to: a.reply_to ? String(a.reply_to) : null,
-        }),
+        });
+      },
     },
     list_examples: {
       description: 'List the example agents that can be installed.',
@@ -391,6 +415,13 @@ function tools(ctx: Ctx): Record<string, Tool> {
           const ch = (patch.updates as { channel?: unknown }).channel;
           if (ch !== undefined && ch !== 'latest' && ch !== 'next') throw new HttpError(400, 'updates.channel is latest or next');
         }
+        const d = patch.defaults as { budget_usd?: unknown; guardrails?: Guardrails } | undefined;
+        if (typeof patch.global_spend_cap_usd === 'number' && patch.global_spend_cap_usd > ctx.settings.global_spend_cap_usd)
+          throw new HttpError(403, `${INUI} raise the global spend cap: the human does that in Settings`);
+        if (typeof d?.budget_usd === 'number' && d.budget_usd > ctx.settings.defaults.budget_usd)
+          throw new HttpError(403, `${INUI} raise the default budget: the human does that in Settings`);
+        const looser = d?.guardrails && loosens(ctx.settings.defaults.guardrails, { ...ctx.settings.defaults.guardrails, ...d.guardrails });
+        if (looser) throw new HttpError(403, `${INUI} loosen the default guardrails (${looser}): the human does that in Settings`);
         deepMerge(ctx.settings as unknown as Record<string, unknown>, patch);
         saveSettings(ctx.settings);
         ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
@@ -415,6 +446,26 @@ async function api(ctx: Ctx, method: string, path: string): Promise<unknown> {
   const data = await res.json();
   if (!res.ok) throw new HttpError(res.status, (data as { error?: string }).error ?? String(res.status));
   return data;
+}
+
+// What the chat reads (agents' messages, files, job output) may try to steer it: spending more, running more and
+// approving commands take the human's own click.
+const INUI = 'the chat cannot';
+
+/** What a change of guardrails loosens, if anything. */
+export function loosens(prev: Guardrails, next: Guardrails): string | null {
+  const max = (v?: number) => v ?? Infinity;
+  const out: string[] = [];
+  if (max(next.rate_per_hour) > max(prev.rate_per_hour)) out.push('rate_per_hour');
+  if (max(next.hop_limit) > max(prev.hop_limit)) out.push('hop_limit');
+  if ((next.cooldown_seconds ?? 0) < (prev.cooldown_seconds ?? 0)) out.push('cooldown_seconds');
+  if (prev.wait_for_inbox && !next.wait_for_inbox) out.push('wait_for_inbox');
+  const key = (r: { pattern: string; action: string }) => `${r.action}\u0000${r.pattern}`;
+  const before = new Set((prev.command_rules ?? []).map(key));
+  const after = new Set((next.command_rules ?? []).map(key));
+  if ((next.command_rules ?? []).some((r) => r.action === 'allow' && !before.has(key(r)))) out.push('a new allow rule');
+  if ((prev.command_rules ?? []).some((r) => r.action !== 'allow' && !after.has(key(r)))) out.push('a block or ask rule removed');
+  return out.length ? out.join(', ') : null;
 }
 
 /** Top-level settings the chat may change (update_settings). */
@@ -473,7 +524,7 @@ function projectFocus(ctx: Ctx, name: string): string {
   return [
     '',
     `## This chat is about the project "${p.name}" (${p.title})`,
-    'The human opened it from that project\'s page. Questions are about this project unless they say otherwise: what it is',
+    "The human opened it from that project's page. Questions are about this project unless they say otherwise: what it is",
     'for, which agents work on it, what they made, how to improve its briefing. When they ask for a change, make it with',
     'save_project (or save_agent to assign agents) and say what changed. When explaining, you may answer at more length',
     'than one or two sentences.',
@@ -497,13 +548,21 @@ function focusPrompt(ctx: Ctx, focus: ChatFocus | undefined): string {
     const ses = j.session_id
       ? (ctx.db.prepare('SELECT summary FROM sessions WHERE id = ?').get(j.session_id) as { summary?: string } | undefined)
       : undefined;
-    return { id: j.id, created: j.created, trigger: j.trigger_type, status: j.status, reason: j.reason, cost_usd: j.cost_usd, summary: ses?.summary };
+    return {
+      id: j.id,
+      created: j.created,
+      trigger: j.trigger_type,
+      status: j.status,
+      reason: j.reason,
+      cost_usd: j.cost_usd,
+      summary: ses?.summary,
+    };
   });
   const fence = '```';
   return [
     '',
     `## This chat is about the agent "${a.name}"`,
-    'The human opened it from that agent\'s page. Questions are about this agent unless they say otherwise: how it works,',
+    "The human opened it from that agent's page. Questions are about this agent unless they say otherwise: how it works,",
     'why it did something, how to improve it. When they ask for a change, make it with save_agent (the whole definition,',
     'with your edits) and say what changed. When explaining, you may answer at more length than one or two sentences.',
     '',
@@ -518,7 +577,11 @@ function focusPrompt(ctx: Ctx, focus: ChatFocus | undefined): string {
 }
 
 /** One assistant turn: call the model, run its tools, repeat until it answers. */
-export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus): Promise<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }> {
+export async function chat(
+  ctx: Ctx,
+  history: ChatMessage[],
+  focus?: ChatFocus,
+): Promise<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }> {
   const chosen = ctx.settings.assistant?.model ?? ctx.settings.defaults.models[0];
   if (!chosen) throw new HttpError(503, 'choose a default model in Settings first');
   const { provider, model } = resolveModel(ctx.settings, chosen);
@@ -527,7 +590,10 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
     type: 'function' as const,
     function: { name, description: x.description, parameters: x.parameters },
   }));
-  const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM + focusPrompt(ctx, focus) }, ...history.filter((m) => m.role !== 'system')];
+  const messages: ChatMessage[] = [
+    { role: 'system', content: SYSTEM + focusPrompt(ctx, focus) },
+    ...history.filter((m) => m.role !== 'system'),
+  ];
   const steps: Step[] = [];
   const out: { navigate?: string[] } = {};
 
@@ -561,7 +627,9 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
         if (!tool) throw new Error(`unknown tool ${call.function.name}`);
         const required = (tool.parameters as { required?: string[] }).required ?? [];
         if (required.length && !Object.keys(args).length)
-          throw new Error(`the call had no arguments (needs ${required.join(', ')}); it may have been cut off. Send it again, shorter if it was long.`);
+          throw new Error(
+            `the call had no arguments (needs ${required.join(', ')}); it may have been cut off. Send it again, shorter if it was long.`,
+          );
         result = await tool.run(args, out);
       } catch (e) {
         ok = false;
@@ -590,7 +658,9 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
   // Out of rounds while still calling tools: say so, instead of leaving a tool result as the last word.
   if (!answered) {
     const failed = steps.filter((x) => !x.ok).at(-1);
-    const why = failed ? ` The last thing that failed: ${failed.tool.replace(/_/g, ' ')}: ${(failed.result as { error?: string })?.error ?? 'unknown error'}.` : '';
+    const why = failed
+      ? ` The last thing that failed: ${failed.tool.replace(/_/g, ' ')}: ${(failed.result as { error?: string })?.error ?? 'unknown error'}.`
+      : '';
     messages.push({
       role: 'assistant',
       content: `I stopped after ${ROUNDS} steps without finishing.${why} Ask again, perhaps for a smaller change at a time.`,

@@ -4,13 +4,18 @@
 # Two-factor sign-in (optional): add -e YAHO_TOTP=1 and signing in asks for the password and a code from an
 # authenticator app, set up at the first sign-in. Lost the phone: add -e YAHO_TOTP_RESET=1, sign in with the password
 # and set it up again, then start without it.
+# Behind a reverse proxy that terminates HTTPS (Sliplane, Caddy, nginx): add -e YAHO_TRUST_PROXY=1, so sign-in
+# lockouts go by the client's address in X-Forwarded-For and the session cookie is Secure. Leave it unset when the
+# port is reached directly, as above: anyone could then set that header and dodge the lockout.
 # Everything Yaho keeps is in the /data volume, the agents' home included (Claude Code's sessions, gh and git sign-ins:
 # docker exec -it -u yaho-agent <container> gh auth login).
 
 # ---- Dopbase, from its pinned tag (it publishes no binary for every platform we build) ----
 FROM rust:1-bookworm AS dopbase
 ARG DOPBASE_VERSION=0.1.9
+ARG DOPBASE_COMMIT=e3e528f0ac652a7d706dc2995ada6b21dda1b5ff
 RUN git clone --depth 1 --branch "${DOPBASE_VERSION}" https://github.com/dopbase/dopbase.git /src \
+ && test "$(git -C /src rev-parse HEAD)" = "${DOPBASE_COMMIT}" \
  && mkdir -p /src/dist \
  && printf '<!doctype html><title>Dopbase</title><p>Dopbase bundled with Yaho (API only).</p>\n' > /src/dist/index.html
 WORKDIR /src/app
@@ -56,7 +61,6 @@ ENV YAHO_SERVER=1 \
     YAHO_WEB_ROOT=/opt/yaho/renderer \
     YAHO_CLI_MAIN=/opt/yaho/cli/main.mjs \
     YAHO_DOPBASE_BIN=/opt/yaho/dopbase/dopbase \
-    YAHO_TRUST_PROXY=1 \
     YAHO_AGENT_UID=1001 \
     YAHO_AGENT_GID=1001 \
     YAHO_AGENT_HOME=/data/home \

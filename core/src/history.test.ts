@@ -1,9 +1,11 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vite-plus/test';
 import { defaultSettings } from './config.ts';
 import { Bus, type Ctx } from './context.ts';
-import { openDb } from './db/index.ts';
+import { migrate, openDb } from './db/index.ts';
+import { migrations } from './db/migrations.ts';
 import { indexJob, indexMissing, searchHistory, showHistory, writeRecap } from './history.ts';
 import { addJobEvent, getJob } from './store.ts';
 
@@ -58,8 +60,25 @@ describe('history', () => {
     expect(showHistory(ctx, 'a', 'j1')).toMatchObject({ trigger_detail: 'from the human', messages: ['first', 'second'] });
     expect(() => showHistory(ctx, 'b', 'j1')).toThrow(/not yours/);
     expect(searchHistory(ctx, 'a', 'did')).toHaveLength(1);
+    indexJob(ctx, 'j1', 'did it again');
+    expect(ctx.db.prepare('SELECT COUNT(*) n FROM job_search').get()).toEqual({ n: 1 });
     ctx.db.prepare("DELETE FROM jobs WHERE id = 'j1'").run();
     expect(ctx.db.prepare('SELECT COUNT(*) n FROM job_search').get()).toEqual({ n: 0 });
+    expect(ctx.db.prepare('SELECT COUNT(*) n FROM job_search_rows').get()).toEqual({ n: 0 });
+  });
+
+  it('keeps the rows indexed before the side table, by rowid', () => {
+    const db = new DatabaseSync(':memory:');
+    migrations.slice(0, 14).forEach((m) => db.exec(m));
+    db.exec(`PRAGMA user_version = 14`);
+    const t = new Date().toISOString();
+    db.prepare("INSERT INTO agents (name, created, updated) VALUES ('a', ?, ?)").run(t, t);
+    db.prepare("INSERT INTO jobs (id, agent, trigger_type, status, created) VALUES ('old', 'a', 'manual', 'finished', ?)").run(t);
+    db.prepare("INSERT INTO job_search (job, agent, trigger, messages, summary, recap) VALUES ('old', 'a', '', 'hello', '', '')").run();
+    migrate(db);
+    expect(db.prepare('SELECT job FROM job_search_rows').all()).toEqual([{ job: 'old' }]);
+    db.prepare("DELETE FROM jobs WHERE id = 'old'").run();
+    expect(db.prepare('SELECT COUNT(*) n FROM job_search').get()).toEqual({ n: 0 });
   });
 
   it('indexes ended jobs from before the index, the last of a session with its summary', () => {

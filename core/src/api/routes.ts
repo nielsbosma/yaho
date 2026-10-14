@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { lstat, readdir } from 'node:fs/promises';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
@@ -7,7 +8,7 @@ import { saveSettings, type Settings } from '../config.ts';
 import { checkClaude, checkCodex, lastClaudeCheck, lastCodexCheck } from '../checks.ts';
 import { PROVIDERS, defaultProvider, litellmProvider } from '../providers.ts';
 import { allModels, listModels } from '../providerApi.ts';
-import { revealToken, serverMode } from './session.ts';
+import { revealToken, serverMode, SESSION_BODY } from './session.ts';
 import { sandboxOn, sandboxProblem } from '../harness/sandbox.ts';
 import { DEFAULT_COMMAND_RULES, validateRules } from '../guard/commandRules.ts';
 import { applySettingsUpdate, publicSettings, storeSecrets } from '../secrets/settingsSecrets.ts';
@@ -16,14 +17,15 @@ import { chat, type ChatFocus, type ChatMessage } from '../assistant/index.ts';
 import { litellmModels } from '../jobs/litellm.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
 import * as s from '../store.ts';
-import { HttpError } from '../store.ts';
+import { HttpError, NAME_RE } from '../store.ts';
+import { assertUnder, joinUnder, resolveUnder, UnsafePathError, writeFileUnder } from '../fsSafe.ts';
 import { schedule } from '../schedule.ts';
 import { slackCreateUrl, slackManifest } from '../slack/manifest.ts';
 import { WEBHOOK_PATH as TWILIO_WEBHOOK } from '../sms/twilio.ts';
 import { stats } from '../stats.ts';
 import { listWebhooks, rotateUrl, setSecret } from '../webhooks/hooks.ts';
-import { Router, type Req } from './http.ts';
-import { safeJoin, sendFile } from './server.ts';
+import { Router, UPLOAD_LIMIT, type Req } from './http.ts';
+import { inFolder, makeTicket, sendFile } from './server.ts';
 
 const runner = (ctx: Ctx) => {
   if (!ctx.runner) throw new HttpError(503, 'job runner not started');
@@ -41,24 +43,71 @@ async function definition<T>(req: Req): Promise<T> {
   return b as T;
 }
 
-function listDir(root: string): Array<{ path: string; size: number; modified: string; dir: boolean }> {
-  if (!existsSync(root)) return [];
+/** The most entries a folder listing returns: a node_modules must not stall the core. */
+const LIST_MAX = 5000;
+
+/** A folder's entries, four levels deep and at most LIST_MAX of them. Symlinks are listed as they are, never followed. */
+async function listDir(root: string): Promise<Array<{ path: string; size: number; modified: string; dir: boolean }>> {
   const out: Array<{ path: string; size: number; modified: string; dir: boolean }> = [];
-  const walk = (d: string, depth: number) => {
-    for (const name of readdirSync(d)) {
+  const isDir = await lstat(root).then(
+    (st) => st.isDirectory(),
+    () => false,
+  );
+  if (!isDir) return out;
+  const walk = async (d: string, depth: number) => {
+    const names = await readdir(d).catch(() => [] as string[]);
+    for (const name of names) {
+      if (out.length >= LIST_MAX) return;
       const full = join(d, name);
-      const st = statSync(full);
+      const st = await lstat(full).catch(() => null);
+      if (!st) continue;
       out.push({
         path: relative(root, full).replaceAll('\\', '/'),
         size: st.size,
         modified: st.mtime.toISOString(),
         dir: st.isDirectory(),
       });
-      if (st.isDirectory() && depth < 4) walk(full, depth + 1);
+      if (st.isDirectory() && depth < 4) await walk(full, depth + 1);
     }
   };
-  walk(root, 0);
+  await walk(root, 0);
   return out;
+}
+
+/** A path check that failed is the caller's mistake (400), not the core's. */
+function under<T>(f: () => T): T {
+  try {
+    return f();
+  } catch (e) {
+    if (e instanceof UnsafePathError) throw new HttpError(400, 'bad path');
+    throw e;
+  }
+}
+
+/** Remove a file under root: a symlink there is removed itself, never what it points at. */
+function removeUnder(root: string, rel: string): string | null {
+  const file = under(() => {
+    const f = joinUnder(root, rel);
+    assertUnder(root, dirname(f));
+    return f;
+  });
+  const st = lstatSync(file, { throwIfNoEntry: false });
+  if (!st || st.isDirectory()) return null;
+  rmSync(file, { force: true });
+  return file;
+}
+
+/** An agent or project name from the path, checked before it becomes part of a folder's path. */
+function named(req: Req, key = 'name'): string {
+  const name = req.params[key]!;
+  if (!NAME_RE.test(name)) throw new HttpError(400, `bad name ${JSON.stringify(name.slice(0, 80))}`);
+  return name;
+}
+
+/** A whole number from the query, within bounds; the default when it is missing or not a number. */
+function intParam(v: string | null, def: number, min: number, max: number): number {
+  const n = v === null || v === '' ? NaN : Math.floor(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
 }
 
 const cleanFileName = (n: string) => {
@@ -101,7 +150,13 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
       throw new HttpError(400, (e as Error).message);
     }
     const slackBefore = JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]);
-    const wa = () => JSON.stringify([ctx.settings.whatsapp?.access_token, ctx.settings.whatsapp?.app_secret, ctx.settings.whatsapp?.phone_number_id, ctx.settings.whatsapp?.number]);
+    const wa = () =>
+      JSON.stringify([
+        ctx.settings.whatsapp?.access_token,
+        ctx.settings.whatsapp?.app_secret,
+        ctx.settings.whatsapp?.phone_number_id,
+        ctx.settings.whatsapp?.number,
+      ]);
     const waBefore = wa();
     const rs = () => JSON.stringify([ctx.settings.resend?.api_key, ctx.settings.resend?.domain]);
     const rsBefore = rs();
@@ -143,10 +198,30 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     ctx.bus.emitEvent({ type: 'changed', entity: 'settings' });
     return { revoked: true };
   });
-  r.on('POST', '/api/session/token', async (req) => {
-    const b = await req.body<{ password?: string; code?: string }>();
-    return revealToken(ctx, req.raw, b.password, b.code);
-  });
+  r.on(
+    'POST',
+    '/api/session/token',
+    async (req) => {
+      const b = await req.body<{ password?: string; code?: string }>();
+      return revealToken(ctx, req.raw, b.password, b.code);
+    },
+    { maxBody: SESSION_BODY },
+  );
+  /**
+   * A ticket for one GET path (e.g. /api/artifacts/<id>/file), so a link opened outside the app needs no API token:
+   * the path with ?ticket=<ticket> works for five minutes.
+   */
+  r.on(
+    'POST',
+    '/api/ticket',
+    async (req) => {
+      const { path } = await req.body<{ path?: unknown }>();
+      if (typeof path !== 'string' || !path.startsWith('/api/') || path.length > 2048 || /[?#\s]/.test(path))
+        throw new HttpError(400, 'path must be an /api/ path with no query');
+      return { ticket: makeTicket(ctx, path) };
+    },
+    { maxBody: SESSION_BODY },
+  );
   r.on('GET', '/api/update', () => ctx.updates?.state ?? null);
   r.on('POST', '/api/update/check', () => ctx.updates?.check());
   r.on('POST', '/api/update/install', () => {
@@ -177,7 +252,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   });
 
   // ---- Email (Resend) ----
-  r.on('GET', '/api/resend', () => ({ ...(ctx.email?.status ?? { configured: false, connected: false }), webhook_path: '/api/resend/webhook' }));
+  r.on('GET', '/api/resend', () => ({
+    ...(ctx.email?.status ?? { configured: false, connected: false }),
+    webhook_path: '/api/resend/webhook',
+  }));
   r.on('POST', '/api/resend/reconnect', async () => {
     if (serverMode()) await ctx.email?.start();
     return ctx.email?.status;
@@ -207,7 +285,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   }));
 
   // ---- Telegram ----
-  r.on('GET', '/api/telegram', () => ({ ...(ctx.telegram?.status ?? { configured: false, connected: false, linked: false }), link_url: ctx.telegram?.linkUrl() }));
+  r.on('GET', '/api/telegram', () => ({
+    ...(ctx.telegram?.status ?? { configured: false, connected: false, linked: false }),
+    link_url: ctx.telegram?.linkUrl(),
+  }));
   r.on('POST', '/api/telegram/reconnect', async () => {
     await ctx.telegram?.start();
     return ctx.telegram?.status;
@@ -225,13 +306,17 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   });
 
   // ---- Slack ----
-  r.on('GET', '/api/slack', () => ({ ...(ctx.slack?.status ?? { configured: false, connected: false, owner: false }), create_url: slackCreateUrl(), manifest: JSON.stringify(slackManifest(), null, 2) }));
+  r.on('GET', '/api/slack', () => ({
+    ...(ctx.slack?.status ?? { configured: false, connected: false, owner: false }),
+    create_url: slackCreateUrl(),
+    manifest: JSON.stringify(slackManifest(), null, 2),
+  }));
   r.on('POST', '/api/slack/reconnect', async () => {
     await ctx.slack?.start();
     return ctx.slack?.status;
   });
   r.on('POST', '/api/slack/forget-owner', () => {
-    // A new owner is whoever opens the app in Slack next.
+    // A new owner is whoever sends the new link code next.
     if (ctx.settings.slack) {
       delete ctx.settings.slack.owner;
       delete ctx.settings.slack.since;
@@ -256,11 +341,17 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   });
 
   // ---- assistant ----
-  r.on('POST', '/api/assistant', async (req) => {
-    const { messages, focus } = await req.body<{ messages?: ChatMessage[]; focus?: ChatFocus }>();
-    if (!Array.isArray(messages) || !messages.length) throw new HttpError(400, 'messages is required');
-    return chat(ctx, messages, focus);
-  });
+  // The chat carries pasted images, so it may be larger than other requests.
+  r.on(
+    'POST',
+    '/api/assistant',
+    async (req) => {
+      const { messages, focus } = await req.body<{ messages?: ChatMessage[]; focus?: ChatFocus }>();
+      if (!Array.isArray(messages) || !messages.length) throw new HttpError(400, 'messages is required');
+      return chat(ctx, messages, focus);
+    },
+    { maxBody: 64 * 1024 * 1024 },
+  );
 
   // ---- agents ----
   r.on('GET', '/api/agents', () => s.listAgents(ctx));
@@ -337,29 +428,33 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     if (!row) throw new HttpError(404, 'briefing version not found');
     return s.setBriefing(ctx, req.params.name!, row.briefing, 'human (revert)');
   });
-  r.on('GET', '/api/agents/:name/workspace', (req) => listDir(ctx.paths.agent(req.params.name!)));
+  // A workspace's files, under the agents' folder (the core's), so a workspace swapped for a symlink is refused too.
+  const workspaceFile = (req: Req) => inFolder(ctx.paths.agents, named(req), req.query.get('path') ?? '');
+  r.on('GET', '/api/agents/:name/workspace', (req) => listDir(ctx.paths.agent(named(req))));
   r.on('GET', '/api/agents/:name/workspace/file', (req) =>
-    sendFile(req.res, safeJoin(ctx.paths.agent(req.params.name!), req.query.get('path') ?? ''), req.query.get('download') ?? undefined),
+    sendFile(req.res, ctx.paths.agents, workspaceFile(req), req.query.get('download') ?? undefined),
   );
   r.on('DELETE', '/api/agents/:name/workspace/file', (req) => {
-    const name = req.params.name!;
+    const name = named(req);
     const rel = req.query.get('path') ?? '';
     if (!rel) throw new HttpError(400, 'path is required');
     // The agent may have the file open, or be about to read it: only while it is idle.
     if (s.agentStats(ctx, name).running) throw new HttpError(409, `${name} is running; stop it or wait for the job to end`);
-    const file = safeJoin(ctx.paths.agent(name), rel);
-    if (!existsSync(file) || statSync(file).isDirectory()) throw new HttpError(404, 'file not found');
-    rmSync(file, { force: true });
+    const file = removeUnder(ctx.paths.agents, workspaceFile(req));
+    if (!file) throw new HttpError(404, 'file not found');
     for (const side of ['-wal', '-shm', '-journal']) if (/\.(db|sqlite3?)$/i.test(file)) rmSync(file + side, { force: true });
     ctx.bus.emitEvent({ type: 'changed', entity: 'workspace', name });
     return { deleted: rel };
   });
   /** A read-only look into a SQLite database in the workspace: its tables, or one table's rows. */
   r.on('GET', '/api/agents/:name/workspace/sqlite', (req) => {
-    const file = safeJoin(ctx.paths.agent(req.params.name!), req.query.get('path') ?? '');
-    if (!existsSync(file)) throw new HttpError(404, 'file not found');
-    const db = new DatabaseSync(file, { readOnly: true });
+    const file = under(() => resolveUnder(ctx.paths.agents, workspaceFile(req)));
+    if (!existsSync(file) || !statSync(file).isFile()) throw new HttpError(404, 'file not found');
+    // The agent made this database: its schema must not run functions (trusted_schema), nor corrupt it (defensive,
+    // where node:sqlite has it).
+    const db = new DatabaseSync(file, { readOnly: true, defensive: true } as ConstructorParameters<typeof DatabaseSync>[1]);
     try {
+      db.exec('PRAGMA trusted_schema = OFF');
       const table = req.query.get('table');
       if (!table) {
         const tables = db
@@ -375,8 +470,8 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
       }
       const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
       if (!exists) throw new HttpError(404, `no table ${table}`);
-      const limit = Math.min(500, Number(req.query.get('limit') ?? 200));
-      const offset = Math.max(0, Number(req.query.get('offset') ?? 0));
+      const limit = intParam(req.query.get('limit'), 200, 0, 500);
+      const offset = intParam(req.query.get('offset'), 0, 0, Number.MAX_SAFE_INTEGER);
       const rows = db.prepare(`SELECT * FROM "${table.replaceAll('"', '""')}" LIMIT ? OFFSET ?`).all(limit, offset);
       // Blobs do not survive JSON; describe them instead.
       return rows.map((r) =>
@@ -392,7 +487,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     s.listJobs(ctx, {
       agent: req.query.get('agent') ?? undefined,
       active: req.query.get('active') === '1',
-      limit: Number(req.query.get('limit') ?? 200),
+      limit: intParam(req.query.get('limit'), 200, 1, 1000),
     }),
   );
   r.on('GET', '/api/jobs/:id', (req) => s.getJob(ctx, req.params.id!));
@@ -417,13 +512,15 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const jobs = job.session_id
       ? (ctx.db.prepare('SELECT * FROM jobs WHERE session_id = ? ORDER BY created').all(job.session_id) as unknown as s.Job[])
       : [job];
-    return jobs.map((j) => ({
-      ...j,
-      texts: s
-        .jobEvents(ctx, j.id)
-        .filter((e) => (e as { kind?: string }).kind === 'text')
-        .map((e) => String((e.data as { text?: string } | null)?.text ?? '')),
-    }));
+    const texts = ctx.db.prepare("SELECT data FROM job_events WHERE job = ? AND kind = 'text' ORDER BY id");
+    const text = (data: string) => {
+      try {
+        return String((JSON.parse(data) as { text?: string } | null)?.text ?? '');
+      } catch {
+        return '';
+      }
+    };
+    return jobs.map((j) => ({ ...j, texts: (texts.all(j.id) as Array<{ data: string }>).map((e) => text(e.data)) }));
   });
 
   // ---- messages ----
@@ -438,10 +535,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
           limit: 200,
         }).messages
       : s.listMessages(ctx, {
-      to: req.query.get('to') ?? undefined,
-      involving: req.query.get('involving') ?? undefined,
-      unread: req.query.get('unread') === '1',
-    }),
+          to: req.query.get('to') ?? undefined,
+          involving: req.query.get('involving') ?? undefined,
+          unread: req.query.get('unread') === '1',
+        }),
   );
   r.on('GET', '/api/messages/:id', (req) => s.getMessage(ctx, req.params.id!));
   r.on('GET', '/api/messages/:id/thread', (req) => s.thread(ctx, req.params.id!));
@@ -470,7 +567,9 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return { deleted: ids.length };
   });
   r.on('POST', '/api/inbox/read-all', () => {
-    const ids = (ctx.db.prepare("SELECT id FROM messages WHERE to_addr = 'human' AND read = 0").all() as Array<{ id: string }>).map((r) => r.id);
+    const ids = (ctx.db.prepare("SELECT id FROM messages WHERE to_addr = 'human' AND read = 0").all() as Array<{ id: string }>).map(
+      (r) => r.id,
+    );
     for (const id of ids) s.markRead(ctx, id, true);
     return { marked: ids.length };
   });
@@ -493,25 +592,31 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return s.saveProject(ctx, { ...p, name: p.name ?? req.params.name! }, req.params.name!);
   });
   r.on('DELETE', '/api/projects/:name', (req) => s.deleteProject(ctx, req.params.name!));
-  r.on('GET', '/api/projects/:name/files', (req) => listDir(join(ctx.paths.project(req.params.name!), 'files')));
-  r.on('POST', '/api/projects/:name/files', async (req) => {
-    s.getProject(ctx, req.params.name!);
-    const name = cleanFileName(req.query.get('name') ?? '');
-    const dir = join(ctx.paths.project(req.params.name!), 'files');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, name), await req.bytes());
-    ctx.bus.emitEvent({ type: 'changed', entity: 'projects', name: req.params.name! });
-    return { name };
-  });
+  const project = (req: Req) => ctx.paths.project(named(req));
+  r.on('GET', '/api/projects/:name/files', (req) => listDir(join(project(req), 'files')));
+  r.on(
+    'POST',
+    '/api/projects/:name/files',
+    async (req) => {
+      s.getProject(ctx, named(req));
+      const name = cleanFileName(req.query.get('name') ?? '');
+      const bytes = await req.bytes();
+      under(() => writeFileUnder(project(req), inFolder(project(req), 'files', name), bytes));
+      ctx.bus.emitEvent({ type: 'changed', entity: 'projects', name: req.params.name! });
+      return { name };
+    },
+    { maxBody: UPLOAD_LIMIT },
+  );
   r.on('GET', '/api/projects/:name/files/:file', (req) =>
     sendFile(
       req.res,
-      safeJoin(join(ctx.paths.project(req.params.name!), 'files'), req.params.file!),
+      project(req),
+      inFolder(project(req), 'files', req.params.file!),
       req.query.get('download') ? req.params.file! : undefined,
     ),
   );
   r.on('DELETE', '/api/projects/:name/files/:file', (req) => {
-    rmSync(safeJoin(join(ctx.paths.project(req.params.name!), 'files'), req.params.file!), { force: true });
+    removeUnder(project(req), inFolder(project(req), 'files', req.params.file!));
     ctx.bus.emitEvent({ type: 'changed', entity: 'projects', name: req.params.name! });
   });
 
@@ -528,8 +633,8 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
       | { project: string; file_path: string }
       | undefined;
     if (!a) throw new HttpError(404, 'artifact not found');
-    const file = safeJoin(join(ctx.paths.project(a.project), 'artifacts'), a.file_path);
-    sendFile(req.res, file, req.query.get('download') ? basename(a.file_path) : undefined);
+    const root = ctx.paths.project(a.project);
+    sendFile(req.res, root, inFolder(root, 'artifacts', a.file_path), req.query.get('download') ? basename(a.file_path) : undefined);
   });
   /** Delete many artifacts at once (the gallery's Delete All), by id. */
   r.on('POST', '/api/artifacts/delete', async (req) => {
@@ -543,7 +648,8 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
       | undefined;
     if (!a) throw new HttpError(404, 'artifact not found');
     // Another artifact can point at the same file only by copying it, so the file goes with its record.
-    rmSync(safeJoin(join(ctx.paths.project(a.project), 'artifacts'), a.file_path), { force: true });
+    const root = ctx.paths.project(a.project);
+    removeUnder(root, inFolder(root, 'artifacts', a.file_path));
     ctx.db.prepare('DELETE FROM artifacts WHERE id = ?').run(req.params.id!);
     ctx.bus.emitEvent({ type: 'changed', entity: 'artifacts', name: req.params.id! });
     return { deleted: req.params.id };
@@ -602,7 +708,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('DELETE', '/api/resources/:name', (req) => s.deleteResource(ctx, req.params.name!));
   /** The values of the keys that are not secret (agents see them anyway). Secret values never leave Dopbase this way. */
   r.on('GET', '/api/resources/:name/values', async (req) => {
-    const open = s.getResource(ctx, req.params.name!).keys.filter((k) => !k.secret && k.has_value).map((k) => k.name);
+    const open = s
+      .getResource(ctx, req.params.name!)
+      .keys.filter((k) => !k.secret && k.has_value)
+      .map((k) => k.name);
     if (!open.length) return {};
     const all = await new Dopbase(ctx).runtimeValues(req.params.name!);
     return Object.fromEntries(open.filter((k) => k in all).map((k) => [k, all[k]!]));
@@ -618,17 +727,6 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     await new Dopbase(ctx).deleteValue(req.params.name!, req.params.key!);
     ctx.bus.emitEvent({ type: 'changed', entity: 'resources', name: req.params.name! });
   });
-}
-
-/** Copy a file into a project's artifacts folder, never overwriting an existing artifact. */
-export function storeArtifactFile(ctx: Ctx, project: string, source: string): string {
-  const dir = join(ctx.paths.project(project), 'artifacts');
-  mkdirSync(dir, { recursive: true });
-  const name = cleanFileName(source);
-  let target = name;
-  for (let i = 2; existsSync(join(dir, target)); i++) target = name.replace(/(\.[^.]*)?$/, `-${i}$1`);
-  copyFileSync(source, join(dir, target));
-  return target;
 }
 
 function examplesDir(): string {

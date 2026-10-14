@@ -85,12 +85,25 @@ function css(base: string): string {
   return `${rules.join('\n')}\n`;
 }
 
+/** The http(s) origin of base, or null: it goes into CSS, so nothing else may. */
+function origin(base: string | null): string | null {
+  if (!base) return null;
+  try {
+    const u = new URL(base);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 export function fontRoutes(r: Router): void {
   // Fonts load through CSS url(), which cannot send a token; they are public files, so these routes are open.
   r.on('GET', '/api/fonts/anthropic.css', (req: Req) => {
-    const host = req.raw.headers.host ? `http://${req.raw.headers.host}` : '';
+    const host = /^[\w.-]+(:\d{1,5})?$|^\[[\da-f:.]+\](:\d{1,5})?$/i.test(req.raw.headers.host ?? '')
+      ? `http://${req.raw.headers.host}`
+      : '';
     req.res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'max-age=3600' });
-    req.res.end(css(req.query.get('base') ?? host));
+    req.res.end(css(origin(req.query.get('base')) ?? host));
   });
   r.on('GET', '/api/fonts/:file', (req: Req) => {
     const src = source();

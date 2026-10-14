@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, readdirSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { newId, now } from '../db/index.ts';
+import { assertUnder, UnsafePathError, writeFileUnder } from '../fsSafe.ts';
 import { verifyWebhook as verifySvix } from '../email/resend.ts';
 import * as s from '../store.ts';
 import { HttpError, type WebhookVerify } from '../store.ts';
@@ -19,8 +20,11 @@ const TOLERANCE_S = 5 * 60;
 const PREVIEW = 4000;
 /** Payload files kept per webhook. */
 const KEEP_FILES = 100;
-/** Headers that may carry the sender's id for a delivery, so a retry of it is dropped. */
+/** Headers that may carry the sender's id for a delivery, so a retry of it is dropped (unsigned webhooks only). */
 const DELIVERY_HEADERS = ['x-github-delivery', 'svix-id', 'webhook-id', 'idempotency-key', 'x-yaho-delivery'];
+/** Rejected deliveries a webhook answers in a minute before it stops looking at more. */
+const REJECTS_PER_MINUTE = 20;
+const rejections = new Map<string, number[]>();
 /** Headers that name what happened; shown in the inbox message. */
 const EVENT_HEADERS = ['x-github-event', 'x-gitlab-event', 'x-event-type', 'x-yaho-event'];
 
@@ -55,12 +59,50 @@ export function stripeSignature(secret: string, t: number | string, body: Buffer
   return createHmac('sha256', secret).update(`${t}.`).update(body).digest('hex');
 }
 
+const stripeTime = (given: string) =>
+  given
+    .split(',')
+    .map((p) => p.trim().split('='))
+    .find(([k]) => k === 't')?.[1] ?? '';
+
 function verifyStripeStyle(secret: string, given: string, body: Buffer, at: number): boolean {
   const parts = given.split(',').map((p) => p.trim().split('=') as [string, string?]);
-  const t = parts.find(([k]) => k === 't')?.[1] ?? '';
+  const t = stripeTime(given);
   if (!t || !(Math.abs(at / 1000 - Number(t)) <= TOLERANCE_S)) return false;
   const expected = stripeSignature(secret, t, body);
   return parts.some(([k, v]) => k === 'v1' && !!v && eq(v, expected));
+}
+
+/**
+ * The id that repeats of a delivery share, for dropping them: from what the signature covers when there is one, so a
+ * captured delivery sent again with a new id header is still a repeat. Call it after the signature checked out.
+ */
+export function deliveryId(verify: WebhookVerify, secret: string, headers: IncomingMessage['headers'], body: Buffer): string {
+  switch (verify) {
+    case 'none':
+      return DELIVERY_HEADERS.map((h) => header(headers, h)).find(Boolean) ?? '';
+    case 'github':
+      // GitHub signs the body alone, with no time: the signature is the delivery.
+      return `sha256:${createHmac('sha256', secret).update(body).digest('hex')}`;
+    case 'stripe': {
+      // Stripe's event id is in the signed body, and stays the same when Stripe retries.
+      try {
+        const id = (JSON.parse(body.toString('utf8')) as Row | null)?.id;
+        if (typeof id === 'string' && id) return `evt:${id}`;
+      } catch {
+        // Fall back to the signed time.
+      }
+      const t = stripeTime(header(headers, 'stripe-signature'));
+      return `t:${t}:${stripeSignature(secret, t, body)}`;
+    }
+    case 'yaho': {
+      const t = stripeTime(header(headers, 'x-yaho-signature'));
+      return `t:${t}:${stripeSignature(secret, t, body)}`;
+    }
+    case 'svix':
+      // The id is part of what Svix signs.
+      return header(headers, 'svix-id') || header(headers, 'webhook-id');
+  }
 }
 
 /** Whether a delivery carries a valid signature for the webhook's scheme. 'none' relies on the URL token alone. */
@@ -178,9 +220,18 @@ function preview(body: Buffer, type: string): string {
   return text.length > PREVIEW ? `${text.slice(0, PREVIEW)}\n… (${body.length} bytes in all)` : text;
 }
 
-function prune(dir: string): void {
+/** Keep the newest payload files. A symlink is removed itself, never followed. */
+function prune(root: string, dir: string): void {
+  try {
+    assertUnder(root, dir);
+  } catch {
+    return;
+  }
   const files = readdirSync(dir).sort();
-  for (const f of files.slice(0, Math.max(0, files.length - KEEP_FILES))) rmSync(join(dir, f), { force: true });
+  for (const f of files.slice(0, Math.max(0, files.length - KEEP_FILES))) {
+    const p = join(dir, f);
+    if (!lstatSync(p, { throwIfNoEntry: false })?.isDirectory()) rmSync(p, { force: true });
+  }
 }
 
 /**
@@ -202,7 +253,12 @@ export async function handleWebhook(
   const id = w.id as string;
   const agent = w.agent as string;
   const name = w.name as string;
+  // Past the limit of rejected deliveries, refuse without reading the body or touching the database.
+  const recent = (rejections.get(id) ?? []).filter((t) => t > Date.now() - 60_000);
+  rejections.set(id, recent);
+  if (recent.length >= REJECTS_PER_MINUTE) return reply(429, { error: 'too many rejected deliveries; try again in a minute' });
   const reject = (status: number, why: string) => {
+    recent.push(Date.now());
     ctx.db.prepare('UPDATE webhooks SET last_rejected = ? WHERE id = ?').run(`${now()} ${why}`, id);
     ctx.bus.emitEvent({ type: 'changed', entity: 'webhooks' });
     if (process.env.YAHO_DEBUG === '1') console.error(`[webhook] ${agent}/${name} rejected: ${why}`);
@@ -220,15 +276,7 @@ export async function handleWebhook(
   if (!verifySignature(w.verify as WebhookVerify, w.secret as string, raw.headers, body)) return reject(401, 'signature check failed');
 
   const type = header(raw.headers, 'content-type').toLowerCase();
-  let delivery = DELIVERY_HEADERS.map((h) => header(raw.headers, h)).find(Boolean) ?? '';
-  if (!delivery && w.verify === 'stripe') {
-    try {
-      delivery = String((JSON.parse(body.toString('utf8')) as Row).id ?? '');
-    } catch {
-      // No id to drop repeats by.
-    }
-  }
-  delivery = delivery.slice(0, 200);
+  const delivery = deliveryId(w.verify as WebhookVerify, w.secret as string, raw.headers, body).slice(0, 200);
   if (delivery && ctx.db.prepare('SELECT 1 FROM webhook_deliveries WHERE webhook = ? AND delivery = ?').get(id, delivery))
     return reply(200, { ok: true, duplicate: true });
   const hour = new Date(Date.now() - 3_600_000).toISOString();
@@ -241,29 +289,44 @@ export async function handleWebhook(
   const ts = now();
   const did = newId('dlv');
   const workspace = s.ensureAgentWorkspace(ctx, agent);
-  const dir = join(workspace, 'webhooks', name);
-  mkdirSync(dir, { recursive: true });
   const file = `webhooks/${name}/${ts.replace(/[:.]/g, '-')}-${did}.${extension(type)}`;
-  writeFileSync(join(workspace, file), body);
-  prune(dir);
+  try {
+    // Under the agents' folder (the core's), so a workspace swapped for a symlink is refused too.
+    writeFileUnder(ctx.paths.agents, join(agent, file), body);
+  } catch (e) {
+    if (e instanceof UnsafePathError) return reject(500, `webhooks/${name} in the workspace is not a plain folder`);
+    throw e;
+  }
 
   const event = EVENT_HEADERS.map((h) => header(raw.headers, h)).find(Boolean);
-  const msg = s.sendMessage(ctx, {
-    from: `webhook:${name}`,
-    to: `agent:${agent}`,
-    type: 'info',
-    title: event ? `Webhook ${name}: ${event}` : `Webhook ${name}`,
-    body: [
-      `Content type: ${type || 'none'}${delivery ? `\nDelivery: ${delivery}` : ''}`,
-      `The whole payload is in your workspace at \`${file}\`.`,
-      body.length ? `\`\`\`\n${preview(body, type)}\n\`\`\`` : '(empty body)',
-    ].join('\n\n'),
-    expects_response: false,
-    wake: false,
-  });
-  ctx.db
-    .prepare('INSERT INTO webhook_deliveries (id, webhook, delivery, job, message, file, created) VALUES (?,?,?,?,?,?,?)')
-    .run(did, id, delivery || null, null, msg.id, file, ts);
+  const shown = DELIVERY_HEADERS.map((h) => header(raw.headers, h))
+    .find(Boolean)
+    ?.slice(0, 200);
+  let msg: s.Message | undefined;
+  try {
+    msg = s.sendMessage(ctx, {
+      from: `webhook:${name}`,
+      to: `agent:${agent}`,
+      type: 'info',
+      title: event ? `Webhook ${name}: ${event}` : `Webhook ${name}`,
+      body: [
+        `Content type: ${type || 'none'}${shown ? `\nDelivery: ${shown}` : ''}`,
+        `The whole payload is in your workspace at \`${file}\`.`,
+        body.length ? `\`\`\`\n${preview(body, type)}\n\`\`\`` : '(empty body)',
+      ].join('\n\n'),
+      expects_response: false,
+      wake: false,
+    });
+    ctx.db
+      .prepare('INSERT INTO webhook_deliveries (id, webhook, delivery, job, message, file, created) VALUES (?,?,?,?,?,?,?)')
+      .run(did, id, delivery || null, null, msg.id, file, ts);
+  } catch (e) {
+    // Leave nothing behind for a delivery that was not recorded.
+    rmSync(join(workspace, file), { force: true });
+    if (msg) s.deleteMessage(ctx, msg.id);
+    throw e;
+  }
+  prune(ctx.paths.agents, join(workspace, 'webhooks', name));
   const job = ctx.runner?.enqueue(agent, 'webhook', { detail: name }) as s.Job | null | undefined;
   if (job) ctx.db.prepare('UPDATE webhook_deliveries SET job = ? WHERE id = ?').run(job.id, did);
   ctx.db.prepare('UPDATE webhooks SET last_delivery = ? WHERE id = ?').run(ts, id);
