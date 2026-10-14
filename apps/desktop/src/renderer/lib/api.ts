@@ -9,6 +9,7 @@ export class ApiError extends Error {
   }
 }
 
+/** For use inside the app only (img, video, EventSource): it carries the token. Never open it in a browser. */
 export const url = (path: string, params: Record<string, string> = {}) => {
   const u = new URL(path, platform.apiUrl);
   if (platform.token) u.searchParams.set('token', platform.token);
@@ -16,11 +17,54 @@ export const url = (path: string, params: Record<string, string> = {}) => {
   return u.toString();
 };
 
+const auth = (): Record<string, string> => (platform.token ? { Authorization: `Bearer ${platform.token}` } : {});
+
+/**
+ * A link to an API file for the system browser. It carries a ticket that opens only this path, for a few minutes,
+ * instead of the token, which must never leave the app.
+ */
+export async function externalUrl(path: string): Promise<string> {
+  const u = new URL(path, platform.apiUrl);
+  if (u.search) throw new Error('A ticket covers a path only, not a query.');
+  const { ticket } = await api<{ ticket: string }>('/api/ticket', { body: { path: u.pathname } });
+  u.searchParams.set('ticket', ticket);
+  return u.toString();
+}
+
+/** Open an API file in the system browser (web: a new tab, opened at once so the popup blocker lets it through). */
+export async function openExternalFile(path: string): Promise<void> {
+  if (platform.kind === 'desktop') return platform.openExternal(await externalUrl(path));
+  const tab = window.open('', '_blank');
+  if (tab) tab.opener = null;
+  try {
+    const link = await externalUrl(path);
+    if (tab) tab.location.href = link;
+    else platform.openExternal(link);
+  } catch (e) {
+    tab?.close();
+    throw e;
+  }
+}
+
+/** Save an API file as a download, fetched with the token in a header rather than in a link. */
+export async function downloadFile(path: string, params: Record<string, string>, name: string): Promise<void> {
+  const u = new URL(path, platform.apiUrl);
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  const res = await fetch(u, { headers: auth() });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  const link = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = link;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(link), 60_000);
+}
+
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; raw?: BodyInit } = {}): Promise<T> {
   const res = await fetch(new URL(path, platform.apiUrl), {
     method: init.method ?? (init.body !== undefined || init.raw !== undefined ? 'POST' : 'GET'),
     headers: {
-      ...(platform.token ? { Authorization: `Bearer ${platform.token}` } : {}),
+      ...auth(),
       ...(init.raw !== undefined ? { 'Content-Type': 'application/octet-stream' } : { 'Content-Type': 'application/json' }),
     },
     body: init.raw ?? (init.body === undefined ? undefined : JSON.stringify(init.body)),

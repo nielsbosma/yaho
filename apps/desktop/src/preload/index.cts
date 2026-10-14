@@ -1,14 +1,12 @@
 // The only bridge between the renderer and Electron: connection details plus the desktop-only features.
+// It runs sandboxed, so it may require nothing but electron.
 const { contextBridge, ipcRenderer } = require('electron');
 
-const arg = (name: string): string => {
-  const prefix = `--${name}=`;
-  return process.argv.find((a: string) => a.startsWith(prefix))?.slice(prefix.length) ?? '';
-};
+const connection: { url: string; token: string } | null = ipcRenderer.sendSync('yaho:connection');
 
 contextBridge.exposeInMainWorld('yahoDesktop', {
-  apiUrl: arg('yaho-api'),
-  token: arg('yaho-token'),
+  apiUrl: connection?.url ?? '',
+  token: connection?.token ?? '',
   setBadge: (n: number) => ipcRenderer.send('yaho:badge', n),
   notify: (title: string, body: string) => ipcRenderer.send('yaho:notify', title, body),
   reveal: (path: string) => ipcRenderer.send('yaho:reveal', path),
