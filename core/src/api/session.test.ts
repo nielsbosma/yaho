@@ -124,9 +124,37 @@ describe('server sign-in', () => {
     loadTotp(ctx);
   });
 
-  it('locks an address out after five wrong passwords', async () => {
+  it('refuses a large sign-in body, and reads none while locked out', async () => {
+    const big = JSON.stringify({ password: 'x'.repeat(8000) });
+    const post = (headers: Record<string, string> = {}) =>
+      at('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: big });
+    expect((await post()).status).toBe(413);
     for (let i = 0; i < 5; i++) await signIn('still the wrong one');
+    expect((await post()).status).toBe(429);
+  });
+
+  it('locks an address out after five wrong passwords', async () => {
     const res = await signIn(PASSWORD);
     expect(res.status).toBe(429);
+  });
+
+  it('lets the right password through when wrong ones from everywhere hit the cap', async () => {
+    process.env.YAHO_TRUST_PROXY = '1';
+    try {
+      const from = (n: number, password: string, c?: string) =>
+        at('/api/session', { ...json({ password, code: c }), headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `10.0.0.${n}` } });
+      for (let i = 0; i < 30; i++) await from(10 + (i % 10), 'not the password');
+      expect((await from(99, 'not the password')).status).toBe(429);
+      expect((await from(98, PASSWORD, code())).status).toBe(200);
+      // An address that is locked out stays locked out.
+      for (let i = 0; i < 5; i++) await from(97, 'not the password');
+      expect((await from(97, PASSWORD, code())).status).toBe(429);
+    } finally {
+      delete process.env.YAHO_TRUST_PROXY;
+    }
+  });
+
+  it('ignores a malformed cookie', async () => {
+    expect((await at('/api/session', { headers: { Cookie: 'other=%E0%A4%A; yaho_session=%' } })).status).toBe(200);
   });
 });

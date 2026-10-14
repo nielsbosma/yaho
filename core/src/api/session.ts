@@ -18,6 +18,8 @@ export const serverMode = () => process.env.YAHO_SERVER === '1';
 const COOKIE = 'yaho_session';
 const DAYS = 30;
 export const MIN_PASSWORD = 12;
+/** The largest sign-in request: a password and a code. */
+export const SESSION_BODY = 4096;
 
 /**
  * The password, read once at start and then removed from the environment, so that nothing the core starts (agents'
@@ -69,13 +71,20 @@ function cookies(req: IncomingMessage): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i <= 0) continue;
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      // Some other site's cookie with a bad % escape: not ours, skip it.
+    }
   }
   return out;
 }
 
-/** Behind Sliplane or Caddy the request arrives as HTTP; the proxy says it was HTTPS. */
-const isHttps = (req: IncomingMessage) => req.headers['x-forwarded-proto'] === 'https' || !!(req.socket as { encrypted?: boolean }).encrypted;
+/** Behind Sliplane or Caddy (YAHO_TRUST_PROXY=1) the request arrives as HTTP; the proxy says it was HTTPS. */
+const isHttps = (req: IncomingMessage) =>
+  !!(req.socket as { encrypted?: boolean }).encrypted ||
+  (process.env.YAHO_TRUST_PROXY === '1' && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0]!.trim() === 'https');
 
 function setCookie(req: IncomingMessage, res: ServerResponse, value: string, maxAge: number): void {
   const parts = [`${COOKIE}=${value}`, 'Path=/', 'HttpOnly', 'SameSite=Strict', `Max-Age=${maxAge}`];
@@ -182,19 +191,28 @@ function checkPassword(req: IncomingMessage, given: unknown, code?: unknown): vo
   }, secret ? 'Wrong password or code.' : 'Wrong password.');
 }
 
-/** One guess against the lockout: five wrong lock the address out, and a cap for everyone. */
+/** Throw 429 while this address is locked out: checked before the request's body is even read. */
+function checkLockout(req: IncomingMessage): void {
+  const f = fails.get(clientAddress(req));
+  if (f && f.until > Date.now()) throw new HttpError(429, `Too many wrong passwords. Try again in ${Math.ceil((f.until - Date.now()) / 60000)} minutes.`);
+}
+
+/**
+ * One guess against the lockout: five wrong lock the address out, and a cap for everyone. The right answer still
+ * signs in while the cap is reached, so guesses from elsewhere cannot keep the owner out.
+ */
 function attempt(req: IncomingMessage, ok: () => boolean, wrong: string): void {
+  checkLockout(req);
   const ip = clientAddress(req);
   const f = fails.get(ip) ?? { count: 0, until: 0, level: 0 };
-  if (f.until > Date.now()) throw new HttpError(429, `Too many wrong passwords. Try again in ${Math.ceil((f.until - Date.now()) / 60000)} minutes.`);
   recent = recent.filter((t) => t > Date.now() - 60_000);
-  if (recent.length >= GLOBAL_PER_MINUTE) throw new HttpError(429, 'Too many wrong passwords on this server just now. Try again in a minute.');
   if (ok()) {
     fails.delete(ip);
     return;
   }
   f.count++;
-  recent.push(Date.now());
+  const capped = recent.length >= GLOBAL_PER_MINUTE;
+  if (!capped) recent.push(Date.now());
   console.warn(`[yaho] wrong sign-in from ${ip} (${f.count})`);
   if (fails.size >= MAX_TRACKED && !fails.has(ip)) fails.delete(fails.keys().next().value!);
   if (f.count >= 5) {
@@ -203,6 +221,7 @@ function attempt(req: IncomingMessage, ok: () => boolean, wrong: string): void {
     f.count = 0;
   }
   fails.set(ip, f);
+  if (capped) throw new HttpError(429, 'Too many wrong passwords on this server just now. Try again in a minute.');
   throw new HttpError(401, wrong);
 }
 
@@ -222,6 +241,7 @@ export async function sessionRoute(
   }
   if (!serverMode()) throw new HttpError(404, 'sign-in is only used by the server version');
   if (req.method === 'POST') {
+    checkLockout(req);
     const b = await body();
     checkPassword(req, b.password, b.code);
     const setup = needsSetup();
@@ -249,6 +269,7 @@ async function totpSetup(ctx: Ctx, req: IncomingMessage, res: ServerResponse, bo
     return { secret: b32, uri: `otpauth://totp/${label}?secret=${b32}&issuer=Yaho&algorithm=SHA1&digits=6&period=30` };
   }
   if (req.method !== 'POST') throw new HttpError(405, 'method not allowed');
+  checkLockout(req);
   const code = (await body()).code;
   let step: number | null = null;
   attempt(req, () => (step = codeStep(key, code, -1)) !== null, 'That code does not match. Check the time on your phone and try the next one.');
