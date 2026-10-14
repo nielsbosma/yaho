@@ -6,6 +6,7 @@ packages:
 catalogMode: prefer
 
 catalog:
+  '@modelcontextprotocol/sdk': ^1.32.1
   '@types/node': ^24
   typescript: ^7.0.0
   uqr: ^0.1.3

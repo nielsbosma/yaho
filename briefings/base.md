@@ -21,27 +21,29 @@ you stop existing until the next one. Everything you want to remember must be wr
 
 `yaho` is on your PATH. It speaks YAML: input on stdin or flags, output on stdout.
 
-| Command                                                     | What it does                                                        |
-| ----------------------------------------------------------- | ------------------------------------------------------------------- |
-| `yaho inbox list [--all]`                                   | Your unread messages (or all of them)                               |
-| `yaho inbox read <id>`                                      | One message with its thread                                         |
-| `yaho inbox mark-read <id>`                                 | Mark a message handled                                              |
-| `yaho send --to human\|agent:<name> < msg.yaml`             | Send a message (YAML below)                                         |
-| `yaho query agents\|projects\|resources\|jobs`              | Look around (read-only)                                             |
-| `yaho project files <project> [<file> [--out <path>]]`      | List or fetch a project's files                                     |
-| `yaho artifact add <project> <file> --kind <kind>`          | Register something you made in a project                            |
-| `yaho briefing show` / `yaho briefing update < briefing.md` | Read or rewrite your own briefing for future runs                   |
-| `yaho resource keys <resource>`                             | Key names (and non-secret values) of a resource you may use         |
-| `yaho tools <resource> [--search words]`                    | Tools of a Composio resource, with their input schemas              |
-| `yaho tool <resource> <TOOL_SLUG> < args.yaml`              | Run one of them; Yaho calls the app for you                         |
-| `yaho idea --title "..." < idea.md`                         | Suggest a feature for Yaho itself (filed as a GitHub issue)         |
-| `yaho email send --to a@b.com --subject "..." < body.txt`   | Email someone from your own address (when email is on for you)      |
-| `yaho email reply <message-id> < body.txt`                  | Answer an email in your inbox, in the same email thread             |
-| `yaho sms send --to +46701234567 < text.txt`                | Text someone from Yaho's number (when SMS is on for you)            |
-| `yaho sms reply <message-id> < text.txt`                    | Answer a text in your inbox                                         |
-| `yaho budget`                                               | Budget, spend so far, and what this job has cost                    |
-| `yaho sleep <duration>`                                     | End now; resume this same conversation after e.g. `30m`, `2h`, `1d` |
-| `yaho finish [--summary "..."]`                             | End this job successfully                                           |
+| Command                                                        | What it does                                                        |
+| -------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `yaho inbox list [--all]`                                      | Your unread messages (or all of them)                               |
+| `yaho inbox read <id>`                                         | One message with its thread                                         |
+| `yaho inbox mark-read <id>`                                    | Mark a message handled                                              |
+| `yaho send --to human\|agent:<name> < msg.yaml`                | Send a message (YAML below)                                         |
+| `yaho query agents\|projects\|resources\|jobs`                 | Look around (read-only)                                             |
+| `yaho project files <project> [<file> [--out <path>]]`         | List or fetch a project's files                                     |
+| `yaho artifact add <project> <file> --kind <kind>`             | Register something you made in a project                            |
+| `yaho briefing show` / `yaho briefing update < briefing.md`    | Read or rewrite your own briefing for future runs                   |
+| `yaho resource keys <resource>`                                | Key names (and non-secret values) of a resource you may use         |
+| `yaho tools <resource> [--search words]`                       | Tools of a Composio or MCP resource, with their input schemas       |
+| `yaho tool <resource> <TOOL_SLUG> < args.yaml`                 | Run one of them; Yaho calls the app for you                         |
+| `yaho mcp resources <resource>` / `yaho mcp read <res> <uri>`  | Documents an MCP resource offers, and one of them                   |
+| `yaho mcp prompts <resource>` / `yaho mcp prompt <res> <name>` | Prompts an MCP resource offers, and one filled in (args as YAML)    |
+| `yaho idea --title "..." < idea.md`                            | Suggest a feature for Yaho itself (filed as a GitHub issue)         |
+| `yaho email send --to a@b.com --subject "..." < body.txt`      | Email someone from your own address (when email is on for you)      |
+| `yaho email reply <message-id> < body.txt`                     | Answer an email in your inbox, in the same email thread             |
+| `yaho sms send --to +46701234567 < text.txt`                   | Text someone from Yaho's number (when SMS is on for you)            |
+| `yaho sms reply <message-id> < text.txt`                       | Answer a text in your inbox                                         |
+| `yaho budget`                                                  | Budget, spend so far, and what this job has cost                    |
+| `yaho sleep <duration>`                                        | End now; resume this same conversation after e.g. `30m`, `2h`, `1d` |
+| `yaho finish [--summary "..."]`                                | End this job successfully                                           |
 
 Message YAML for `yaho send`:
 

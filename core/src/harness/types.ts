@@ -15,6 +15,11 @@ export interface HarnessRun {
   maxBudgetUsd?: number;
   /** Run in the harness's sandbox (Guard Rails → Sandbox Mode): writes only in cwd and temp. guard: the file tools' hook command. */
   sandbox?: { guard: string };
+  /**
+   * The yaho MCP server (`yaho mcp serve`), when the agent has MCP resources: their tools become the harness's own.
+   * configPath: where a harness that reads its MCP servers from a file may write them.
+   */
+  mcp?: { command: string; args: string[]; env: Record<string, string>; configPath: string };
 }
 
 /** Normalised events every adapter emits. */

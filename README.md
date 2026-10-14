@@ -76,6 +76,22 @@ Then open **Settings**:
 | Telegram (optional)           | A bot from [BotFather](https://t.me/BotFather) and its token. Then **Open in Telegram** and press Start: the link carries a one-time code, so only your chat can use the bot. Your inbox is posted there with buttons; replies, taps and ✅ reactions answer like the app. Works on the desktop too (no webhook).                       |
 | Global spend cap              | When total spend reaches it, no job starts and running jobs stop.                                                                                                                                                                                                                                                                       |
 
+### MCP servers
+
+Any [MCP](https://modelcontextprotocol.io) server can be a resource: **Resources → MCP Server**, then pick one from the
+catalog (GitHub, Linear, Notion, Sentry, Stripe, Playwright…), fill in a local command or a remote URL, or paste the
+`mcpServers` JSON from Claude Desktop, Claude Code or Cursor.
+
+- **stdio, Streamable HTTP and SSE.** Yaho itself connects to the server (stdio servers run as the agents' user in the
+  server version) and keeps one connection per resource, closed after ten idle minutes.
+- **Keys stay in the core.** `env`, headers, arguments and the URL can use `${KEY}`; the values live in Dopbase and are
+  filled in when Yaho connects. Servers that sign in with OAuth get a **Sign In** button; the tokens go to Dopbase too.
+- **Native tools.** Each job of an agent with MCP resources gets one extra MCP server, `yaho`, which offers their tools
+  as `<resource>__<tool>` (in Claude Code `mcp__yaho__<resource>__<tool>`). `yaho tools` / `yaho tool` work too, as do
+  `yaho mcp resources|read|prompts|prompt` for a server's documents and prompts.
+- **Control and testing.** The resource page shows the connection, the server's log, its tools (each one on or off for
+  agents, or only the read-only ones), documents and prompts, and runs any tool with **Try**.
+
 Create an agent from **Agents → New agent**: fill in the form, paste a YAML definition, or install one of the
 [examples](examples/agents) (an ads optimiser, a social scout and a day trader; they install disabled, with the
 projects and resources they need).
@@ -110,6 +126,8 @@ Each job gets `yaho` on its PATH and a short-lived job token that scopes what it
 | `yaho artifact add <project> <file> --kind <kind>`    | Register something it made                     |
 | `yaho briefing show` / `update < briefing.md`         | Read or rewrite its own briefing               |
 | `yaho resource keys <resource>`                       | Key names, and values only for non-secret keys |
+| `yaho tools <resource>` / `tool <resource> <tool>`    | A Composio or MCP resource's tools             |
+| `yaho mcp resources\|read\|prompts\|prompt`           | An MCP server's documents and prompts          |
 | `yaho email send` / `reply <id>`                      | Email people, answer their replies             |
 | `yaho sms send` / `reply <id>`                        | Text people, answer their replies              |
 | `yaho budget`                                         | Budget, spend and this job's cost              |

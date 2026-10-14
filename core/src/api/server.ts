@@ -11,6 +11,7 @@ import { handleBridge } from '../bridge.ts';
 import { handleWhatsAppWebhook } from '../whatsapp/bridge.ts';
 import { handleResendWebhook } from '../email/resend.ts';
 import { handleTwilioWebhook, WEBHOOK_PATH as TWILIO_WEBHOOK } from '../sms/twilio.ts';
+import { handleMcpOAuthCallback, MCP_OAUTH_CALLBACK } from './mcpRoutes.ts';
 
 export const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -120,6 +121,8 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
       if (path === '/api/resend/webhook') return await handleResendWebhook(ctx, raw, res, () => readBytes(raw, 4 * 1024 * 1024));
       // Twilio's webhook for incoming texts; it checks the auth token's signature itself.
       if (path === TWILIO_WEBHOOK) return await handleTwilioWebhook(ctx, raw, res, () => readBytes(raw, 256 * 1024));
+      // An MCP server's sign-in page sends the browser back here; the state ties it to a sign-in Yaho started.
+      if (path === MCP_OAUTH_CALLBACK && raw.method === 'GET') return await handleMcpOAuthCallback(ctx, url, res);
 
       if (path.startsWith('/api/')) {
         // Sign in and out (server version) are open, like health.

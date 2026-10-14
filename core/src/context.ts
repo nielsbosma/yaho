@@ -19,6 +19,10 @@ export interface Ctx {
   email?: import('./email/resend.ts').EmailBridge;
   sms?: import('./sms/twilio.ts').SmsBridge;
   telegram?: import('./telegram/bridge.ts').TelegramBridge;
+  /** How to run the yaho CLI with the core's own Node (set with the shims), for `yaho mcp serve`. */
+  cli?: { command: string; args: string[]; env: Record<string, string> };
+  /** The core's MCP client for MCP resources. */
+  mcp?: import('./mcp/hub.ts').McpHub;
   updates?: import('./updates.ts').Updates;
   scheduler?: { upcoming(agent: string): Array<{ type: string; at: string; cron?: string }>; tick(at?: Date): void };
   /** Set by the job runner; lets the scheduler and API start and stop jobs without import cycles. */

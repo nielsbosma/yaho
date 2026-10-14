@@ -120,6 +120,14 @@ export class Dopbase {
     for (const e of data?.entries ?? []) if (declared.has(e.key)) out[e.key] = e.value;
     return out;
   }
+
+  /** One value Yaho keeps for itself next to a resource's keys (an MCP server's OAuth tokens), never injected. */
+  async value(resource: string, key: string): Promise<string | null> {
+    const id = await this.environmentId(resource, false);
+    if (!id) return null;
+    const data = await this.call<{ entries: Array<{ key: string; value: string }> }>('GET', `/environments/${id}/secrets/runtime`);
+    return data?.entries.find((e) => e.key === key)?.value ?? null;
+  }
 }
 
 /** Values for every resource an agent may use. Missing Dopbase config yields an empty env plus a reason. */
@@ -127,11 +135,11 @@ export async function envForAgent(ctx: Ctx, resources: string[]): Promise<{ env:
   const dop = new Dopbase(ctx);
   const env: Record<string, string> = {};
   const warnings: string[] = [];
-  if (!resources.some((r) => getResource(ctx, r).kind !== 'composio')) return { env, warnings };
+  const injected = resources.filter((r) => (getResource(ctx, r).kind ?? 'keys') === 'keys');
+  if (!injected.length) return { env, warnings };
   if (!dop.configured) return { env, warnings: ['Dopbase is not configured; no resource keys were injected'] };
-  for (const r of resources) {
-    // Composio resources have no values to inject: agents use them through yaho tool.
-    if (getResource(ctx, r).kind === 'composio') continue;
+  // Composio and MCP resources have no values to inject: the core uses their keys when it makes the call.
+  for (const r of injected) {
     try {
       Object.assign(env, await dop.runtimeValues(r));
     } catch (e) {

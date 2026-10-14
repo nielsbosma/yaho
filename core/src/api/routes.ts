@@ -14,6 +14,7 @@ import type { Ctx } from '../context.ts';
 import { chat, type ChatFocus, type ChatMessage } from '../assistant/index.ts';
 import { litellmModels } from '../jobs/litellm.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
+import { OAUTH_KEY } from '../mcp/hub.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
 import { schedule } from '../schedule.ts';
@@ -554,6 +555,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const dop = new Dopbase(ctx);
     const set = res.keys.filter((k) => k.has_value).map((k) => k.name);
     const values = set.length && dop.configured ? await dop.runtimeValues(from) : {};
+    // An MCP server's sign-in moves with it.
+    const oauth = res.kind === 'mcp' && dop.configured ? await dop.value(from, OAUTH_KEY).catch(() => null) : null;
+    if (oauth) values[OAUTH_KEY] = oauth;
+    await ctx.mcp?.close(from);
     s.saveResource(ctx, { name: to }, from);
     try {
       for (const [k, v] of Object.entries(values)) await dop.setValue(to, k, v);
@@ -578,7 +583,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     if (name !== req.params.name) await renameResource(req.params.name!, name);
     return s.saveResource(ctx, { ...x, name });
   });
-  r.on('DELETE', '/api/resources/:name', (req) => s.deleteResource(ctx, req.params.name!));
+  r.on('DELETE', '/api/resources/:name', async (req) => {
+    await ctx.mcp?.close(req.params.name!);
+    return s.deleteResource(ctx, req.params.name!);
+  });
   /** The values of the keys that are not secret (agents see them anyway). Secret values never leave Dopbase this way. */
   r.on('GET', '/api/resources/:name/values', async (req) => {
     const open = s.getResource(ctx, req.params.name!).keys.filter((k) => !k.secret && k.has_value).map((k) => k.name);
@@ -591,10 +599,12 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     if (typeof value !== 'string') throw new HttpError(400, 'value is required');
     if (!s.getResource(ctx, req.params.name!).keys.some((k) => k.name === req.params.key)) throw new HttpError(404, 'unknown key');
     await new Dopbase(ctx).setValue(req.params.name!, req.params.key!, value);
+    await ctx.mcp?.close(req.params.name!);
     ctx.bus.emitEvent({ type: 'changed', entity: 'resources', name: req.params.name! });
   });
   r.on('DELETE', '/api/resources/:name/keys/:key/value', async (req) => {
     await new Dopbase(ctx).deleteValue(req.params.name!, req.params.key!);
+    await ctx.mcp?.close(req.params.name!);
     ctx.bus.emitEvent({ type: 'changed', entity: 'resources', name: req.params.name! });
   });
 }

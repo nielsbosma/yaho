@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const resume = args.includes('--resume') ? args[args.indexOf('--resume') + 1] : null;
+const mcpConfig = args.includes('--mcp-config') ? args[args.indexOf('--mcp-config') + 1] : '';
 const session = resume ?? `fake-${process.pid}`;
 const emit = (o) => process.stdout.write(JSON.stringify(o) + '\n');
 const prompt = readFileSync(0, 'utf8');
@@ -25,7 +26,7 @@ for (const step of steps) {
     continue;
   }
   emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command: step.cmd } }] } });
-  const r = spawnSync(step.cmd, { shell: true, encoding: 'utf8', input: step.stdin ?? '' });
+  const r = spawnSync(step.cmd, { shell: true, encoding: 'utf8', input: step.stdin ?? '', env: { ...process.env, FAKE_MCP_CONFIG: mcpConfig } });
   const output = `${r.stdout ?? ''}${r.stderr ?? ''}`;
   emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: output, is_error: r.status !== 0 }] } });
 }

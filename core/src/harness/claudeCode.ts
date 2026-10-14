@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync } from 'node:fs';
+import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import { delimiter, extname, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
@@ -67,6 +67,11 @@ export const claudeCode: HarnessAdapter = {
       '--append-system-prompt',
       run.systemPrompt,
     ];
+    if (run.mcp) {
+      const { command, args: mcpArgs, env, configPath } = run.mcp;
+      writeFileSync(configPath, JSON.stringify({ mcpServers: { yaho: { type: 'stdio', command, args: mcpArgs, env } } }));
+      args.push('--mcp-config', configPath);
+    }
     if (run.resumeSessionId) args.push('--resume', run.resumeSessionId);
     // Claude Code stops itself once its own spend estimate reaches this; Yaho passes what the agent has left.
     if (run.maxBudgetUsd !== undefined) args.push('--max-budget-usd', run.maxBudgetUsd.toFixed(4));

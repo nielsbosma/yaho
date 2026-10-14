@@ -15,7 +15,7 @@ fi
 touch /data/.write-test 2>/dev/null && rm -f /data/.write-test || fail "/data is not writable. Check the volume's settings (it must not be read-only)."
 
 # A new volume is often owned by root; hand it to yaho. Others may pass through /data, not list or read it.
-mkdir -p /data/home /data/.core /data/agents /data/projects /data/codex /data/bin
+mkdir -p /data/home /data/.core /data/agents /data/projects /data/codex /data/bin /data/mcp
 chown 1000:1000 /data /data/.core
 chmod 0711 /data
 chmod 0700 /data/.core
@@ -29,9 +29,11 @@ shared 1000 /data/agents
 shared 1000 /data/projects
 shared 1001 /data/codex
 shared 1000 /data/bin
+# Where stdio MCP servers run: the core starts them as yaho-agent.
+shared 1000 /data/mcp
 shared 1001 /data/home
 # Everything else in /data is the core's alone.
-find /data -mindepth 1 -maxdepth 1 ! -name home ! -name agents ! -name projects ! -name codex ! -name bin -exec chmod -R o-rwx {} +
+find /data -mindepth 1 -maxdepth 1 ! -name home ! -name agents ! -name projects ! -name codex ! -name bin ! -name mcp -exec chmod -R o-rwx {} +
 
 cd /data
 # umask 007: nothing the core writes is readable by others. The core keeps three capabilities, to start agents as
