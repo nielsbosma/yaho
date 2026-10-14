@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type { Settings } from '../config.ts';
-import { asAgent } from '../harness/asAgent.ts';
+import { agentEnv, asAgent } from '../harness/asAgent.ts';
 import { killTree, resolveCommand } from '../harness/claudeCode.ts';
 import { Cdp } from './cdp.ts';
 
@@ -80,6 +80,7 @@ export async function launchLocal(s: Settings, profile: string, opts: { download
       'about:blank',
     ];
     const child = spawn(...asAgent(exe, args), {
+      env: agentEnv(),
       stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'],
       windowsHide: true,
       detached: process.platform !== 'win32',

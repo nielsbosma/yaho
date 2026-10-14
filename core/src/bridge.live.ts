@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import YAML from 'yaml';
+import { checkToken } from './bridge.ts';
 import { serve } from './serve.ts';
 
 const env = Object.fromEntries(
@@ -25,7 +26,7 @@ const childEnv: Record<string, string> = {};
 for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_.*)$/.test(k)) childEnv[k] = v;
 Object.assign(childEnv, {
   ANTHROPIC_BASE_URL: `${ctx.apiUrl}/bridge/${kind}`,
-  ANTHROPIC_AUTH_TOKEN: ctx.apiToken,
+  ANTHROPIC_AUTH_TOKEN: checkToken(kind, [model], 3600_000).token,
   ANTHROPIC_API_KEY: '',
   ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
   ANTHROPIC_SMALL_FAST_MODEL: model,

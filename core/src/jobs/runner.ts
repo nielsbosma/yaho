@@ -10,6 +10,7 @@ import { COMMAND_GUARD, hookCommand } from '../harness/commandGuard.ts';
 import { commandRulesOn } from '../guard/commands.ts';
 import type { HarnessEvent, HarnessProcess } from '../harness/types.ts';
 import { envForAgent } from '../secrets/dopbase.ts';
+import { jobEnv } from '../harness/asAgent.ts';
 import type { Agent, Job } from '../store.ts';
 import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, totalSpend, updateJob } from '../store.ts';
 import { contextPrompt, systemPrompt } from './prompt.ts';
@@ -206,11 +207,9 @@ export class JobRunner {
         .map((m) => resolveModel(settings, m))
         .filter((x) => x.provider.id === provider.id)
         .at(-1)?.model ?? providerModel;
-    const env: Record<string, string> = {};
-    // Never inherit another Claude session's identity or credentials: the harness talks only to the provider Yaho gives it.
-    // The server password and other model credentials never reach a job.
-    const skip = /^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|YAHO_PASSWORD|YAHO_SERVER)$/;
-    for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !skip.test(k)) env[k] = v;
+    // Never another Claude session's identity or credentials (the harness talks only to the provider Yaho gives it), and
+    // never the core's passwords or keys.
+    const env = jobEnv();
     const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
     Object.assign(env, secrets.env, {
       [pathKey]: jobPath(ctx.paths.bin, env[pathKey] ?? ''),
