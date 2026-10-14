@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync, renameSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { Cron } from 'croner';
 import type { Ctx } from './context.ts';
 import type { Guardrails } from './config.ts';
@@ -215,15 +215,15 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
   const d = ctx.settings.defaults;
   const { db } = ctx;
   const ts = now();
-  if (opts.rename && opts.rename !== input.name) {
+  const rename = opts.rename && opts.rename !== input.name ? opts.rename : undefined;
+  if (rename) {
     if (agentExists(ctx, input.name)) throw new HttpError(409, `agent ${input.name} already exists`);
-    db.prepare('UPDATE agents SET name = ? WHERE name = ?').run(input.name, opts.rename);
-    db.prepare('UPDATE messages SET to_addr = ? WHERE to_addr = ?').run(`agent:${input.name}`, `agent:${opts.rename}`);
-    db.prepare('UPDATE messages SET from_addr = ? WHERE from_addr = ?').run(`agent:${input.name}`, `agent:${opts.rename}`);
-    const from = ctx.paths.agent(opts.rename);
-    if (existsSync(from)) renameSync(from, ctx.paths.agent(input.name));
+    if (!agentExists(ctx, rename)) throw new HttpError(404, `agent ${rename} not found`);
+    // Its running jobs work in the folder that moves.
+    if (db.prepare("SELECT 1 FROM jobs WHERE agent = ? AND status = 'running'").get(rename))
+      throw new HttpError(409, `${rename} has a running job: stop it before renaming`);
   }
-  const prev = db.prepare('SELECT * FROM agents WHERE name = ?').get(input.name) as Row | undefined;
+  const prev = db.prepare('SELECT * FROM agents WHERE name = ?').get(rename ?? input.name) as Row | undefined;
   const a: Agent = {
     name: input.name,
     enabled: input.enabled ?? (prev ? !!prev.enabled : true),
@@ -266,6 +266,13 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
   }
   db.exec('BEGIN');
   try {
+    if (rename) {
+      db.prepare('UPDATE agents SET name = ? WHERE name = ?').run(input.name, rename);
+      for (const col of ['to_addr', 'from_addr'])
+        db.prepare(`UPDATE messages SET ${col} = ? WHERE ${col} = ?`).run(`agent:${input.name}`, `agent:${rename}`);
+      for (const table of ['job_tokens', 'artifacts', 'job_search'])
+        db.prepare(`UPDATE ${table} SET agent = ? WHERE agent = ?`).run(input.name, rename);
+    }
     db.prepare(
       `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, sms, browser, created, updated)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -325,6 +332,12 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
     db.exec('ROLLBACK');
     throw e;
   }
+  if (rename)
+    for (const [from, to] of [
+      [ctx.paths.agent(rename), ctx.paths.agent(a.name)],
+      [join(ctx.paths.root, 'codex', rename), join(ctx.paths.root, 'codex', a.name)],
+    ])
+      if (existsSync(from!)) renameSync(from!, to!);
   ensureAgentWorkspace(ctx, a.name);
   ctx.bus.emitEvent({ type: 'changed', entity: 'agents', name: a.name });
   return getAgent(ctx, a.name);
@@ -628,7 +641,7 @@ export function listMessages(ctx: Ctx, opts: { to?: string; involving?: string; 
     args.push(opts.involving, opts.involving);
   }
   if (opts.unread) where.push('read = 0');
-  const sql = `SELECT * FROM messages ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY read ASC, created DESC LIMIT ${opts.limit ?? 500}`;
+  const sql = `SELECT * FROM messages ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY read ASC, created DESC LIMIT ${limitOf(opts.limit, 500)}`;
   return (ctx.db.prepare(sql).all(...args) as Row[]).map(messageFromRow);
 }
 
@@ -789,6 +802,12 @@ export function getJob(ctx: Ctx, id: string): Job {
   return { ...r };
 }
 
+/** A LIMIT from a query string: a positive whole number, or the default. */
+const limitOf = (n: unknown, fallback: number): number => {
+  const v = Math.floor(Number(n));
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+};
+
 export function listJobs(ctx: Ctx, opts: { agent?: string; active?: boolean; limit?: number } = {}): Job[] {
   const where: string[] = [];
   const args: string[] = [];
@@ -799,7 +818,7 @@ export function listJobs(ctx: Ctx, opts: { agent?: string; active?: boolean; lim
   if (opts.active) where.push("status IN ('running','queued')");
   return (
     ctx.db
-      .prepare(`SELECT *, (SELECT COUNT(*) FROM messages m WHERE m.job = jobs.id) AS messages FROM jobs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created DESC LIMIT ${opts.limit ?? 200}`)
+      .prepare(`SELECT *, (SELECT COUNT(*) FROM messages m WHERE m.job = jobs.id) AS messages FROM jobs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created DESC LIMIT ${limitOf(opts.limit, 200)}`)
       .all(...args) as unknown as Job[]
   ).map((j) => ({ ...j }));
 }
@@ -880,7 +899,7 @@ export function deleteArtifacts(ctx: Ctx, ids: string[]): number {
     const dir = join(ctx.paths.project(a.project as string), 'artifacts');
     const file = join(dir, a.file_path as string);
     // Only files inside the project's artifacts folder.
-    if (file.startsWith(dir)) rmSync(file, { force: true });
+    if (file.startsWith(dir + sep)) rmSync(file, { force: true });
     ctx.db.prepare('DELETE FROM artifacts WHERE id = ?').run(id);
     n++;
   }
