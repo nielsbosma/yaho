@@ -12,6 +12,7 @@ import { handleBridge } from '../bridge.ts';
 import { handleWhatsAppWebhook } from '../whatsapp/bridge.ts';
 import { handleResendWebhook } from '../email/resend.ts';
 import { handleTwilioWebhook, WEBHOOK_PATH as TWILIO_WEBHOOK } from '../sms/twilio.ts';
+import { handleMcpOAuthCallback, MCP_OAUTH_CALLBACK } from './mcpRoutes.ts';
 import { handleWebhook, HOOK_PREFIX, MAX_BODY } from '../webhooks/hooks.ts';
 
 export const MIME: Record<string, string> = {
@@ -199,6 +200,8 @@ export function startServer(
       if (path === '/api/resend/webhook') return await handleResendWebhook(ctx, raw, res, () => readBytes(raw, 4 * 1024 * 1024));
       // Twilio's webhook for incoming texts; it checks the auth token's signature itself.
       if (path === TWILIO_WEBHOOK) return await handleTwilioWebhook(ctx, raw, res, () => readBytes(raw, 256 * 1024));
+      // An MCP server's sign-in page sends the browser back here; the state ties it to a sign-in Yaho started.
+      if (path === MCP_OAUTH_CALLBACK && raw.method === 'GET') return await handleMcpOAuthCallback(ctx, url, res);
       // Agents' own webhooks: the token in the URL finds one, which checks its signature itself.
       if (path.startsWith(HOOK_PREFIX))
         return await handleWebhook(ctx, raw, res, path.slice(HOOK_PREFIX.length), () => readBytes(raw, MAX_BODY));

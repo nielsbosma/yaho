@@ -5,6 +5,7 @@ import { Cron } from 'croner';
 import type { Ctx } from './context.ts';
 import type { Guardrails } from './config.ts';
 import { newId, now } from './db/index.ts';
+import { normalizeMcp, referencedKeys, type McpConfig } from './mcp/config.ts';
 import { validateRules } from './guard/commandRules.ts';
 
 // ---------- shapes (what the API and YAML speak) ----------
@@ -64,9 +65,12 @@ export interface Resource {
   name: string;
   briefing: string;
   keys: ResourceKey[];
-  /** keys: values in Dopbase, injected as env vars. composio: a Composio connected account, used through yaho tool. */
-  kind?: 'keys' | 'composio';
-  config?: { toolkit?: string; toolkit_name?: string; logo?: string; connected_account_id?: string };
+  /**
+   * keys: values in Dopbase, injected as env vars. composio: a Composio connected account, used through yaho tool.
+   * mcp: an MCP server the core connects to (its keys fill in ${KEY} in its config), used as native tools or yaho tool.
+   */
+  kind?: 'keys' | 'composio' | 'mcp';
+  config?: { toolkit?: string; toolkit_name?: string; logo?: string; connected_account_id?: string; mcp?: McpConfig };
 }
 
 export interface Message {
@@ -556,19 +560,20 @@ export function saveResource(ctx: Ctx, input: Partial<Resource> & { name: string
   const ts = now();
   if (rename && rename !== input.name) ctx.db.prepare('UPDATE resources SET name = ? WHERE name = ?').run(input.name, rename);
   const prev = ctx.db.prepare('SELECT * FROM resources WHERE name = ?').get(input.name) as Row | undefined;
+  const kind = input.kind ?? (prev?.kind as Resource['kind']) ?? 'keys';
+  if (kind !== 'keys' && kind !== 'composio' && kind !== 'mcp')
+    throw new HttpError(400, `kind must be keys, composio or mcp (not ${kind})`);
+  const config = input.config ?? json<NonNullable<Resource['config']>>(prev?.config as string, {});
+  if (kind === 'mcp') {
+    const before = json<NonNullable<Resource['config']>>(prev?.config as string, {}).mcp;
+    config.mcp = normalizeMcp(config.mcp, before);
+  }
   ctx.db
     .prepare(
       `INSERT INTO resources (name, briefing, kind, config, created, updated) VALUES (?,?,?,?,?,?)
        ON CONFLICT(name) DO UPDATE SET briefing=excluded.briefing, kind=excluded.kind, config=excluded.config, updated=excluded.updated`,
     )
-    .run(
-      input.name,
-      input.briefing ?? (prev?.briefing as string) ?? '',
-      input.kind ?? (prev?.kind as string) ?? 'keys',
-      JSON.stringify(input.config ?? json(prev?.config as string, {})),
-      ts,
-      ts,
-    );
+    .run(input.name, input.briefing ?? (prev?.briefing as string) ?? '', kind, JSON.stringify(config), ts, ts);
   if (input.keys) {
     const keep = new Set(input.keys.map((k) => k.name));
     for (const k of input.keys) {
@@ -584,6 +589,10 @@ export function saveResource(ctx: Ctx, input: Partial<Resource> & { name: string
       if (!keep.has(k.name as string))
         ctx.db.prepare('DELETE FROM resource_keys WHERE resource = ? AND name = ?').run(input.name, k.name as string);
   }
+  // Every ${KEY} an MCP server's config names is a key of the resource, secret unless said otherwise.
+  if (kind === 'mcp')
+    for (const k of referencedKeys(config.mcp!))
+      ctx.db.prepare('INSERT OR IGNORE INTO resource_keys (resource, name, secret) VALUES (?,?,1)').run(input.name, k);
   if (input.agents) {
     ctx.db.prepare('DELETE FROM agent_resources WHERE resource = ?').run(input.name);
     for (const a of input.agents) ctx.db.prepare('INSERT OR IGNORE INTO agent_resources (agent, resource) VALUES (?,?)').run(a, input.name);

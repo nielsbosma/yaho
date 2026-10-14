@@ -4,7 +4,8 @@ import { useContextMenu } from '../components/ContextMenu.tsx';
 import { DataTable, LayoutSwitch, openDeleteMenu, useLayout } from '../components/ListLayout.tsx';
 import { MultiPicker } from '../components/MultiPicker.tsx';
 import { AppLogo, ComposioExplorer, ComposioTools } from './composio.tsx';
-import { Blocks, KeyRound, Lock, Pencil, Plus, Trash2, Unlock } from 'lucide-react';
+import { McpConfigForm, McpNew, McpServerPanel } from './mcp.tsx';
+import { Blocks, KeyRound, Lock, Pencil, Plus, Server, Trash2, Unlock } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
@@ -21,6 +22,7 @@ const changed = (e: { type: string; entity?: string }) => e.type === 'changed' &
 export function ResourcesView({ route }: ViewProps) {
   if (route[1] === 'new') return <ResourceEditor />;
   if (route[1] === 'composio') return <ComposioExplorer />;
+  if (route[1] === 'mcp') return <McpNew />;
   if (route[1]) return <ResourceDetail name={route[1]} />;
   return <ResourceList />;
 }
@@ -51,7 +53,10 @@ function ResourceList() {
           <>
             <LayoutSwitch value={layout} onChange={setLayout} />
             <Button onClick={() => go('resources', 'composio')}>
-              <Blocks /> From Composio
+              <Blocks /> New Integration
+            </Button>
+            <Button onClick={() => go('resources', 'mcp')}>
+              <Server /> New MCP Server
             </Button>
             <Button variant="primary" onClick={() => go('resources', 'new')}>
               <Plus /> New Resource
@@ -82,6 +87,11 @@ function ResourceList() {
                       <AppLogo src={r.config?.logo} name={r.config?.toolkit_name ?? r.name} className="size-5 rounded p-0.5" />
                       Composio
                     </span>
+                  ) : r.kind === 'mcp' ? (
+                    <span className="flex items-center gap-1.5 whitespace-nowrap text-muted">
+                      <Server className="size-4" />
+                      MCP{r.config?.mcp?.discovered ? ` · ${r.config.mcp.discovered.tools.length} tools` : ''}
+                    </span>
                   ) : (
                     <span className="text-muted">
                       {r.keys.length} ({r.keys.filter((k) => k.has_value).length} set)
@@ -103,9 +113,13 @@ function ResourceList() {
           <a key={r.name} href={href('resources', r.name)} onContextMenu={(e) => cardMenu.open(e, rowMenu(r.name))}>
             <Card className="p-4 transition-colors hover:border-line-strong">
               <div className="flex items-center gap-2">
-                <KeyRound className="size-4 text-muted" />
+                {r.kind === 'mcp' ? <Server className="size-4 text-muted" /> : <KeyRound className="size-4 text-muted" />}
                 <span className="font-medium">{r.name}</span>
-                <span className="ml-auto text-xs text-muted">{r.keys.length} keys</span>
+                <span className="ml-auto text-xs text-muted">
+                  {r.kind === 'mcp'
+                    ? `MCP${r.config?.mcp?.discovered ? ` · ${r.config.mcp.discovered.tools.length} tools` : ''}`
+                    : `${r.keys.length} keys`}
+                </span>
               </div>
               <p className="mt-2 line-clamp-2 text-sm text-muted">{plainText(r.briefing) || 'No briefing yet.'}</p>
               <div className="mt-3 flex flex-wrap gap-1">
@@ -222,7 +236,9 @@ function ResourceDetail({ name }: { name: string }) {
         sub={
           r.kind === 'composio'
             ? `${r.config?.toolkit_name ?? r.config?.toolkit} through Composio. Agents use it with yaho tools / yaho tool; Yaho makes the calls.`
-            : "Values are stored in Dopbase and injected into the agent's environment at job start."
+            : r.kind === 'mcp'
+              ? `An MCP server. Agents get its tools as their own (${r.name}__<tool>); Yaho makes the calls, and its keys never reach them.`
+              : "Values are stored in Dopbase and injected into the agent's environment at job start."
         }
         actions={
           <>
@@ -236,7 +252,11 @@ function ResourceDetail({ name }: { name: string }) {
       <div className="space-y-8 p-8">
         <ErrorNote>{error}</ErrorNote>
         {editing ? (
-          <ResourceEditor existing={r} onDone={() => setEditing(false)} />
+          r.kind === 'mcp' ? (
+            <McpConfigForm existing={r} onDone={() => setEditing(false)} />
+          ) : (
+            <ResourceEditor existing={r} onDone={() => setEditing(false)} />
+          )
         ) : (
           <>
             <Section title="Briefing">
@@ -253,37 +273,42 @@ function ResourceDetail({ name }: { name: string }) {
                   <ComposioTools toolkit={r.config?.toolkit ?? ''} />
                 </Section>
               </>
+            ) : r.kind === 'mcp' && !r.keys.length ? (
+              <McpServerPanel resource={r} />
             ) : (
-              <Section title="Keys">
-                <Card className="divide-y divide-line">
-                  {r.keys.map((k) => (
-                    <div key={k.name} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                      {k.secret ? <Lock className="size-4 text-warn" /> : <Unlock className="size-4 text-muted" />}
-                      <code>{k.name}</code>
-                      <Badge tone={k.secret ? 'warn' : 'neutral'}>{k.secret ? 'secret' : 'visible to agents'}</Badge>
-                      {!k.secret && values.data?.[k.name] !== undefined ? (
-                        <code className="ml-auto min-w-0 truncate text-xs text-ink" title={values.data[k.name]}>
-                          {values.data[k.name]}
-                        </code>
-                      ) : (
-                        <span className={cn('ml-auto text-xs', k.has_value ? 'text-ok' : 'text-muted')}>
-                          {k.has_value ? 'value set' : 'no value'}
-                        </span>
-                      )}
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setValue(k.secret ? '' : (values.data?.[k.name] ?? ''));
-                          setSetting(k.name);
-                        }}
-                      >
-                        Set Value
-                      </Button>
-                    </div>
-                  ))}
-                  {!r.keys.length && <div className="p-4 text-sm text-muted">No keys. Edit the resource to add some.</div>}
-                </Card>
-              </Section>
+              <>
+                {r.kind === 'mcp' && <McpServerPanel resource={r} />}
+                <Section title="Keys">
+                  <Card className="divide-y divide-line">
+                    {r.keys.map((k) => (
+                      <div key={k.name} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                        {k.secret ? <Lock className="size-4 text-warn" /> : <Unlock className="size-4 text-muted" />}
+                        <code>{k.name}</code>
+                        <Badge tone={k.secret ? 'warn' : 'neutral'}>{k.secret ? 'secret' : 'visible to agents'}</Badge>
+                        {!k.secret && values.data?.[k.name] !== undefined ? (
+                          <code className="ml-auto min-w-0 truncate text-xs text-ink" title={values.data[k.name]}>
+                            {values.data[k.name]}
+                          </code>
+                        ) : (
+                          <span className={cn('ml-auto text-xs', k.has_value ? 'text-ok' : 'text-muted')}>
+                            {k.has_value ? 'value set' : 'no value'}
+                          </span>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setValue(k.secret ? '' : (values.data?.[k.name] ?? ''));
+                            setSetting(k.name);
+                          }}
+                        >
+                          Set Value
+                        </Button>
+                      </div>
+                    ))}
+                    {!r.keys.length && <div className="p-4 text-sm text-muted">No keys. Edit the resource to add some.</div>}
+                  </Card>
+                </Section>
+              </>
             )}
           </>
         )}

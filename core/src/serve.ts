@@ -5,6 +5,7 @@ import YAML from 'yaml';
 import { Router } from './api/http.ts';
 import { agentRoutes } from './api/agentRoutes.ts';
 import { composioRoutes } from './api/composioRoutes.ts';
+import { mcpRoutes } from './api/mcpRoutes.ts';
 import { fontRoutes } from './api/fonts.ts';
 import { exampleRoutes, humanRoutes, yahoVersion } from './api/routes.ts';
 import { startServer } from './api/server.ts';
@@ -23,6 +24,7 @@ import { TelegramBridge } from './telegram/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
+import { McpHub } from './mcp/hub.ts';
 import { SANDBOX_GUARD, sandboxGuardScript } from './harness/sandbox.ts';
 import { COMMAND_GUARD, commandGuardScript } from './harness/commandGuard.ts';
 import { checkServerPassword, loadTotp, serverMode } from './api/session.ts';
@@ -63,6 +65,7 @@ export async function serve(
   ctx.sms = new SmsBridge(ctx);
   ctx.browser = new BrowserManager(ctx);
   ctx.telegram = new TelegramBridge(ctx);
+  ctx.mcp = new McpHub(ctx);
 
   const router = new Router();
   humanRoutes(ctx, router);
@@ -70,6 +73,7 @@ export async function serve(
   exampleRoutes(ctx, router);
   fontRoutes(router);
   composioRoutes(ctx, router);
+  mcpRoutes(ctx, router);
   writeShims(ctx);
 
   // In a container the port must be reachable from outside it; the password guards it.
@@ -101,6 +105,7 @@ export async function serve(
     ctx.sms?.stop();
     ctx.telegram?.stop();
     ctx.updates?.stop();
+    await ctx.mcp?.closeAll();
     ctx.localDopbase?.stop();
     await runner.shutdown();
     await ctx.browser?.closeAll();
@@ -148,6 +153,7 @@ function writeShims(ctx: Ctx): void {
   const posix = (p: string) => p.replaceAll('\\', '/');
   const sh = ['#!/bin/sh', `${electron ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}exec "${posix(node)}" ${flags} "${posix(cli)}" "$@"`];
   put('yaho', sh.join('\n') + '\n', 0o755);
+  ctx.cli = { command: node, args: [...flags.split(' '), cli], env: electron ? { ELECTRON_RUN_AS_NODE: '1' } : {} };
   put(SANDBOX_GUARD, sandboxGuardScript(), 0o644);
   put(COMMAND_GUARD, commandGuardScript(), 0o644);
 }

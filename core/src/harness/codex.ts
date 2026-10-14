@@ -10,6 +10,25 @@ import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from '.
 const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more chars)` : s);
 const toml = (s: string) => JSON.stringify(s); // a TOML basic string has JSON's escapes
 
+/** The yaho MCP server as Codex settings: its own environment, as Codex passes MCP servers only a few variables. */
+function codexMcp(m: NonNullable<HarnessRun['mcp']>): string[] {
+  const env = Object.entries(m.env)
+    .map(([k, v]) => `${k}=${toml(v)}`)
+    .join(',');
+  return [
+    '-c',
+    `mcp_servers.yaho.command=${toml(m.command)}`,
+    '-c',
+    `mcp_servers.yaho.args=[${m.args.map(toml).join(',')}]`,
+    '-c',
+    `mcp_servers.yaho.env={${env}}`,
+    '-c',
+    'mcp_servers.yaho.startup_timeout_sec=120',
+    '-c',
+    'mcp_servers.yaho.tool_timeout_sec=900',
+  ];
+}
+
 /**
  * On Windows npm installs codex as a .cmd script, which only runs through a shell, and a shell would mangle the quoted
  * settings and the multi-line instructions. Run its JavaScript entry with Node instead when it is next to the script.
@@ -85,6 +104,7 @@ export const codex: HarnessAdapter = {
       'model_provider="yaho"',
       '-c',
       `developer_instructions=${toml(run.systemPrompt)}`,
+      ...(run.mcp ? codexMcp(run.mcp) : []),
     ];
     const args = [
       ...(run.args ?? []),

@@ -20,6 +20,11 @@ export interface HarnessRun {
   sandbox?: { guard: string; socket?: string; denyRead?: string[] };
   /** Guard Rails → Command Rules: the hook command that checks each shell command before it runs. */
   commandGuard?: string;
+  /**
+   * The yaho MCP server (`yaho mcp serve`), when the agent has MCP resources: their tools become the harness's own.
+   * configPath: where a harness that reads its MCP servers from a file may write them.
+   */
+  mcp?: { command: string; args: string[]; env: Record<string, string>; configPath: string };
 }
 
 /** Normalised events every adapter emits. */

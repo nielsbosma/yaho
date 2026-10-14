@@ -24,8 +24,13 @@ const HELP = `yaho - talk to the Yaho orchestrator from inside a job
   yaho briefing show
   yaho briefing update < briefing.md
   yaho resource keys <resource>
-  yaho tools <resource> [--search words]   tools of a Composio resource
-  yaho tool <resource> <TOOL_SLUG> < args.yaml   run one (arguments as YAML)
+  yaho tools <resource> [--search words]   tools of a Composio or MCP resource
+  yaho tool <resource> <TOOL> < args.yaml  run one (arguments as YAML)
+  yaho mcp resources <resource>         documents an MCP server offers
+  yaho mcp read <resource> <uri> [--out <path>]
+  yaho mcp prompts <resource>           prompts an MCP server offers
+  yaho mcp prompt <resource> <name> < args.yaml
+  yaho mcp serve                        the MCP server Yaho gives your harness (it starts it for you)
   yaho idea --title "..." < idea.md     suggest a feature for Yaho itself (a GitHub issue)
   yaho email send --to a@b.com[,c@d.com] [--cc ...] --subject "..." [--body B] < body.txt
   yaho email reply <message-id> [--to ...] [--cc ...] [--body B] < body.txt
@@ -96,13 +101,20 @@ function request(
   });
 }
 
-async function call(method: string, path: string, body?: unknown, raw?: Buffer | string, contentType?: string): Promise<unknown> {
+async function call(
+  method: string,
+  path: string,
+  body?: unknown,
+  raw?: Buffer | string,
+  contentType?: string,
+  json = false,
+): Promise<unknown> {
   if (!apiUrl || !token) throw new CliError('YAHO_API_URL and YAHO_JOB_TOKEN are not set: yaho only works inside a Yaho job');
   const res = await request(`/api/agent${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
-      Accept: 'application/yaml',
+      Accept: json ? 'application/json' : 'application/yaml',
       'Content-Type': contentType ?? (raw !== undefined ? 'application/octet-stream' : 'application/json'),
     },
     body: raw === undefined ? (body === undefined ? undefined : JSON.stringify(body)) : typeof raw === 'string' ? raw : new Uint8Array(raw),
@@ -261,6 +273,41 @@ async function main(argv: string[]): Promise<void> {
         ),
       );
     }
+    case 'mcp': {
+      if (sub === 'serve') return serveMcp();
+      const res = encodeURIComponent(need(a1, 'resource name'));
+      if (sub === 'resources') return out(await call('GET', `/resources/${res}/mcp/resources`));
+      if (sub === 'prompts') return out(await call('GET', `/resources/${res}/mcp/prompts`));
+      if (sub === 'prompt') {
+        const stdin = readStdin();
+        return out(
+          await call(
+            'POST',
+            `/resources/${res}/mcp/prompts/${encodeURIComponent(need(a2, 'prompt name'))}`,
+            stdin.trim() ? YAML.parse(stdin) : {},
+          ),
+        );
+      }
+      if (sub === 'read') {
+        const r = (await call(
+          'GET',
+          `/resources/${res}/mcp/read?uri=${encodeURIComponent(need(a2, 'uri'))}`,
+          undefined,
+          undefined,
+          undefined,
+          true,
+        )) as {
+          contents: Array<{ uri: string; mimeType?: string; text?: string; blob?: string }>;
+        };
+        if (!f.out) return out(r);
+        const c = r.contents[0];
+        if (!c) throw new CliError('the server returned nothing for that uri');
+        const buf = c.blob !== undefined ? Buffer.from(c.blob, 'base64') : Buffer.from(c.text ?? '', 'utf8');
+        writeFileSync(f.out, buf);
+        return out({ saved: f.out, bytes: buf.length, mimeType: c.mimeType ?? null });
+      }
+      break;
+    }
     case 'idea': {
       const body = readStdin().trim() || f.body;
       return out(
@@ -303,6 +350,52 @@ async function main(argv: string[]): Promise<void> {
       return out(await call('POST', '/finish', { summary: f.summary }));
   }
   throw new CliError(`unknown command: ${p.join(' ')}\n\n${HELP}`);
+}
+
+/**
+ * The MCP server a harness starts (stdio): the tools of every MCP resource the agent may use, named
+ * <resource>__<tool>, each call made by the core. It never exits on a core error: a failed call is a tool error.
+ */
+async function serveMcp(): Promise<void> {
+  const { Server } = await import('@modelcontextprotocol/sdk/server/index.js');
+  const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+  const { CallToolRequestSchema, ListToolsRequestSchema } = await import('@modelcontextprotocol/sdk/types.js');
+  type Listed = {
+    tools: Array<{ name: string; resource: string; tool: string; description?: string } & Record<string, unknown>>;
+    errors: Array<{ resource: string; error: string }>;
+  };
+  const list = async (): Promise<Listed> => (await call('GET', '/mcp/tools', undefined, undefined, undefined, true)) as Listed;
+  let index = new Map<string, { resource: string; tool: string }>();
+  const first = await list().catch((e: Error) => ({ tools: [], errors: [{ resource: 'yaho', error: e.message }] }) as Listed);
+  const instructions = [
+    'The tools of the MCP servers Yaho gives you, named <resource>__<tool>. Yaho makes each call; there are no keys to handle.',
+    ...first.errors.map((e) => `${e.resource} could not be reached: ${e.error}`),
+  ].join('\n');
+  const server = new Server({ name: 'yaho', version: version() }, { capabilities: { tools: { listChanged: false } }, instructions });
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const r = index.size || !first.tools.length ? await list().catch(() => first) : first;
+    index = new Map(r.tools.map((t) => [t.name, { resource: t.resource, tool: t.tool }]));
+    return {
+      tools: r.tools.map(({ resource, tool: _tool, ...t }) => ({ ...t, description: `[${resource}] ${t.description ?? ''}`.trim() })),
+    } as never;
+  });
+  server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    const hit = index.get(req.params.name);
+    if (!hit) return { content: [{ type: 'text', text: `no tool ${req.params.name}` }], isError: true };
+    try {
+      return (await call(
+        'POST',
+        '/mcp/call',
+        { resource: hit.resource, tool: hit.tool, arguments: req.params.arguments ?? {} },
+        undefined,
+        undefined,
+        true,
+      )) as never;
+    } catch (e) {
+      return { content: [{ type: 'text', text: (e as Error).message }], isError: true };
+    }
+  });
+  await server.connect(new StdioServerTransport());
 }
 
 /**

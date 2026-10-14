@@ -26,10 +26,12 @@ export function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
 /** An in-memory sliding window: at most limit hits per key within windowMs. */
 export class RateLimit {
   private hits = new Map<string, number[]>();
-  constructor(
-    readonly limit: number,
-    readonly windowMs: number,
-  ) {}
+  readonly limit: number;
+  readonly windowMs: number;
+  constructor(limit: number, windowMs: number) {
+    this.limit = limit;
+    this.windowMs = windowMs;
+  }
 
   /** Counts a hit for key; false (and not counted) when the key is over its limit. */
   take(key: string, at = Date.now()): boolean {

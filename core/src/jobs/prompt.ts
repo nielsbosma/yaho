@@ -6,6 +6,7 @@ import type { Ctx } from '../context.ts';
 import type { Agent, Job } from '../store.ts';
 import { getProject, getResource, listMessages } from '../store.ts';
 import { sandboxOn } from '../harness/sandbox.ts';
+import { nativeToolName, toolEnabled, type McpConfig } from '../mcp/config.ts';
 import { commandRulesOn } from '../guard/commands.ts';
 import { deliveryForJob } from '../webhooks/hooks.ts';
 
@@ -24,6 +25,23 @@ export function baseBriefing(agent: string): string {
 /** System prompt: base briefing, then the agent's own briefing. */
 export function systemPrompt(agent: Agent): string {
   return `${baseBriefing(agent.name)}\n\n---\n\n# Your briefing\n\n${agent.briefing.trim() || '(empty: ask the human what to do)'}\n`;
+}
+
+/** An MCP resource: its tools are native tools of the yaho MCP server, and also reachable with yaho tool. */
+function mcpSection(name: string, briefing: string, cfg: McpConfig, harness: string): string {
+  const d = cfg.discovered;
+  const tools = (d?.tools ?? []).filter((t) => toolEnabled(cfg, t.name));
+  const native = (t: string) => (harness === 'claude-code' ? `mcp__yaho__${nativeToolName(name, t)}` : nativeToolName(name, t));
+  const shown = tools.slice(0, 80).map((t) => `\`${native(t.name)}\``);
+  return [
+    `### ${name} (MCP server${d?.server ? `: ${d.server}` : ''})`,
+    briefing.trim(),
+    '',
+    `Its tools are in your tool list, from the \`yaho\` MCP server, named \`${native('<tool>')}\`${shown.length ? `: ${shown.join(', ')}${tools.length > shown.length ? `, and ${tools.length - shown.length} more` : ''}` : ''}.`,
+    `In scripts, or if they are missing, use \`yaho tools ${name}\` and \`yaho tool ${name} <tool> < args.yaml\`. Its documents: \`yaho mcp resources ${name}\`, \`yaho mcp read ${name} <uri>\`; its prompts: \`yaho mcp prompts ${name}\`. Yaho makes the calls; there are no keys to handle.`,
+  ]
+    .filter((x, i) => i !== 1 || x)
+    .join('\n');
 }
 
 /** The user turn: why this job started, then context (projects, resources, inbox, session summary). */
@@ -56,7 +74,9 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
       parts.push(
         r.kind === 'composio'
           ? `### ${r.name} (Composio: ${r.config?.toolkit_name ?? r.config?.toolkit})\n${r.briefing.trim()}`
-          : `### ${r.name}\n${r.briefing.trim()}\n\nKeys: ${r.keys.map((k) => `\`${k.name}\`${k.secret ? ' (secret)' : ''}`).join(', ') || 'none'}`,
+          : r.kind === 'mcp' && r.config?.mcp
+            ? mcpSection(r.name, r.briefing, r.config.mcp, agent.harness)
+            : `### ${r.name}\n${r.briefing.trim()}\n\nKeys: ${r.keys.map((k) => `\`${k.name}\`${k.secret ? ' (secret)' : ''}`).join(', ') || 'none'}`,
       );
     }
   }

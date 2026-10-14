@@ -5,6 +5,7 @@ import { Composio } from '../secrets/composio.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
 import { searchHistory, showHistory } from '../history.ts';
 import { fileIdea, type Idea } from '../ideas.ts';
+import { nativeToolName } from '../mcp/config.ts';
 import { checkCommand } from '../guard/commands.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
@@ -207,25 +208,80 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     return res.keys.map((k) => ({ name: k.name, secret: k.secret, ...(k.secret ? {} : { value: values[k.name] ?? null }), env: k.name }));
   });
 
-  // ---- Composio resources: the core makes the call, so the Composio key never reaches the agent ----
-  const composioResource = (agent: string, name: string) => {
+  // ---- Composio and MCP resources: the core makes the call, so their keys never reach the agent ----
+  const toolResource = (agent: string, name: string) => {
     allowed(agent, name);
     const res = s.getResource(ctx, name);
+    if (res.kind === 'mcp' && res.config?.mcp) return res;
     if (res.kind !== 'composio' || !res.config?.connected_account_id || !res.config.toolkit)
-      throw new HttpError(400, `${name} is not a Composio resource; its keys are in your environment`);
+      throw new HttpError(400, `${name} is not a Composio or MCP resource; its keys are in your environment`);
+    return res;
+  };
+  const hub = () => {
+    if (!ctx.mcp) throw new HttpError(503, 'MCP is not running');
+    return ctx.mcp;
+  };
+  const mcpResource = (agent: string, name: string) => {
+    const res = toolResource(agent, name);
+    if (res.kind !== 'mcp') throw new HttpError(400, `${name} is not an MCP resource`);
     return res;
   };
   on('GET', '/resources/:resource/tools', async (req, w) => {
-    const res = composioResource(w.agent, req.params.resource!);
+    const res = toolResource(w.agent, req.params.resource!);
+    if (res.kind === 'mcp') {
+      const words = (req.query.get('search') ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+      return (await hub().tools(res.name))
+        .filter((t) => words.every((x) => `${t.name} ${t.description ?? ''}`.toLowerCase().includes(x)))
+        .map((t) => ({ slug: t.name, name: t.title ?? t.name, description: t.description ?? '', input_parameters: t.inputSchema }));
+    }
     return new Composio(ctx).tools(res.config!.toolkit!, { search: req.query.get('search') ?? undefined, limit: 50 });
   });
   on('POST', '/resources/:resource/tools/:tool', async (req, w) => {
-    const res = composioResource(w.agent, req.params.resource!);
-    // Only the toolkit's own tools (GMAIL_SEND_EMAIL for gmail): the connected account is for that toolkit alone.
-    const prefix = `${res.config!.toolkit!.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_`;
-    if (!req.params.tool!.toUpperCase().startsWith(prefix)) throw new HttpError(403, `${req.params.tool} is not a tool of ${res.name}`);
+    const res = toolResource(w.agent, req.params.resource!);
+    if (res.kind !== 'mcp') {
+      // Only the toolkit's own tools (GMAIL_SEND_EMAIL for gmail): the connected account is for that toolkit alone.
+      const prefix = `${res.config!.toolkit!.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_`;
+      if (!req.params.tool!.toUpperCase().startsWith(prefix)) throw new HttpError(403, `${req.params.tool} is not a tool of ${res.name}`);
+    }
     const args = await req.body<Record<string, unknown>>();
+    if (res.kind === 'mcp') return hub().call(res.name, req.params.tool!, args);
     return new Composio(ctx).execute(req.params.tool!, res.config!.connected_account_id!, args);
+  });
+  on('GET', '/resources/:resource/mcp/resources', (req, w) => hub().resources(mcpResource(w.agent, req.params.resource!).name));
+  on('GET', '/resources/:resource/mcp/read', (req, w) => {
+    const uri = req.query.get('uri');
+    if (!uri) throw new HttpError(400, 'uri is required');
+    return hub().read(mcpResource(w.agent, req.params.resource!).name, uri);
+  });
+  on('GET', '/resources/:resource/mcp/prompts', (req, w) => hub().prompts(mcpResource(w.agent, req.params.resource!).name));
+  on('POST', '/resources/:resource/mcp/prompts/:prompt', async (req, w) =>
+    hub().prompt(mcpResource(w.agent, req.params.resource!).name, req.params.prompt!, await req.body<Record<string, string>>()),
+  );
+
+  /**
+   * For `yaho mcp serve`, the MCP server Yaho gives the harness: the tools of every MCP resource the agent may use,
+   * named <resource>__<tool>. A server that cannot be reached is reported, not fatal.
+   */
+  on('GET', '/mcp/tools', async (_req, w) => {
+    const names = s.getAgent(ctx, w.agent).resources.filter((n) => s.getResource(ctx, n).kind === 'mcp');
+    const tools: unknown[] = [];
+    const errors: Array<{ resource: string; error: string }> = [];
+    await Promise.all(
+      names.map(async (name) => {
+        try {
+          for (const t of await hub().tools(name))
+            tools.push({ ...t, name: nativeToolName(name, t.name), title: t.title ?? t.name, resource: name, tool: t.name });
+        } catch (e) {
+          errors.push({ resource: name, error: (e as Error).message });
+        }
+      }),
+    );
+    return { tools, errors };
+  });
+  on('POST', '/mcp/call', async (req, w) => {
+    const b = await req.body<{ resource?: string; tool?: string; arguments?: Record<string, unknown> }>();
+    if (!b.resource || !b.tool) throw new HttpError(400, 'resource and tool are required');
+    return hub().call(mcpResource(w.agent, b.resource).name, b.tool, b.arguments ?? {});
   });
 
   // ---- budget and ending the job ----

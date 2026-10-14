@@ -15,7 +15,7 @@ fi
 touch /data/.write-test 2>/dev/null && rm -f /data/.write-test || fail "/data is not writable. Check the volume's settings (it must not be read-only)."
 
 # A new volume is often owned by root; hand it to yaho. Others may pass through /data, not list or read it.
-mkdir -p /data/home /data/.core /data/agents /data/projects /data/codex /data/bin
+mkdir -p /data/home /data/.core /data/agents /data/projects /data/codex /data/bin /data/mcp
 chown 1000:1000 /data /data/.core
 chmod 0711 /data
 chmod 0700 /data/.core
@@ -31,6 +31,8 @@ shared() {
 shared 1000 /data/agents
 shared 1000 /data/projects
 shared 1001 /data/codex
+# Where stdio MCP servers run: the core starts them as yaho-agent.
+shared 1000 /data/mcp
 shared 1001 /data/home
 # Agents work inside their workspace and projects; only the core adds or removes them.
 chmod g-w /data/agents /data/projects
@@ -39,7 +41,7 @@ find /data/bin \( ! -user 1000 -o ! -group 1000 \) -exec chown -h 1000:1000 {} +
 find /data/bin ! -type l -perm /0022 -exec chmod go-w {} +
 chmod 0755 /data/bin
 # Everything else in /data is the core's alone.
-find /data -mindepth 1 \( -path /data/home -o -path /data/agents -o -path /data/projects -o -path /data/codex -o -path /data/bin \) -prune \
+find /data -mindepth 1 \( -path /data/home -o -path /data/agents -o -path /data/projects -o -path /data/codex -o -path /data/bin -o -path /data/mcp \) -prune \
   -o ! -type l -perm /0007 -exec chmod o-rwx {} +
 
 cd /data

@@ -262,8 +262,21 @@ export interface Resource {
   briefing: string;
   keys: Array<{ name: string; secret: boolean; has_value?: boolean }>;
   agents: string[];
-  kind?: 'keys' | 'composio';
-  config?: { toolkit?: string; toolkit_name?: string; logo?: string; connected_account_id?: string };
+  kind?: 'keys' | 'composio' | 'mcp';
+  config?: { toolkit?: string; toolkit_name?: string; logo?: string; connected_account_id?: string; mcp?: McpConfig };
+}
+
+export interface McpConfig {
+  transport: 'stdio' | 'http' | 'sse';
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  url?: string;
+  headers?: Record<string, string>;
+  tools?: string[];
+  timeout_s?: number;
+  discovered?: { server?: string; version?: string; tools: Array<{ name: string; description?: string }>; at: string };
 }
 
 export interface Artifact {

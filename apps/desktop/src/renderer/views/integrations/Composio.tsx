@@ -137,7 +137,7 @@ export function ComposioKeyHelp() {
         <li>
           Then open{' '}
           <a className="text-accent underline" href={href('resources', 'composio')}>
-            Resources → From Composio
+            Resources → New Integration
           </a>{' '}
           to connect apps and add them as resources.
         </li>

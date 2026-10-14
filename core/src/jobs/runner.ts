@@ -8,11 +8,11 @@ import { adapters, killTree } from '../harness/index.ts';
 import { coreFiles, sandboxGuardCommand, sandboxOn, sandboxProblem } from '../harness/sandbox.ts';
 import { COMMAND_GUARD, hookCommand } from '../harness/commandGuard.ts';
 import { commandRulesOn } from '../guard/commands.ts';
-import type { HarnessEvent, HarnessProcess } from '../harness/types.ts';
+import type { HarnessEvent, HarnessProcess, HarnessRun } from '../harness/types.ts';
 import { envForAgent } from '../secrets/dopbase.ts';
 import { jobEnv } from '../harness/asAgent.ts';
 import type { Agent, Job } from '../store.ts';
-import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, updateJob } from '../store.ts';
+import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, getResource, updateJob } from '../store.ts';
 import { procId, sameProc } from '../harness/proc.ts';
 import { contextPrompt, systemPrompt } from './prompt.ts';
 import type { ModelPrice } from './litellm.ts';
@@ -293,6 +293,8 @@ export class JobRunner {
       ANTHROPIC_DEFAULT_HAIKU_MODEL: background,
       ANTHROPIC_SMALL_FAST_MODEL: background,
       DISABLE_TELEMETRY: '1',
+      // MCP servers that start with npx can take a while the first time.
+      MCP_TIMEOUT: process.env.MCP_TIMEOUT ?? '120000',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     });
 
@@ -327,6 +329,7 @@ export class JobRunner {
           ? { guard: sandboxGuardCommand(ctx.paths.bin), socket: ctx.paths.socket, denyRead: coreFiles(ctx.paths) }
           : undefined,
         commandGuard: commandRulesOn(settings) ? hookCommand(ctx.paths.bin, COMMAND_GUARD) : undefined,
+        mcp: this.mcpServer(agent, env, join(cwd, '.yaho', `mcp-${job.id}.json`)),
       },
       (e) => this.onEvent(r, ses.id, e),
     );
@@ -347,6 +350,19 @@ export class JobRunner {
         ? { status: 'finished', reason: 'harness exited without calling yaho finish' }
         : { status: 'failed', reason: `harness exited with code ${code}` });
     this.finalize(r, end);
+  }
+
+  /** The yaho MCP server for a job, when the agent may use MCP resources. */
+  private mcpServer(agent: Agent, env: Record<string, string>, configPath: string): HarnessRun['mcp'] {
+    const cli = this.ctx.cli;
+    if (!cli || !agent.resources.some((n) => getResource(this.ctx, n).kind === 'mcp')) return undefined;
+    const pass = ['YAHO_API_URL', 'YAHO_JOB_TOKEN', 'YAHO_API_SOCKET', 'YAHO_AGENT', 'YAHO_JOB'];
+    return {
+      command: cli.command,
+      args: [...cli.args, 'mcp', 'serve'],
+      env: { ...cli.env, ...Object.fromEntries(pass.filter((k) => env[k]).map((k) => [k, env[k]!])) },
+      configPath,
+    };
   }
 
   private onEvent(r: Running, sessionId: string, e: HarnessEvent): void {
@@ -470,6 +486,7 @@ export class JobRunner {
     this.release(r);
     rmSync(this.pidFile(r.job), { force: true });
     ctx.db.prepare('DELETE FROM job_tokens WHERE job = ?').run(r.job);
+    rmSync(join(ctx.paths.agent(getJob(ctx, r.job).agent), '.yaho', `mcp-${r.job}.json`), { force: true });
     void ctx.browser?.close(r.job);
     if (this.shuttingDown) return this.requeueInterrupted(r.job, 'the Yaho core restarted');
     const job = getJob(ctx, r.job);
