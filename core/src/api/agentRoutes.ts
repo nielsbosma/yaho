@@ -4,6 +4,7 @@ import type { Ctx } from '../context.ts';
 import { Composio } from '../secrets/composio.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
 import { fileIdea, type Idea } from '../ideas.ts';
+import { checkCommand } from '../guard/commands.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
 import type { Req, Router } from './http.ts';
@@ -185,6 +186,12 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
       this_job_usd: s.getJob(ctx, w.job).cost_usd,
     };
   });
+  /** Command Rules: the hook asks here before each shell command runs. */
+  on('POST', '/guard/command', async (req, w) => {
+    const { command } = await req.body<{ command?: string }>();
+    return checkCommand(ctx, w, String(command ?? ''));
+  });
+
   on('POST', '/sleep', async (req, w) => {
     const { duration } = await req.body<{ duration?: string }>();
     const until = ctx.runner!.sleep(w.job, parseDuration(String(duration ?? '')));

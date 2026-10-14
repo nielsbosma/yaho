@@ -8,6 +8,7 @@ import type { AppState } from '../App.tsx';
 import { ClaudeCheckPanel } from './onboarding.tsx';
 import { Integrations } from './integrations.tsx';
 import { BrandLogo } from '../components/BrandLogo.tsx';
+import { CommandRulesEditor, type CommandRule } from '../components/CommandRulesEditor.tsx';
 import { api, useApi } from '../lib/api.ts';
 import { href } from '../lib/router.ts';
 import { PALETTES, usePalette, useTheme, type Theme } from '../lib/theme.ts';
@@ -38,6 +39,7 @@ export interface Settings {
   twilio?: { account_sid?: string; auth_token?: string; number?: string; new_agent?: string };
   telegram?: { bot_token?: string; post?: 'all' | 'expects_response' };
   sandbox?: boolean;
+  command_rules?: { enabled?: boolean; rules?: CommandRule[] };
   ideas?: { enabled?: boolean; repo?: string };
   defaults: { harness: string; models: string[]; budget_usd: number; max_parallel: number; guardrails: Record<string, number | undefined> };
 }
@@ -168,6 +170,7 @@ export function SettingsView({ route }: { route: string[] }) {
             <SandboxMode value={s.sandbox} onChange={(v) => upd((d) => void (d.sandbox = v))} />
           </Card>
         </Section>
+        <CommandRules value={s.command_rules} onChange={(v) => upd((d) => void (d.command_rules = v))} />
         </Pane>
         <Pane id="defaults" label="Defaults">
         <Section title="Defaults for New Agents">
@@ -335,6 +338,49 @@ function SandboxMode({ value, onChange }: { value: boolean | undefined; onChange
           </p>
         ))}
     </div>
+  );
+}
+
+/**
+ * Command Rules: shell commands checked before they run. Off unless turned on; the rules start as the default list
+ * (an unset list means the defaults, so they follow Yaho's until edited).
+ */
+function CommandRules({
+  value,
+  onChange,
+}: {
+  value: { enabled?: boolean; rules?: CommandRule[] } | undefined;
+  onChange: (v: { enabled?: boolean; rules?: CommandRule[] }) => void;
+}) {
+  const defaults = useApi<CommandRule[]>('/api/command-rules/defaults');
+  const on = !!value?.enabled;
+  const rules = value?.rules ?? defaults.data ?? [];
+  return (
+    <Section title="Command Rules">
+      <Card className="space-y-4 p-4">
+        <label className="flex items-start gap-3 text-sm">
+          <Switch checked={on} label="Command Rules" onChange={(v) => onChange({ ...value, enabled: v })} />
+          <span>
+            Check Agents' Commands
+            <span className="block text-xs text-muted">
+              Every shell command an agent runs is checked against these rules first. Block refuses it. Ask pauses the job and asks you in the inbox
+              (Allow once, Always allow or Deny); the job resumes with your answer. Allow lets a command through that an Ask rule would hold. Block
+              always wins. Patterns use * as a wildcard and match the whole command; write /…/ for a regular expression.
+            </span>
+          </span>
+        </label>
+        {on && (
+          <>
+            <CommandRulesEditor rules={rules} onChange={(r) => onChange({ ...value, rules: r })} />
+            {value?.rules && (
+              <Button size="sm" variant="link" onClick={() => onChange({ ...value, rules: undefined })}>
+                Reset to Defaults
+              </Button>
+            )}
+          </>
+        )}
+      </Card>
+    </Section>
   );
 }
 

@@ -9,6 +9,7 @@ import { PROVIDERS, defaultProvider, litellmProvider } from '../providers.ts';
 import { allModels, listModels } from '../providerApi.ts';
 import { revealToken, serverMode } from './session.ts';
 import { sandboxOn, sandboxProblem } from '../harness/sandbox.ts';
+import { DEFAULT_COMMAND_RULES, validateRules } from '../guard/commandRules.ts';
 import { applySettingsUpdate, publicSettings, storeSecrets } from '../secrets/settingsSecrets.ts';
 import type { Ctx } from '../context.ts';
 import { chat, type ChatFocus, type ChatMessage } from '../assistant/index.ts';
@@ -93,6 +94,11 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('GET', '/api/settings', () => publicSettings(ctx.settings));
   r.on('PUT', '/api/settings', async (req) => {
     const next = await definition<Settings>(req);
+    try {
+      if (next.command_rules?.rules !== undefined) next.command_rules.rules = validateRules(next.command_rules.rules);
+    } catch (e) {
+      throw new HttpError(400, (e as Error).message);
+    }
     const slackBefore = JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]);
     const wa = () => JSON.stringify([ctx.settings.whatsapp?.access_token, ctx.settings.whatsapp?.app_secret, ctx.settings.whatsapp?.phone_number_id, ctx.settings.whatsapp?.number]);
     const waBefore = wa();
@@ -184,6 +190,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   });
 
   // ---- Guard Rails: Sandbox Mode ----
+  r.on('GET', '/api/command-rules/defaults', () => DEFAULT_COMMAND_RULES);
   r.on('GET', '/api/sandbox', () => ({
     on: sandboxOn(ctx.settings),
     default: serverMode(),

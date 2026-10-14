@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { CommandRule } from './guard/commandRules.ts';
 import YAML from 'yaml';
 
 /** Global settings, stored as settings.yaml in the data directory. */
@@ -68,6 +69,11 @@ export interface Settings {
   telegram?: { bot_token?: string; owner?: string; since?: string; link_code?: string; bot?: string; post?: 'all' | 'expects_response' };
   /** Run harnesses in their sandbox (writes only to the agent's workspace). Unset: on in the server version, off on the desktop. */
   sandbox?: boolean;
+  /**
+   * Command Rules: shell commands are checked before they run; Block refuses, Ask waits for the human's approval in the
+   * inbox. Off unless enabled. rules unset means the default list.
+   */
+  command_rules?: { enabled?: boolean; rules?: CommandRule[] };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   /** When the first-run setup was finished (or skipped). Until then the app shows it. */
@@ -114,6 +120,8 @@ export interface Guardrails {
   hop_limit?: number;
   /** Skip scheduled runs while the human has unread messages from this agent. */
   wait_for_inbox?: boolean;
+  /** Command Rules for this agent alone, checked with the global ones (Allow here lets it run what others must ask for). */
+  command_rules?: CommandRule[];
 }
 
 export const defaultSettings = (): Settings => ({
