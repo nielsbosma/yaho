@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { CommandRule } from './guard/commandRules.ts';
@@ -190,12 +190,26 @@ function merge<T>(base: T, over: unknown): T {
   return out as T;
 }
 
+/**
+ * The data folder, readable by its owner only. Not when agents run as their own user (the server version): they pass
+ * through it to their workspaces, and the image sets its rights.
+ */
+export function privateDir(dir: string): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (!process.env.YAHO_AGENT_UID) chmodSync(dir, 0o700);
+}
+
+/** Write a file only its owner can read (the token, settings), and tighten one written before with wider rights. */
+export function writePrivate(file: string, data: string): void {
+  writeFileSync(file, data, { mode: 0o600 });
+  chmodSync(file, 0o600);
+}
+
 export function loadSettings(): Settings {
   const p = paths();
-  mkdirSync(p.root, { recursive: true });
-  if (!existsSync(p.settings)) {
-    writeFileSync(p.settings, YAML.stringify(defaultSettings()));
-  }
+  privateDir(p.root);
+  if (!existsSync(p.settings)) writePrivate(p.settings, YAML.stringify(defaultSettings()));
+  else chmodSync(p.settings, 0o600);
   const raw = migrateSettingsShape((YAML.parse(readFileSync(p.settings, 'utf8')) ?? {}) as Record<string, unknown>);
   return merge(defaultSettings(), raw);
 }
@@ -248,13 +262,14 @@ export const secretsStored = new Set<string>();
 export function saveSettings(s: Settings): void {
   const out = structuredClone(s);
   for (const slot of secretSlots(out)) if (secretsStored.has(slot.path)) delete slot.holder(out)?.[slot.field];
-  writeFileSync(paths().settings, YAML.stringify(out));
+  writePrivate(paths().settings, YAML.stringify(out));
 }
 
 /** The API token every caller (UI, CLI admin use) presents. Created once per data directory. */
 export function apiToken(): string {
   const p = paths();
-  mkdirSync(p.root, { recursive: true });
-  if (!existsSync(p.token)) writeFileSync(p.token, randomBytes(24).toString('hex'));
+  privateDir(p.root);
+  if (!existsSync(p.token)) writePrivate(p.token, randomBytes(24).toString('hex'));
+  else chmodSync(p.token, 0o600);
   return readFileSync(p.token, 'utf8').trim();
 }

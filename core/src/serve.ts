@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
@@ -8,7 +8,7 @@ import { composioRoutes } from './api/composioRoutes.ts';
 import { fontRoutes } from './api/fonts.ts';
 import { exampleRoutes, humanRoutes, yahoVersion } from './api/routes.ts';
 import { startServer } from './api/server.ts';
-import { apiToken, loadSettings, paths, saveSettings } from './config.ts';
+import { apiToken, loadSettings, paths, privateDir, saveSettings, writePrivate } from './config.ts';
 import { Bus, type Ctx } from './context.ts';
 import { openDb } from './db/index.ts';
 import { indexMissing } from './history.ts';
@@ -36,7 +36,7 @@ export async function serve(
 ): Promise<{ ctx: Ctx; close: () => Promise<void> }> {
   if (opts.dataDir) process.env.YAHO_DATA_DIR = opts.dataDir;
   const p = paths();
-  mkdirSync(p.root, { recursive: true });
+  privateDir(p.root);
   checkServerPassword();
   const settings = loadSettings();
   const ctx: Ctx = { db: openDb(p.db), settings, paths: p, apiToken: apiToken(), bus: new Bus(), apiUrl: '' };
@@ -81,7 +81,7 @@ export async function serve(
   const addr = server.address();
   const actualPort = typeof addr === 'object' && addr ? addr.port : port;
   ctx.apiUrl = `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${actualPort}`;
-  writeFileSync(p.server, YAML.stringify({ url: ctx.apiUrl, pid: process.pid, started: new Date().toISOString() }));
+  writePrivate(p.server, YAML.stringify({ url: ctx.apiUrl, pid: process.pid, started: new Date().toISOString() }));
 
   // The integrations connect in the background; a bad token shows in Settings, never blocks the core.
   if (!opts.embedded) void ctx.slack.start();
@@ -133,12 +133,21 @@ function writeShims(ctx: Ctx): void {
   const node = process.execPath;
   const electron = !!process.versions.electron;
   const flags = cli.endsWith('.ts') ? '--experimental-strip-types --no-warnings' : '--no-warnings';
+  // Agents run these, so only the core may change them: the folder and files are its own, readable by everyone.
   mkdirSync(ctx.paths.bin, { recursive: true });
+  chmodSync(ctx.paths.bin, 0o755);
+  // A fresh file each time: never write through whatever stands at the name now.
+  const put = (name: string, data: string, mode: number) => {
+    const file = join(ctx.paths.bin, name);
+    rmSync(file, { force: true });
+    writeFileSync(file, data, { mode, flag: 'wx' });
+    chmodSync(file, mode);
+  };
   const cmd = ['@echo off', ...(electron ? ['set ELECTRON_RUN_AS_NODE=1'] : []), `"${node}" ${flags} "${cli}" %*`];
-  writeFileSync(join(ctx.paths.bin, 'yaho.cmd'), cmd.join('\r\n') + '\r\n');
+  put('yaho.cmd', cmd.join('\r\n') + '\r\n', 0o644);
   const posix = (p: string) => p.replaceAll('\\', '/');
   const sh = ['#!/bin/sh', `${electron ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}exec "${posix(node)}" ${flags} "${posix(cli)}" "$@"`];
-  writeFileSync(join(ctx.paths.bin, 'yaho'), sh.join('\n') + '\n', { mode: 0o755 });
-  writeFileSync(join(ctx.paths.bin, SANDBOX_GUARD), sandboxGuardScript());
-  writeFileSync(join(ctx.paths.bin, COMMAND_GUARD), commandGuardScript());
+  put('yaho', sh.join('\n') + '\n', 0o755);
+  put(SANDBOX_GUARD, sandboxGuardScript(), 0o644);
+  put(COMMAND_GUARD, commandGuardScript(), 0o644);
 }
