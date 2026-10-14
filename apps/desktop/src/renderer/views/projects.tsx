@@ -10,7 +10,7 @@ import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
 import { ago, AgentChips, Badge, Card, Empty, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
 import { Field, Input, Textarea } from '../components/ui/form.tsx';
-import { api, url, useApi, type Agent, type Artifact, type FileEntry, type Project } from '../lib/api.ts';
+import { api, openExternalFile, useApi, type Agent, type Artifact, type FileEntry, type Project } from '../lib/api.ts';
 import { plainText } from '../lib/plainText.ts';
 import { go, href } from '../lib/router.ts';
 import { MultiPicker } from '../components/MultiPicker.tsx';
@@ -254,14 +254,15 @@ function ProjectDetail({ name }: { name: string }) {
               .map((f) => (
                 <div key={f.path} className="flex items-center gap-3 px-4 py-2 text-sm">
                   <FileText className="size-4 text-muted" />
-                  <a
-                    className="truncate hover:text-accent"
-                    href={url(`/api/projects/${name}/files/${encodeURIComponent(f.path)}`)}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    className="cursor-pointer truncate hover:text-accent"
+                    onClick={() =>
+                      openExternalFile(`/api/projects/${name}/files/${encodeURIComponent(f.path)}`).catch((e) => setError((e as Error).message))
+                    }
                   >
                     {f.path}
-                  </a>
+                  </button>
                   <span className="ml-auto text-xs text-muted">
                     {(f.size / 1024).toFixed(1)} KB · {ago(f.modified)}
                   </span>
