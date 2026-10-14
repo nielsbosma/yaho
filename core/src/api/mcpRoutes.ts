@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Ctx } from '../context.ts';
 import { normalizeMcp, parseImport, referencedKeys, type McpConfig } from '../mcp/config.ts';
-import { MCP_PRESETS } from '../mcp/presets.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
@@ -50,7 +49,6 @@ export function mcpRoutes(ctx: Ctx, r: Router): void {
     return ctx.mcp;
   };
 
-  r.on('GET', '/api/mcp/presets', () => MCP_PRESETS);
   r.on('POST', '/api/resources/mcp', async (req: Req) => createMcp(ctx, await req.body<NewMcp>()));
   /** Paste an mcpServers JSON (Claude Desktop, Claude Code, Cursor): one resource per server. */
   r.on('POST', '/api/resources/mcp/import', async (req: Req) => {

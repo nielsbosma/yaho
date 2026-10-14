@@ -78,9 +78,8 @@ Then open **Settings**:
 
 ### MCP servers
 
-Any [MCP](https://modelcontextprotocol.io) server can be a resource: **Resources → MCP Server**, then pick one from the
-catalog (GitHub, Linear, Notion, Sentry, Stripe, Playwright…), fill in a local command or a remote URL, or paste the
-`mcpServers` JSON from Claude Desktop, Claude Code or Cursor.
+Any [MCP](https://modelcontextprotocol.io) server can be a resource: **Resources → MCP Server**, then fill in a local
+command or a remote URL, or paste the `mcpServers` JSON from Claude Desktop, Claude Code or Cursor.
 
 - **stdio, Streamable HTTP and SSE.** Yaho itself connects to the server (stdio servers run as the agents' user in the
   server version) and keeps one connection per resource, closed after ten idle minutes.

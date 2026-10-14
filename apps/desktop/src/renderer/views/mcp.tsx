@@ -1,4 +1,4 @@
-import { Check, ExternalLink, FileJson, Loader2, LogIn, LogOut, Play, Plug, Plus, RefreshCw, Server, Trash2 } from 'lucide-react';
+import { FileJson, Loader2, LogIn, LogOut, Play, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
@@ -8,16 +8,6 @@ import { Field, Input, Select, Switch, Textarea } from '../components/ui/form.ts
 import { api, useApi, type McpConfig, type Resource } from '../lib/api.ts';
 import { platform } from '../lib/platform.ts';
 import { go, href } from '../lib/router.ts';
-
-interface Preset {
-  id: string;
-  title: string;
-  description: string;
-  homepage: string;
-  config: McpConfig;
-  keys: Array<{ name: string; label: string; secret?: boolean }>;
-  oauth?: boolean;
-}
 
 interface McpTool {
   name: string;
@@ -58,7 +48,7 @@ export function mcpTarget(c?: McpConfig): string {
 // ---------- adding a server ----------
 
 export function McpNew() {
-  const [tab, setTab] = useState<'catalog' | 'custom' | 'import'>('catalog');
+  const [tab, setTab] = useState<'custom' | 'import'>('custom');
   return (
     <>
       <PageHeader
@@ -70,107 +60,15 @@ export function McpNew() {
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: 'catalog', label: 'Catalog' },
           { id: 'custom', label: 'Custom' },
           { id: 'import', label: 'Import JSON' },
         ]}
       />
       <div className="p-8">
-        {tab === 'catalog' && <Catalog />}
         {tab === 'custom' && <McpConfigForm />}
         {tab === 'import' && <ImportJson />}
       </div>
     </>
-  );
-}
-
-function Catalog() {
-  const presets = useApi<Preset[]>('/api/mcp/presets');
-  const [adding, setAdding] = useState<Preset | null>(null);
-  return (
-    <>
-      <ErrorNote>{presets.error}</ErrorNote>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {presets.data?.map((p) => (
-          <Card key={p.id} className="flex flex-col gap-2 p-4">
-            <div className="flex items-center gap-2">
-              <Server className="size-4 text-muted" />
-              <span className="font-medium">{p.title}</span>
-              <Badge tone="neutral">{p.config.transport === 'stdio' ? 'local' : 'remote'}</Badge>
-              {p.oauth && <Badge tone="info">sign-in</Badge>}
-            </div>
-            <p className="flex-1 text-sm text-muted">{p.description}</p>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="primary" onClick={() => setAdding(p)}>
-                <Plus /> Add
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => platform.openExternal(p.homepage)}>
-                <ExternalLink /> About
-              </Button>
-            </div>
-          </Card>
-        ))}
-      </div>
-      {adding && <AddPreset preset={adding} onClose={() => setAdding(null)} />}
-    </>
-  );
-}
-
-function AddPreset({ preset, onClose }: { preset: Preset; onClose: () => void }) {
-  const [name, setName] = useState(preset.id);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const add = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api<Resource>('/api/resources/mcp', {
-        body: {
-          name: slug(name),
-          briefing: preset.description,
-          config: preset.config,
-          keys: preset.keys.map((k) => ({ name: k.name, secret: k.secret !== false, value: values[k.name] })),
-        },
-      });
-      go('resources', r.name);
-    } catch (e) {
-      setError((e as Error).message);
-      setBusy(false);
-    }
-  };
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={`Add ${preset.title}`}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={busy || !slug(name)} onClick={() => void add()}>
-            <Check /> Add Resource
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <ErrorNote>{error}</ErrorNote>
-        <Field label="Resource Name" hint="Agents see its tools as <name>__<tool>.">
-          <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        </Field>
-        {preset.keys.map((k) => (
-          <Field key={k.name} label={k.label} hint={<code>{k.name}</code>}>
-            <Input
-              type={k.secret === false ? 'text' : 'password'}
-              autoComplete="off"
-              value={values[k.name] ?? ''}
-              onChange={(e) => setValues({ ...values, [k.name]: e.target.value })}
-            />
-          </Field>
-        ))}
-        {preset.oauth && <p className="text-xs text-muted">After adding it, press Sign In on the resource page to connect your account.</p>}
-      </div>
-    </Dialog>
   );
 }
 

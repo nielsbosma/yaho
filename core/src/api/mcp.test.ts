@@ -198,7 +198,7 @@ describe('MCP resources', () => {
     expect(bad.error).toContain('refused its credentials');
   });
 
-  it('imports servers from JSON and lists presets', async () => {
+  it('imports servers from JSON', async () => {
     const created = await api<Array<{ name: string; kind: string }>>('/api/resources/mcp/import', {
       body: { json: JSON.stringify({ mcpServers: { demo: { command: process.execPath, args: [fakeMcp] } } }) },
     });
@@ -207,8 +207,6 @@ describe('MCP resources', () => {
     await expect(
       api('/api/resources/mcp/import', { body: { json: JSON.stringify({ mcpServers: { x: { command: 'x', env: { K: 'v' } } } }) } }),
     ).rejects.toThrow(/Dopbase/);
-    const presets = await api<Array<{ id: string }>>('/api/mcp/presets');
-    expect(presets.map((p) => p.id)).toContain('github');
   });
 
   it('rejects a bad MCP config', async () => {
