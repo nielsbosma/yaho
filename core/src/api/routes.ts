@@ -20,6 +20,7 @@ import { schedule } from '../schedule.ts';
 import { slackCreateUrl, slackManifest } from '../slack/manifest.ts';
 import { WEBHOOK_PATH as TWILIO_WEBHOOK } from '../sms/twilio.ts';
 import { stats } from '../stats.ts';
+import { listWebhooks, rotateUrl, setSecret } from '../webhooks/hooks.ts';
 import { Router, type Req } from './http.ts';
 import { safeJoin, sendFile } from './server.ts';
 
@@ -182,6 +183,11 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     if (serverMode()) await ctx.sms?.start();
     return ctx.sms?.status;
   });
+
+  // ---- Webhooks (agents define them as triggers; the URL and secret are only shown here) ----
+  r.on('GET', '/api/webhooks', (req) => listWebhooks(ctx, req.query.get('agent') ?? undefined));
+  r.on('POST', '/api/webhooks/:id/rotate', (req) => rotateUrl(ctx, req.params.id!));
+  r.on('PUT', '/api/webhooks/:id/secret', async (req) => setSecret(ctx, req.params.id!, (await req.body<{ secret?: string }>()).secret));
 
   // ---- Guard Rails: Sandbox Mode ----
   r.on('GET', '/api/sandbox', () => ({

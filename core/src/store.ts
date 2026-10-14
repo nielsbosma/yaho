@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync, renameSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Cron } from 'croner';
@@ -7,7 +8,24 @@ import { newId, now } from './db/index.ts';
 
 // ---------- shapes (what the API and YAML speak) ----------
 
-export type TriggerSpec = { cron: string } | { inbox: true } | { delay: string; next_fire: string };
+export type TriggerSpec = { cron: string } | { inbox: true } | { delay: string; next_fire: string } | WebhookTrigger;
+
+/** How a webhook's deliveries are checked, besides the secret token in its URL. */
+export const WEBHOOK_VERIFY = ['none', 'github', 'stripe', 'svix', 'yaho'] as const;
+export type WebhookVerify = (typeof WEBHOOK_VERIFY)[number];
+
+/** A delivery to the webhook's URL starts a job. The URL token and signing secret are not part of the definition. */
+export interface WebhookTrigger {
+  webhook: string;
+  verify?: WebhookVerify;
+  /** Added to the prompt of each job the webhook starts. */
+  instructions?: string;
+  /** Deliveries per hour; more are refused. Default 60. */
+  limit?: number;
+  paused?: boolean;
+}
+
+export const WEBHOOK_LIMIT = 60;
 
 export interface Agent {
   name: string;
@@ -120,6 +138,14 @@ function agentFromRow(ctx: Ctx, r: Row): Agent {
   const triggers: TriggerSpec[] = (
     ctx.db.prepare("SELECT * FROM triggers WHERE agent = ? AND type IN ('cron','inbox') ORDER BY created").all(name) as Row[]
   ).map((t) => (t.type === 'cron' ? { cron: t.cron as string } : { inbox: true as const }));
+  for (const w of ctx.db.prepare('SELECT * FROM webhooks WHERE agent = ? ORDER BY created, name').all(name) as Row[])
+    triggers.push({
+      webhook: w.name as string,
+      ...(w.verify !== 'none' ? { verify: w.verify as WebhookVerify } : {}),
+      ...(w.instructions ? { instructions: w.instructions as string } : {}),
+      ...(w.hourly_limit !== WEBHOOK_LIMIT ? { limit: w.hourly_limit as number } : {}),
+      ...(w.paused ? { paused: true } : {}),
+    });
   return {
     name,
     enabled: !!r.enabled,
@@ -217,6 +243,14 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
       }
     }
   }
+  const hooks = a.triggers.filter((t): t is WebhookTrigger => 'webhook' in t);
+  for (const w of hooks) {
+    assertName('webhook', w.webhook);
+    if (hooks.filter((x) => x.webhook === w.webhook).length > 1) throw new HttpError(400, `two webhooks are named ${w.webhook}`);
+    if (w.verify && !WEBHOOK_VERIFY.includes(w.verify)) throw new HttpError(400, `webhook verify must be one of ${WEBHOOK_VERIFY.join(', ')}`);
+    if (w.limit !== undefined && !(Number.isInteger(w.limit) && w.limit >= 1 && w.limit <= 10_000))
+      throw new HttpError(400, 'webhook limit must be a whole number from 1 to 10000');
+  }
   db.exec('BEGIN');
   try {
     db.prepare(
@@ -261,6 +295,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
         db.prepare("INSERT INTO triggers (id, agent, type, created) VALUES (?,?,'inbox',?)").run(newId('trg'), a.name, ts);
       }
     }
+    syncWebhooks(ctx, a.name, hooks, ts);
     db.prepare('DELETE FROM agent_projects WHERE agent = ?').run(a.name);
     for (const p of a.projects) {
       if (!db.prepare('SELECT 1 FROM projects WHERE name = ?').get(p)) throw new HttpError(400, `unknown project ${p}`);
@@ -288,6 +323,50 @@ export function deleteAgent(ctx: Ctx, name: string): void {
   ctx.db.prepare('DELETE FROM agents WHERE name = ?').run(name);
   ctx.bus.emitEvent({ type: 'changed', entity: 'agents', name });
 }
+
+/** Keep each webhook's token and secret across saves: rows are matched by name, new ones get their own. */
+function syncWebhooks(ctx: Ctx, agent: string, hooks: WebhookTrigger[], ts: string): void {
+  const { db } = ctx;
+  const keep = hooks.map((w) => w.webhook);
+  for (const r of db.prepare('SELECT name FROM webhooks WHERE agent = ?').all(agent) as Row[])
+    if (!keep.includes(r.name as string)) db.prepare('DELETE FROM webhooks WHERE agent = ? AND name = ?').run(agent, r.name as string);
+  for (const w of hooks) {
+    const verify = w.verify ?? 'none';
+    const prev = db.prepare('SELECT verify FROM webhooks WHERE agent = ? AND name = ?').get(agent, w.webhook) as Row | undefined;
+    if (prev) {
+      db.prepare('UPDATE webhooks SET verify = ?, instructions = ?, hourly_limit = ?, paused = ? WHERE agent = ? AND name = ?').run(
+        verify,
+        w.instructions ?? '',
+        w.limit ?? WEBHOOK_LIMIT,
+        w.paused ? 1 : 0,
+        agent,
+        w.webhook,
+      );
+      // Svix secrets have their own shape; a switch to or from it needs a fresh one.
+      if ((prev.verify === 'svix') !== (verify === 'svix'))
+        db.prepare('UPDATE webhooks SET secret = ? WHERE agent = ? AND name = ?').run(webhookSecret(verify), agent, w.webhook);
+    } else {
+      db.prepare(
+        'INSERT INTO webhooks (id, agent, name, token, verify, secret, instructions, hourly_limit, paused, created) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      ).run(
+        newId('whk'),
+        agent,
+        w.webhook,
+        webhookToken(),
+        verify,
+        webhookSecret(verify),
+        w.instructions ?? '',
+        w.limit ?? WEBHOOK_LIMIT,
+        w.paused ? 1 : 0,
+        ts,
+      );
+    }
+  }
+}
+
+export const webhookToken = () => randomBytes(24).toString('base64url');
+export const webhookSecret = (verify: string) =>
+  verify === 'svix' ? `whsec_${randomBytes(24).toString('base64')}` : randomBytes(32).toString('hex');
 
 export function ensureAgentWorkspace(ctx: Ctx, name: string): string {
   const dir = ctx.paths.agent(name);
