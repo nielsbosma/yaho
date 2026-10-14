@@ -23,6 +23,7 @@ import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
 import { SANDBOX_GUARD, sandboxGuardScript } from './harness/sandbox.ts';
+import { COMMAND_GUARD, commandGuardScript } from './harness/commandGuard.ts';
 import { checkServerPassword, loadTotp, serverMode } from './api/session.ts';
 
 // node:sqlite prints an ExperimentalWarning on Node 22; it is expected.
@@ -136,4 +137,5 @@ function writeShims(ctx: Ctx): void {
   const sh = ['#!/bin/sh', `${electron ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}exec "${posix(node)}" ${flags} "${posix(cli)}" "$@"`];
   writeFileSync(join(ctx.paths.bin, 'yaho'), sh.join('\n') + '\n', { mode: 0o755 });
   writeFileSync(join(ctx.paths.bin, SANDBOX_GUARD), sandboxGuardScript());
+  writeFileSync(join(ctx.paths.bin, COMMAND_GUARD), commandGuardScript());
 }

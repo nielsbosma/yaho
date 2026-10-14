@@ -5,6 +5,7 @@ import { Cron } from 'croner';
 import type { Ctx } from './context.ts';
 import type { Guardrails } from './config.ts';
 import { newId, now } from './db/index.ts';
+import { validateRules } from './guard/commandRules.ts';
 
 // ---------- shapes (what the API and YAML speak) ----------
 
@@ -236,6 +237,12 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
     sms: input.sms ?? !!prev?.sms,
   };
   if (!ctx.settings.harnesses[a.harness]) throw new HttpError(400, `unknown harness ${a.harness}`);
+  if (a.guardrails.command_rules !== undefined)
+    try {
+      a.guardrails = { ...a.guardrails, command_rules: validateRules(a.guardrails.command_rules) };
+    } catch (e) {
+      throw new HttpError(400, (e as Error).message);
+    }
   for (const t of a.triggers) {
     if ('cron' in t) {
       try {

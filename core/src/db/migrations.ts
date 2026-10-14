@@ -187,4 +187,9 @@ export const migrations: string[] = [
    ALTER TABLE jobs ADD COLUMN recap TEXT;
    CREATE VIRTUAL TABLE job_search USING fts5(job UNINDEXED, agent UNINDEXED, trigger, messages, summary, recap, tokenize = 'porter unicode61');
    CREATE TRIGGER jobs_search_delete AFTER DELETE ON jobs BEGIN DELETE FROM job_search WHERE job = old.id; END;`,
+  // 13: Command Rules: a command an Ask rule held back, the inbox question about it, and the human's answer.
+  // used: an approved command runs once.
+  `CREATE TABLE command_approvals (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE ON UPDATE CASCADE, job TEXT NOT NULL, session TEXT, command TEXT NOT NULL, message TEXT, status TEXT NOT NULL DEFAULT 'pending', used INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, decided TEXT);
+   CREATE INDEX command_approvals_message ON command_approvals(message);
+   CREATE INDEX command_approvals_session ON command_approvals(session, command);`,
 ];

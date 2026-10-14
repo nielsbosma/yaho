@@ -25,7 +25,7 @@ export interface Ctx {
   runner?: {
     enqueue(agent: string, trigger: string, opts?: { detail?: string; hop?: number; sessionId?: string | null; force?: boolean }): unknown;
     pump(): void;
-    stop(jobId: string, status: string, reason?: string, extra?: { summary?: string; resumeAt?: string }): void;
+    stop(jobId: string, status: string, reason?: string, extra?: { summary?: string; resumeAt?: string; grace?: number }): void;
     continueJob(jobId: string): void;
     sleep(jobId: string, ms: number): string;
   };
