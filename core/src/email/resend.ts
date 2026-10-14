@@ -227,7 +227,8 @@ export class EmailBridge {
     const text = String(input.body ?? '').trim();
     if (!text) throw new HttpError(400, 'the email needs a body');
     // One send per agent at a time, so concurrent sends cannot all pass the daily check.
-    return serial(`email:${agent}`, () => this.sendNow(this.api!, agent, job, input, text));
+    const api = this.api;
+    return serial(`email:${agent}`, () => this.sendNow(api, agent, job, input, text));
   }
 
   private async sendNow(
@@ -366,19 +367,19 @@ export class EmailBridge {
         this.ignore(`from ${sender} to ${rcpt}: not part of that email thread`);
         continue;
       }
-      if (!token) {
-        if (!this.settings.accept_new) {
-          this.ignore(`from ${sender} to ${rcpt}: not a reply to an email the agent sent`);
-          continue;
-        }
-        token = randomBytes(5).toString('hex');
-        this.ctx.db
-          .prepare('INSERT INTO email_threads (token, agent, subject, created) VALUES (?,?,?,?)')
-          .run(token, agent, email.subject || '(no subject)', now());
+      if (!token && !this.settings.accept_new) {
+        this.ignore(`from ${sender} to ${rcpt}: not a reply to an email the agent sent`);
+        continue;
       }
       if (!this.byAgent.take(agent)) {
         this.ignore(`from ${sender}: ${agent} got more than ${INBOUND_PER_AGENT} emails in an hour`);
         continue;
+      }
+      if (!token) {
+        token = randomBytes(5).toString('hex');
+        this.ctx.db
+          .prepare('INSERT INTO email_threads (token, agent, subject, created) VALUES (?,?,?,?)')
+          .run(token, agent, email.subject || '(no subject)', now());
       }
       const last = this.ctx.db
         .prepare('SELECT e.message FROM emails e JOIN messages m ON m.id = e.message WHERE e.thread = ? ORDER BY e.created DESC LIMIT 1')

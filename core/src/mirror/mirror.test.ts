@@ -13,7 +13,12 @@ describe('trimHistory', () => {
   ];
 
   it('keeps only the words of the person and Yaho, starting with the person', () => {
-    const all = [{ role: 'system' as const, content: 'sys' }, ...turn(1), ...turn(2), { role: 'user' as const, content: [{ type: 'text', text: 'x' }] as never }];
+    const all = [
+      { role: 'system' as const, content: 'sys' },
+      ...turn(1),
+      ...turn(2),
+      { role: 'user' as const, content: [{ type: 'text', text: 'x' }] as never },
+    ];
     expect(trimHistory(all)).toEqual([
       { role: 'user', content: 'q1' },
       { role: 'assistant', content: 'a1' },
@@ -49,12 +54,18 @@ describe('inbound limits', () => {
 
   it('runs calls with one key one at a time', async () => {
     const order: string[] = [];
-    const job = (n: string, ms: number) => serial('k', async () => {
-      order.push(`${n}+`);
-      await new Promise((r) => setTimeout(r, ms));
-      order.push(`${n}-`);
-    });
-    await Promise.all([job('a', 20), job('b', 0), serial('k', async () => Promise.reject(new Error('x'))).catch(() => order.push('c!')), job('d', 0)]);
+    const job = (n: string, ms: number) =>
+      serial('k', async () => {
+        order.push(`${n}+`);
+        await new Promise((r) => setTimeout(r, ms));
+        order.push(`${n}-`);
+      });
+    await Promise.all([
+      job('a', 20),
+      job('b', 0),
+      serial('k', async () => Promise.reject(new Error('x'))).catch(() => order.push('c!')),
+      job('d', 0),
+    ]);
     expect(order).toEqual(['a+', 'a-', 'b+', 'b-', 'c!', 'd+', 'd-']);
   });
 });
