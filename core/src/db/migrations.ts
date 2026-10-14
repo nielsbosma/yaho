@@ -174,4 +174,10 @@ export const migrations: string[] = [
   // replies and reactions find their message.
   `CREATE TABLE telegram_posts (chat TEXT NOT NULL, tg_id INTEGER NOT NULL, message TEXT NOT NULL, actions INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, PRIMARY KEY (chat, tg_id));
    CREATE INDEX telegram_posts_message ON telegram_posts(message);`,
+  // 11: past jobs, searchable (yaho history). summary is the agent's own from yaho finish, recap a short one written
+  // by a model when the job ended; job_search indexes both with what started the job and what the agent said.
+  `ALTER TABLE jobs ADD COLUMN summary TEXT;
+   ALTER TABLE jobs ADD COLUMN recap TEXT;
+   CREATE VIRTUAL TABLE job_search USING fts5(job UNINDEXED, agent UNINDEXED, trigger, messages, summary, recap, tokenize = 'porter unicode61');
+   CREATE TRIGGER jobs_search_delete AFTER DELETE ON jobs BEGIN DELETE FROM job_search WHERE job = old.id; END;`,
 ];

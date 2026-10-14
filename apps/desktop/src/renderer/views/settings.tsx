@@ -38,6 +38,7 @@ export interface Settings {
   twilio?: { account_sid?: string; auth_token?: string; number?: string; new_agent?: string };
   telegram?: { bot_token?: string; post?: 'all' | 'expects_response' };
   sandbox?: boolean;
+  history?: { recaps?: boolean };
   ideas?: { enabled?: boolean; repo?: string };
   defaults: { harness: string; models: string[]; budget_usd: number; max_parallel: number; guardrails: Record<string, number | undefined> };
 }
@@ -191,6 +192,24 @@ export function SettingsView({ route }: { route: string[] }) {
                 onChange={(e) => upd((d) => void (d.defaults.max_parallel = Number(e.target.value)))}
               />
             </Field>
+          </Card>
+        </Section>
+        <Section title="Job History">
+          <Card className="p-4">
+            <label className="flex items-start gap-3 text-sm">
+              <Switch
+                checked={s.history?.recaps !== false}
+                label="Job Recaps"
+                onChange={(v) => upd((d) => void (d.history = { ...d.history, recaps: v }))}
+              />
+              <span>
+                Job Recaps
+                <span className="block text-xs text-muted">
+                  When a job ends, the agent's last model writes a short recap of it, so the agent can find the job later with yaho history search. Each
+                  recap is a small model call, charged to the job.
+                </span>
+              </span>
+            </label>
           </Card>
         </Section>
         </Pane>

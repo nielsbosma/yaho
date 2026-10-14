@@ -68,6 +68,8 @@ export interface Settings {
   telegram?: { bot_token?: string; owner?: string; since?: string; link_code?: string; bot?: string; post?: 'all' | 'expects_response' };
   /** Run harnesses in their sandbox (writes only to the agent's workspace). Unset: on in the server version, off on the desktop. */
   sandbox?: boolean;
+  /** Past jobs: recaps by the agent's last model when a job ends, for yaho history search (default on). */
+  history?: { recaps?: boolean };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   /** When the first-run setup was finished (or skipped). Until then the app shows it. */
