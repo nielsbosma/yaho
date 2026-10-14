@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute } from 'node:path';
 import type { Settings } from '../config.ts';
 import { serverMode } from '../api/session.ts';
 import { resolveCommand } from './claudeCode.ts';
+import { hookCommand } from './commandGuard.ts';
 
 /** Sandbox mode, from Guard Rails: unset means on in the server version and off on the desktop. */
 export const sandboxOn = (s: Settings): boolean => s.sandbox ?? serverMode();
@@ -62,10 +63,7 @@ process.stdin.on('data', (d) => (input += d)).on('end', () => {
 }
 
 /** The shell command that runs the guard, with the core's own Node (or Electron as Node). */
-export function sandboxGuardCommand(bin: string): string {
-  const electron = process.versions.electron ? 'ELECTRON_RUN_AS_NODE=1 ' : '';
-  return `${electron}"${process.execPath}" "${join(bin, SANDBOX_GUARD)}"`;
-}
+export const sandboxGuardCommand = (bin: string): string => hookCommand(bin, SANDBOX_GUARD);
 
 /**
  * Claude Code's settings for a sandboxed job: shell commands run in its sandbox (writes only in the workspace and the

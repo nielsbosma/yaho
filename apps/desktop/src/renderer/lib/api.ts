@@ -144,7 +144,13 @@ export interface Agent {
   email?: boolean;
   sms?: boolean;
   browser?: boolean;
-  guardrails: { rate_per_hour?: number; cooldown_seconds?: number; hop_limit?: number; wait_for_inbox?: boolean };
+  guardrails: {
+    rate_per_hour?: number;
+    cooldown_seconds?: number;
+    hop_limit?: number;
+    wait_for_inbox?: boolean;
+    command_rules?: Array<{ pattern: string; action: 'block' | 'ask' | 'allow'; note?: string }>;
+  };
   triggers: TriggerSpec[];
   projects: string[];
   resources: string[];

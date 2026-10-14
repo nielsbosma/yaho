@@ -6,6 +6,8 @@ import type { Ctx } from '../context.ts';
 import { newId, now } from '../db/index.ts';
 import { adapters, killTree } from '../harness/index.ts';
 import { sandboxGuardCommand, sandboxOn, sandboxProblem } from '../harness/sandbox.ts';
+import { COMMAND_GUARD, hookCommand } from '../harness/commandGuard.ts';
+import { commandRulesOn } from '../guard/commands.ts';
 import type { HarnessEvent, HarnessProcess } from '../harness/types.ts';
 import { envForAgent } from '../secrets/dopbase.ts';
 import type { Agent, Job } from '../store.ts';
@@ -50,7 +52,7 @@ export function jobPath(bin: string, inherited: string): string {
 const ENDED = ['finished', 'sleeping', 'failed', 'budget_exhausted', 'stopped'];
 
 /** Jobs a human started; they run even while the agent is disabled. */
-const HUMAN_STARTED = new Set(['manual', 'followup', 'continue']);
+const HUMAN_STARTED = new Set(['manual', 'followup', 'continue', 'approval']);
 
 export class JobRunner {
   ctx: Ctx;
@@ -257,6 +259,7 @@ export class JobRunner {
         transcriptPath: transcript,
         maxBudgetUsd: remaining,
         sandbox: sandbox ? { guard: sandboxGuardCommand(ctx.paths.bin) } : undefined,
+        commandGuard: commandRulesOn(settings) ? hookCommand(ctx.paths.bin, COMMAND_GUARD) : undefined,
       },
       (e) => this.onEvent(r, ses.id, e),
     );
@@ -332,7 +335,7 @@ export class JobRunner {
   }
 
   /** End a running or queued job on purpose. The harness is killed; the session is kept. */
-  stop(jobId: string, status = 'stopped', reason?: string, extra: { summary?: string; resumeAt?: string } = {}): void {
+  stop(jobId: string, status = 'stopped', reason?: string, extra: { summary?: string; resumeAt?: string; grace?: number } = {}): void {
     const r = this.running.get(jobId);
     if (!r) {
       const job = getJob(this.ctx, jobId);
@@ -340,10 +343,11 @@ export class JobRunner {
       return;
     }
     if (r.ending) return;
-    r.ending = { status, reason, ...extra };
+    const { grace: wait, ...rest } = extra;
+    r.ending = { status, reason, ...rest };
     // finish and sleep come from the agent itself: let the harness wrap up and report its cost, but not for long.
     // A stop from the human (or a budget) is immediate, after the calling request has had its response.
-    const grace = status === 'finished' || status === 'sleeping' ? 30_000 : 750;
+    const grace = wait ?? (status === 'finished' || status === 'sleeping' ? 30_000 : 750);
     setTimeout(() => r.proc?.kill(), grace);
   }
 

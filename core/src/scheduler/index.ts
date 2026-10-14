@@ -1,6 +1,7 @@
 import type { BusEvent, Ctx } from '../context.ts';
 import type { Message } from '../store.ts';
 import { agentExists, getAgent, nextCron, sendMessage } from '../store.ts';
+import { answerApproval } from '../guard/commands.ts';
 
 type Row = Record<string, unknown>;
 
@@ -58,6 +59,7 @@ export class Scheduler {
 
   /** A message for an agent with an inbox trigger starts a job, within the agent's loop guardrails. */
   onMessage(m: Message): void {
+    if (answerApproval(this.ctx, m)) return;
     if (!m.to.startsWith('agent:') || m.read || m.wake === false) return;
     const name = m.to.slice(6);
     if (!agentExists(this.ctx, name)) return;

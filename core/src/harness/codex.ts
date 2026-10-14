@@ -36,6 +36,11 @@ export const codex: HarnessAdapter = {
       ...(run.sandbox
         ? ['-c', 'sandbox_mode="workspace-write"', '-c', 'sandbox_workspace_write.network_access=true', '-c', 'approval_policy="never"']
         : ['--dangerously-bypass-approvals-and-sandbox']),
+      // Command Rules: Codex runs the same PreToolUse hook as Claude Code (it calls its shell tool Bash). The hook is
+      // Yaho's own, so it needs no trust review.
+      ...(run.commandGuard
+        ? ['-c', 'features.hooks=true', '-c', `hooks.PreToolUse=[{matcher="Bash",hooks=[{type="command",command=${toml(run.commandGuard)}}]}]`, '--dangerously-bypass-hook-trust']
+        : []),
       '--ignore-user-config',
       '-m',
       run.model,
@@ -92,7 +97,7 @@ export const codex: HarnessAdapter = {
           else if (item?.type === 'mcp_tool_call')
             onEvent({ kind: 'tool_result', id: String(item.id), output: clip(JSON.stringify(item.result ?? item.error ?? '')), is_error: !!item.error });
           // Codex reports missing model metadata as an "error" item; it carries on, so it is a note, not a failure.
-          else if (item?.type === 'error') onEvent({ kind: 'stderr', text: String(item.message) });
+          else if (item?.type === 'error' && !/dangerously-bypass-hook-trust/.test(String(item.message))) onEvent({ kind: 'stderr', text: String(item.message) });
           break;
         case 'turn.completed': {
           const u = m.usage as Record<string, number> | undefined;

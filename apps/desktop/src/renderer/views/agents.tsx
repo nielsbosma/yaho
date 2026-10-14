@@ -20,6 +20,7 @@ import { AgentInbox } from './inbox.tsx';
 import type { ViewProps } from './index.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
 import { MultiPicker } from '../components/MultiPicker.tsx';
+import { CommandRulesEditor } from '../components/CommandRulesEditor.tsx';
 import { WebhookTriggers } from '../components/WebhookTriggers.tsx';
 import { ArtifactGrid } from './artifacts.tsx';
 import { JobList } from './jobs.tsx';
@@ -618,6 +619,16 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
                   />
                 </Field>
               </div>
+              <Field
+                label="Command Rules"
+                hint="Checked with the ones in Settings → Guard Rails, when Command Rules are on there. Allow here lets this agent run what others must ask for."
+                group
+              >
+                <CommandRulesEditor
+                  rules={draft.guardrails.command_rules ?? []}
+                  onChange={(r) => set('guardrails', { ...draft.guardrails, command_rules: r.length ? r : undefined })}
+                />
+              </Field>
             </Card>
           </Section>
         </div>

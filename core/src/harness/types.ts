@@ -15,6 +15,8 @@ export interface HarnessRun {
   maxBudgetUsd?: number;
   /** Run in the harness's sandbox (Guard Rails → Sandbox Mode): writes only in cwd and temp. guard: the file tools' hook command. */
   sandbox?: { guard: string };
+  /** Guard Rails → Command Rules: the hook command that checks each shell command before it runs. */
+  commandGuard?: string;
 }
 
 /** Normalised events every adapter emits. */

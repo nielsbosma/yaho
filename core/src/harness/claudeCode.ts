@@ -49,10 +49,20 @@ export function killTree(pid: number | undefined): void {
   }
 }
 
+/** Claude Code's --settings for a job: the sandbox, and the Command Rules hook on Bash. Null when neither is on. */
+export function claudeSettings(run: Pick<HarnessRun, 'sandbox' | 'commandGuard'>): Record<string, unknown> | null {
+  if (!run.sandbox && !run.commandGuard) return null;
+  const base = run.sandbox ? claudeSandboxSettings(run.sandbox.guard) : {};
+  const pre = ((base.hooks as { PreToolUse?: unknown[] } | undefined)?.PreToolUse ?? []).slice();
+  if (run.commandGuard) pre.push({ matcher: 'Bash', hooks: [{ type: 'command', command: run.commandGuard }] });
+  return { ...base, hooks: { PreToolUse: pre } };
+}
+
 /** Claude Code in print mode with stream-json output. Models go through LiteLLM via ANTHROPIC_BASE_URL. */
 export const claudeCode: HarnessAdapter = {
   name: 'claude-code',
   start(run: HarnessRun, onEvent: (e: HarnessEvent) => void): HarnessProcess {
+    const settings = claudeSettings(run);
     const args = [
       ...(run.args ?? []),
       '-p',
@@ -63,7 +73,7 @@ export const claudeCode: HarnessAdapter = {
       run.model,
       '--permission-mode',
       'bypassPermissions',
-      ...(run.sandbox ? ['--settings', JSON.stringify(claudeSandboxSettings(run.sandbox.guard))] : []),
+      ...(settings ? ['--settings', JSON.stringify(settings)] : []),
       '--append-system-prompt',
       run.systemPrompt,
     ];

@@ -6,6 +6,7 @@ import type { Ctx } from '../context.ts';
 import type { Agent, Job } from '../store.ts';
 import { getProject, getResource, listMessages } from '../store.ts';
 import { sandboxOn } from '../harness/sandbox.ts';
+import { commandRulesOn } from '../guard/commands.ts';
 import { deliveryForJob } from '../webhooks/hooks.ts';
 
 function briefingsDir(): string {
@@ -30,7 +31,8 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
   const parts: string[] = [];
   // A follow-up's detail is the human's message: it gets its own section below.
   const followup = job.trigger_type === 'followup';
-  const detail = !followup && job.trigger_detail ? ` (${job.trigger_detail})` : '';
+  const approval = job.trigger_type === 'approval';
+  const detail = !followup && !approval && job.trigger_detail ? ` (${job.trigger_detail})` : '';
   parts.push(
     resumed
       ? `# Job ${job.id} (resumed)\nYou are resuming your previous conversation. Trigger: ${job.trigger_type}${detail}.`
@@ -81,6 +83,11 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
     parts.push(
       '## Sandbox\nYou run in Sandbox Mode: you can only write inside your workspace (the current folder) and the temp folder; everything else is read-only. The network is open. Share files with `yaho artifact add`.',
     );
+  if (commandRulesOn(ctx.settings))
+    parts.push(
+      "## Command Rules\nYour shell commands are checked before they run. Some are blocked; others need the human's approval: then the command is refused for now, the human gets a request in their inbox, and your job pauses until they answer. When that happens, stop: you resume in this session with their answer.",
+    );
+  if (approval) parts.push(`## Your command approval\nWhile you were paused, ${job.trigger_detail ?? 'the human answered'}`);
   const unread = listMessages(ctx, { to: `agent:${agent.name}`, unread: true, limit: 50 });
   parts.push(
     unread.length

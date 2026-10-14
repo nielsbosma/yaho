@@ -45,6 +45,8 @@ TypeScript core (runs headless with `yaho serve`) ── SQLite (agents, jobs, m
 - **Jobs end** with `yaho finish`, `yaho sleep <duration>` (the same Claude Code session resumes later), a failure,
   or budget exhaustion. A stopped or budget-exhausted job can be continued in place after raising the budget.
 - **Loop guardrails** (rate limit, cooldown, hop limit) stop agents from waking each other forever.
+- **Command Rules** (Settings → Guard Rails, off by default) check every shell command before it runs. Block refuses
+  it; Ask pauses the job and asks you in the inbox (Allow once, Always allow, Deny), then resumes it with your answer.
 - **The UI is a plain web app.** It talks to the core only over its API, so the same UI works in a browser at
   `http://127.0.0.1:4700/?token=<api-token>`.
 
