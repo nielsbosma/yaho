@@ -4,6 +4,9 @@
 # Two-factor sign-in (optional): add -e YAHO_TOTP=1 and signing in asks for the password and a code from an
 # authenticator app, set up at the first sign-in. Lost the phone: add -e YAHO_TOTP_RESET=1, sign in with the password
 # and set it up again, then start without it.
+# Behind a reverse proxy that terminates HTTPS (Sliplane, Caddy, nginx): add -e YAHO_TRUST_PROXY=1, so sign-in
+# lockouts go by the client's address in X-Forwarded-For and the session cookie is Secure. Leave it unset when the
+# port is reached directly, as above: anyone could then set that header and dodge the lockout.
 # Everything Yaho keeps is in the /data volume, the agents' home included (Claude Code's sessions, gh and git sign-ins:
 # docker exec -it -u yaho-agent <container> gh auth login).
 
@@ -56,7 +59,6 @@ ENV YAHO_SERVER=1 \
     YAHO_WEB_ROOT=/opt/yaho/renderer \
     YAHO_CLI_MAIN=/opt/yaho/cli/main.mjs \
     YAHO_DOPBASE_BIN=/opt/yaho/dopbase/dopbase \
-    YAHO_TRUST_PROXY=1 \
     YAHO_AGENT_UID=1001 \
     YAHO_AGENT_GID=1001 \
     YAHO_AGENT_HOME=/data/home \
