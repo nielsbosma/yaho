@@ -1,8 +1,11 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { cp, mkdir, readdir, stat } from 'node:fs/promises';
+import { constants, createReadStream, createWriteStream, existsSync, openSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { lstat, mkdir, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { safeJoin } from '../api/server.ts';
+import { pipeline } from 'node:stream/promises';
+import { serverMode } from '../api/session.ts';
 import type { Ctx } from '../context.ts';
+import { assertUnder, isLink, joinUnder, resolveUnder, UnsafePathError, writeFileUnder } from '../fsSafe.ts';
+import { coreFiles } from '../harness/sandbox.ts';
 import { HttpError } from '../store.ts';
 import * as s from '../store.ts';
 
@@ -10,11 +13,48 @@ import * as s from '../store.ts';
 const MAX_CHARS = 150_000;
 const TEXT = new Set(['.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.yaml', '.yml', '.xml', '.html', '.htm', '.log', '.ini', '.toml']);
 
-function localFile(path: string): string {
+const under = (root: string, p: string) => {
+  try {
+    assertUnder(root, p);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * What the chat's file tools may touch. Never the core's own files in the data folder (the API token, the database,
+ * settings, the sign-in secret, Dopbase's data) or /proc, wherever a path or link points. In the server version only
+ * the agents' workspaces and the projects: the chat runs as the core, and what it reads may steer it.
+ */
+function guardPath(ctx: Ctx, p: string): void {
+  const r = ctx.paths;
+  const core = coreFiles(r);
+  if ([...core, '/proc'].some((c) => under(c, p))) throw new HttpError(403, `${p} is Yaho's own file; the chat cannot read or copy it`);
+  if (serverMode() && ![r.agents, r.projects].some((root) => under(root, p)))
+    throw new HttpError(403, `in the server version the chat only reaches the agents' workspaces (${r.agents}) and the projects (${r.projects})`);
+}
+
+function localPath(ctx: Ctx, path: string, what: 'file' | 'folder'): string {
   const p = path.trim().replace(/^"(.*)"$/, '$1');
-  if (!isAbsolute(p)) throw new HttpError(400, 'give the full path of the file, e.g. D:\\Docs\\plan.pdf');
-  if (!existsSync(p) || !statSync(p).isFile()) throw new HttpError(404, `no file at ${p}`);
-  return p;
+  if (!isAbsolute(p))
+    throw new HttpError(400, what === 'file' ? 'give the full path of the file, e.g. D:\\Docs\\plan.pdf' : 'give the full path of the folder, e.g. D:\\Workspaces\\Jobs');
+  if (!existsSync(p) || (what === 'file' ? !statSync(p).isFile() : !statSync(p).isDirectory())) throw new HttpError(404, `no ${what} at ${p}`);
+  guardPath(ctx, p);
+  // The real path: a link swapped in after the check leads nowhere new.
+  return realpathSync(p);
+}
+
+const localFile = (ctx: Ctx, path: string) => localPath(ctx, path, 'file');
+
+/** Paths in an agent's workspace, which the agent can fill with links: an HTTP error instead of UnsafePathError. */
+function workspacePath<T>(f: () => T): T {
+  try {
+    return f();
+  } catch (e) {
+    if (e instanceof UnsafePathError) throw new HttpError(400, e.message === 'bad path' ? 'bad path' : `bad path: ${e.message}`);
+    throw e;
+  }
 }
 
 const IMAGES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
@@ -71,9 +111,10 @@ async function officeText(p: string, ext: string): Promise<string> {
  * they are, and images come back as a data URL the chat hands to the model to look at.
  */
 export async function readLocalFile(
+  ctx: Ctx,
   path: string,
 ): Promise<{ path: string; pages?: number; text: string; truncated: boolean } | { path: string; image: string; bytes: number }> {
-  const p = localFile(path);
+  const p = localFile(ctx, path);
   const ext = extname(p).toLowerCase();
   let text: string;
   let pages: number | undefined;
@@ -101,12 +142,12 @@ export async function readLocalFile(
 /** Copy a file on this computer into a project's context files. */
 export function addProjectFile(ctx: Ctx, project: string, path: string, name?: string): { project: string; name: string } {
   s.getProject(ctx, project);
-  const p = localFile(path);
+  const p = localFile(ctx, path);
   const file = basename((name || basename(p)).replaceAll('\\', '/')).trim();
   if (!file || file === '.' || file === '..') throw new HttpError(400, 'bad file name');
   const dir = join(ctx.paths.project(project), 'files');
-  mkdirSync(dir, { recursive: true });
-  copyFileSync(p, join(dir, file));
+  // Agents on the project can write in its folder: no link may redirect the copy.
+  workspacePath(() => writeFileUnder(ctx.paths.project(project), join(dir, file), readFileSync(p)));
   ctx.bus.emitEvent({ type: 'changed', entity: 'projects', name: project });
   return { project, name: file };
 }
@@ -117,10 +158,8 @@ const SKIP = new Set(['__pycache__', 'node_modules', '.git', '.venv', 'venv', '.
 const COPY_LIMIT = { files: 5000, bytes: 1024 ** 3 };
 
 /** List a folder on this computer: names, sizes and subfolders, one level deep. Entries that cannot be read say so. */
-export function listLocalFolder(path: string): Array<{ name: string; dir: boolean; size?: number; error?: string }> {
-  const p = path.trim().replace(/^"(.*)"$/, '$1');
-  if (!isAbsolute(p)) throw new HttpError(400, 'give the full path of the folder, e.g. D:\\Workspaces\\Jobs');
-  if (!existsSync(p) || !statSync(p).isDirectory()) throw new HttpError(404, `no folder at ${p}`);
+export function listLocalFolder(ctx: Ctx, path: string): Array<{ name: string; dir: boolean; size?: number; error?: string }> {
+  const p = localPath(ctx, path, 'folder');
   return readdirSync(p, { withFileTypes: true }).map((d) => {
     if (d.isDirectory()) return { name: d.name, dir: true };
     try {
@@ -144,23 +183,27 @@ export async function copyToAgentWorkspace(
   dest = '',
 ): Promise<{ agent: string; dest: string; files: number; bytes: number }> {
   s.getAgent(ctx, agent);
-  const src = resolve(path.trim().replace(/^"(.*)"$/, '$1'));
-  if (!isAbsolute(path.trim().replace(/^"(.*)"$/, '$1')) || !existsSync(src)) throw new HttpError(404, `no file or folder at ${src}`);
+  const given = path.trim().replace(/^"(.*)"$/, '$1');
+  if (!isAbsolute(given) || !existsSync(given)) throw new HttpError(404, `no file or folder at ${resolve(given)}`);
+  guardPath(ctx, given);
+  const src = realpathSync(given);
   const root = ctx.paths.agent(agent);
   const isDir = (await stat(src)).isDirectory();
-  let target = safeJoin(root, dest.replaceAll('\\', '/') || (isDir ? '' : basename(src)));
+  let target = workspacePath(() => resolveUnder(root, dest.replaceAll('\\', '/') || (isDir ? '' : basename(src))));
   // A file copied onto an existing folder lands inside it.
-  if (!isDir && existsSync(target) && (await stat(target)).isDirectory()) target = join(target, basename(src));
+  if (!isDir && existsSync(target) && (await lstat(target)).isDirectory()) target = join(target, basename(src));
   // Copying a folder into itself would recurse until the disk fills.
   const inside = (child: string, parent: string) => child === parent || child.startsWith(parent + sep);
-  if (isDir && inside(target, src)) throw new HttpError(400, `cannot copy ${src} into a folder inside itself`);
+  if (isDir && inside(join(existsSync(root) ? realpathSync(root) : root, relative(root, target)), src)) throw new HttpError(400, `cannot copy ${src} into a folder inside itself`);
 
-  // Measure before copying anything.
+  // Measure before copying anything. Links inside the source are skipped: they may point anywhere.
   let files = 0;
   let bytes = 0;
   const walk = async (p: string): Promise<void> => {
-    const st = await stat(p);
+    const st = await lstat(p);
+    if (st.isSymbolicLink()) return;
     if (!st.isDirectory()) {
+      guardPath(ctx, p);
       files++;
       bytes += st.size;
       if (files > COPY_LIMIT.files || bytes > COPY_LIMIT.bytes)
@@ -171,20 +214,40 @@ export async function copyToAgentWorkspace(
   };
   await walk(src);
 
-  await mkdir(dirname(target), { recursive: true });
-  await cp(src, target, { recursive: true, force: true, filter: (from) => !SKIP.has(basename(from)) || from === src });
+  await workspacePath(() => copyTree(root, src, target));
   ctx.bus.emitEvent({ type: 'changed', entity: 'workspace', name: agent });
   return { agent, dest: relative(root, target).replaceAll('\\', '/') || '.', files, bytes };
+}
+
+const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+
+/** Copy src to dest under root (the agent's workspace) without writing through a link the agent may have put there. */
+async function copyTree(root: string, src: string, dest: string): Promise<void> {
+  const st = await lstat(src);
+  if (st.isSymbolicLink()) return;
+  if (st.isDirectory()) {
+    if (isLink(dest)) throw new UnsafePathError(`${relative(root, dest)} is a link`);
+    await mkdir(dest, { recursive: true });
+    assertUnder(root, dest);
+    for (const d of await readdir(src)) if (!SKIP.has(d)) await copyTree(root, join(src, d), join(dest, d));
+    return;
+  }
+  if (!st.isFile()) return;
+  joinUnder(root, dest);
+  await mkdir(dirname(dest), { recursive: true });
+  assertUnder(root, dirname(dest));
+  if (isLink(dest)) throw new UnsafePathError(`${relative(root, dest)} is a link`);
+  const fd = openSync(dest, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | NOFOLLOW, 0o666);
+  await pipeline(createReadStream(src), createWriteStream(dest, { fd }));
 }
 
 /** Write a text file in an agent's workspace, e.g. a script rewritten for Yaho or a memory note. */
 export function writeAgentFile(ctx: Ctx, agent: string, path: string, content: string): { agent: string; path: string; bytes: number } {
   s.getAgent(ctx, agent);
   const root = ctx.paths.agent(agent);
-  const target = safeJoin(root, path.replaceAll('\\', '/'));
+  const target = workspacePath(() => joinUnder(root, path.replaceAll('\\', '/')));
   if (target === root) throw new HttpError(400, 'give a file path inside the workspace, e.g. scripts/run.py');
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, content);
+  workspacePath(() => writeFileUnder(root, target, content));
   ctx.bus.emitEvent({ type: 'changed', entity: 'workspace', name: agent });
   return { agent, path: relative(root, target).replaceAll('\\', '/'), bytes: Buffer.byteLength(content) };
 }

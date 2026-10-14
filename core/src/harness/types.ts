@@ -13,8 +13,11 @@ export interface HarnessRun {
   transcriptPath?: string;
   /** Spend cap for this run in USD, when the harness can enforce one. */
   maxBudgetUsd?: number;
-  /** Run in the harness's sandbox (Guard Rails → Sandbox Mode): writes only in cwd and temp. guard: the file tools' hook command. */
-  sandbox?: { guard: string };
+  /**
+   * Run in the harness's sandbox (Guard Rails → Sandbox Mode): writes only in cwd and temp. guard: the file tools' hook
+   * command; socket: the core's, which yaho reaches it on; denyRead: files no command or tool may read.
+   */
+  sandbox?: { guard: string; socket?: string; denyRead?: string[] };
   /** Guard Rails → Command Rules: the hook command that checks each shell command before it runs. */
   commandGuard?: string;
 }

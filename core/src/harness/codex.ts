@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { asAgent } from './asAgent.ts';
-import { killTree, resolveCommand } from './claudeCode.ts';
+import { killTree, resolveCommand, transcriptWriter } from './claudeCode.ts';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
 
 const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more chars)` : s);
@@ -21,6 +22,24 @@ function direct(command: string): [string, string[]] {
 }
 
 /**
+ * Codex reads a project's own .codex/ (config.toml, hooks.json) in the folder it runs in and the folders above it. In a
+ * workspace those are the agent's to write, and could change Codex's hooks, sandbox or approvals: such a file stops the
+ * job instead. The person's own ~/.codex is not a project's and is ignored here (Yaho passes --ignore-user-config).
+ */
+export function codexOverride(cwd: string): string | null {
+  const home = homedir();
+  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+    if (dir !== home) {
+      if (existsSync(join(dir, '.codex', 'hooks.json'))) return join(dir, '.codex', 'hooks.json');
+      const config = join(dir, '.codex', 'config.toml');
+      if (existsSync(config) && /\b(hooks|features|sandbox\w*|approval\w*|permissions|profiles?|model_providers?|shell_environment_policy|notify)\b/.test(readFileSync(config, 'utf8')))
+        return config;
+    }
+    if (dirname(dir) === dir) return null;
+  }
+}
+
+/**
  * OpenAI's Codex CLI (codex exec --json). It reaches the model through OpenAI's Responses API: the runner gives the
  * provider's address and key as YAHO_CODEX_BASE_URL and YAHO_MODEL_KEY, which become a "yaho" model provider here, so
  * the person's own ~/.codex/config.toml is never used. The agent's system prompt goes in as developer instructions.
@@ -28,6 +47,11 @@ function direct(command: string): [string, string[]] {
 export const codex: HarnessAdapter = {
   name: 'codex',
   start(run: HarnessRun, onEvent: (e: HarnessEvent) => void): HarnessProcess {
+    const override = codexOverride(run.cwd);
+    if (override)
+      throw new Error(
+        `${override} could change Codex's hooks or sandbox, so the job did not start. Remove it from the workspace (it is not needed: Yaho gives Codex its settings).`,
+      );
     const base = run.env.YAHO_CODEX_BASE_URL;
     const common = [
       '--json',
@@ -65,12 +89,13 @@ export const codex: HarnessAdapter = {
     child.stdin.end(run.prompt);
 
     let gotResult = false;
+    const transcript = transcriptWriter(run, onEvent);
     let lastMessage = '';
     let usageCount = 0;
     if (!base) onEvent({ kind: 'stderr', text: 'no model provider address for Codex (YAHO_CODEX_BASE_URL)' });
     createInterface({ input: child.stdout }).on('line', (line) => {
       if (!line.trim()) return;
-      if (run.transcriptPath) appendFileSync(run.transcriptPath, `${line}\n`);
+      transcript(line);
       let m: Record<string, unknown>;
       try {
         m = JSON.parse(line);

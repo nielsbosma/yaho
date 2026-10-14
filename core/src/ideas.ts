@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Ctx } from './context.ts';
+import { withoutCaps } from './harness/asAgent.ts';
 import { addJobEvent, HttpError, sendMessage } from './store.ts';
 
 const run = promisify(execFile);
@@ -20,7 +21,7 @@ export type IdeaResult =
   | { sent_to_human: string; reason: string };
 
 type Gh = (args: string[]) => Promise<string>;
-const gh: Gh = async (args) => (await run('gh', args, { timeout: 30_000, windowsHide: true })).stdout;
+const gh: Gh = async (args) => (await run(...withoutCaps('gh', args), { timeout: 30_000, windowsHide: true })).stdout;
 
 /**
  * File an agent's idea for Yaho itself as a GitHub issue. Skips it when an issue with the same title exists.

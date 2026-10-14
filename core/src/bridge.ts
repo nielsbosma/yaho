@@ -1,9 +1,10 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProviderConfig } from './config.ts';
 import type { Ctx } from './context.ts';
 import { forProvider, safeJson } from './providerApi.ts';
-import { HttpError } from './store.ts';
+import { resolveModel } from './providers.ts';
+import { agentExists, getAgent, HttpError } from './store.ts';
 
 /**
  * Claude Code speaks Anthropic's Messages API; Berget and OpenAI (any provider with only Chat Completions) do not.
@@ -167,16 +168,38 @@ async function streamBack(model: string, upstream: Response, res: ServerResponse
   res.end();
 }
 
-/** A running job's token for this very provider (or the core's own token, for checks). */
-function jobFromToken(ctx: Ctx, req: IncomingMessage, providerId: string): boolean {
+/** Tokens for the harness checks in Settings, which run without a job: in memory only, for one provider and model. */
+const checkTokens = new Map<string, { provider: string; models: string[]; expires: number }>();
+
+export function checkToken(provider: string, models: string[], ttlMs = 5 * 60_000): { token: string; revoke(): void } {
+  const token = randomBytes(24).toString('hex');
+  checkTokens.set(token, { provider, models, expires: Date.now() + ttlMs });
+  return { token, revoke: () => void checkTokens.delete(token) };
+}
+
+/** Model names as the harness may send them: without a context suffix like [1m], ignoring case. */
+const modelKey = (m: string) => m.replace(/\[[^\]]*\]$/, '').trim().toLowerCase();
+
+/**
+ * The models a caller may use on this provider: a running job's token (the agent's models served by this provider),
+ * or a check's. Null for anyone else; the human's API token is not accepted, as it must never reach a harness.
+ */
+function allowedModels(ctx: Ctx, req: IncomingMessage, providerId: string): string[] | null {
   const h = req.headers;
   const token = (h['x-api-key'] as string | undefined) ?? (h.authorization?.startsWith('Bearer ') ? h.authorization.slice(7) : undefined);
-  if (!token) return false;
-  const a = Buffer.from(token);
-  const b = Buffer.from(ctx.apiToken);
-  if (a.length === b.length && timingSafeEqual(a, b)) return true;
-  const row = ctx.db.prepare('SELECT expires, provider FROM job_tokens WHERE token = ?').get(token) as { expires: string; provider: string | null } | undefined;
-  return !!row && row.expires > new Date().toISOString() && row.provider === providerId;
+  if (!token) return null;
+  const check = checkTokens.get(token);
+  if (check) {
+    if (check.expires < Date.now()) checkTokens.delete(token);
+    else return check.provider === providerId ? check.models : null;
+  }
+  const row = ctx.db.prepare('SELECT agent, expires, provider FROM job_tokens WHERE token = ?').get(token) as
+    | { agent: string; expires: string; provider: string | null }
+    | undefined;
+  if (!row || row.expires <= new Date().toISOString() || row.provider !== providerId || !agentExists(ctx, row.agent)) return null;
+  const agent = getAgent(ctx, row.agent);
+  const models = (agent.models.length ? agent.models : ctx.settings.defaults.models).map((m) => resolveModel(ctx.settings, m));
+  return models.filter((x) => x.provider.id === providerId).map((x) => x.model);
 }
 
 /** Handle /bridge/<provider>/v1/messages (and count_tokens). Returns false when the path is not the bridge's. */
@@ -184,16 +207,25 @@ export async function handleBridge(ctx: Ctx, req: IncomingMessage, res: ServerRe
   const m = /^\/bridge\/([^/]+)\/v1\/messages(\/count_tokens)?$/.exec(path);
   if (process.env.YAHO_DEBUG === '1') console.log(`[bridge] ${req.method} ${req.url}`);
   if (!m) return false;
-  if (!jobFromToken(ctx, req, m[1]!)) throw new HttpError(401, 'the bridge is for running jobs only');
+  const allowed = allowedModels(ctx, req, m[1]!);
+  if (!allowed) throw new HttpError(401, 'the bridge is for running jobs only');
   const provider = ctx.settings.providers.find((p: ProviderConfig) => p.id === m[1]);
   const base = provider && (provider.url?.replace(/\/$/, '') ?? BASES[provider.kind]);
   if (!provider || !base) throw new HttpError(404, `no provider ${m[1]} to bridge`);
-  const request = JSON.parse((await body()).toString('utf8') || '{}') as AnthropicRequest;
+  let request: AnthropicRequest;
+  try {
+    request = JSON.parse((await body()).toString('utf8') || '{}') as AnthropicRequest;
+  } catch {
+    throw new HttpError(400, 'the request is not JSON');
+  }
   if (m[2]) {
     // Claude Code asks for a token count now and then; a rough one is enough.
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ input_tokens: Math.ceil(JSON.stringify(request.messages ?? []).length / 4) }));
     return true;
   }
+  // Budgets and Guard Rails are per model: only the agent's own models.
+  if (!allowed.map(modelKey).includes(modelKey(String(request.model ?? ''))))
+    throw new HttpError(403, `${request.model} is not one of this agent's models (${allowed.join(', ') || 'none on this provider'})`);
   // Stop the provider's work when Claude Code goes away, and never wait forever on it.
   const gone = new AbortController();
   res.on('close', () => {

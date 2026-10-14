@@ -1,10 +1,11 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { delimiter, extname, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
 import { asAgent } from './asAgent.ts';
 import { claudeSandboxSettings } from './sandbox.ts';
+import { writeFileUnder } from '../fsSafe.ts';
 
 const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more chars)` : s);
 
@@ -32,6 +33,23 @@ export function resolveCommand(cmd: string, env: Record<string, string | undefin
   return cmd;
 }
 
+/**
+ * Appends each raw output line to the run's transcript, in the workspace (cwd), never through a link the agent put
+ * there. A transcript that cannot be written is reported once and then skipped; the job goes on.
+ */
+export function transcriptWriter(run: HarnessRun, onEvent: (e: HarnessEvent) => void): (line: string) => void {
+  let path = run.transcriptPath;
+  return (line) => {
+    if (!path) return;
+    try {
+      writeFileUnder(run.cwd, path, `${line}\n`, { append: true });
+    } catch (e) {
+      onEvent({ kind: 'stderr', text: `transcript not kept: ${(e as Error).message}` });
+      path = undefined;
+    }
+  };
+}
+
 /** Kill a process and its whole tree; on Windows a plain kill leaves the harness's children running. */
 export function killTree(pid: number | undefined): void {
   if (!pid) return;
@@ -52,7 +70,7 @@ export function killTree(pid: number | undefined): void {
 /** Claude Code's --settings for a job: the sandbox, and the Command Rules hook on Bash. Null when neither is on. */
 export function claudeSettings(run: Pick<HarnessRun, 'sandbox' | 'commandGuard'>): Record<string, unknown> | null {
   if (!run.sandbox && !run.commandGuard) return null;
-  const base = run.sandbox ? claudeSandboxSettings(run.sandbox.guard) : {};
+  const base = run.sandbox ? claudeSandboxSettings(run.sandbox.guard, run.sandbox) : {};
   const pre = ((base.hooks as { PreToolUse?: unknown[] } | undefined)?.PreToolUse ?? []).slice();
   if (run.commandGuard) pre.push({ matcher: 'Bash', hooks: [{ type: 'command', command: run.commandGuard }] });
   return { ...base, hooks: { PreToolUse: pre } };
@@ -73,6 +91,9 @@ export const claudeCode: HarnessAdapter = {
       run.model,
       '--permission-mode',
       'bypassPermissions',
+      // No settings files: the workspace's .claude/settings*.json and the agents' own ~/.claude are the agent's to
+      // write, and could turn Yaho's hooks or sandbox off. Only what Yaho passes here applies.
+      '--setting-sources=',
       ...(settings ? ['--settings', JSON.stringify(settings)] : []),
       '--append-system-prompt',
       run.systemPrompt,
@@ -94,10 +115,11 @@ export const claudeCode: HarnessAdapter = {
     child.stdin.end(run.prompt);
 
     let gotResult = false;
+    const transcript = transcriptWriter(run, onEvent);
     const lines = createInterface({ input: child.stdout });
     lines.on('line', (line) => {
       if (!line.trim()) return;
-      if (run.transcriptPath) appendFileSync(run.transcriptPath, `${line}\n`);
+      transcript(line);
       let m: Record<string, unknown>;
       try {
         m = JSON.parse(line);
