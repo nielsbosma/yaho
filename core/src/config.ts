@@ -74,6 +74,8 @@ export interface Settings {
    * inbox. Off unless enabled. rules unset means the default list.
    */
   command_rules?: { enabled?: boolean; rules?: CommandRule[] };
+  /** Past jobs: recaps by the agent's last model when a job ends, for yaho history search (default on). */
+  history?: { recaps?: boolean };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   /** When the first-run setup was finished (or skipped). Until then the app shows it. */

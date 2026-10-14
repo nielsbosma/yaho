@@ -11,6 +11,7 @@ import { startServer } from './api/server.ts';
 import { apiToken, loadSettings, paths, saveSettings } from './config.ts';
 import { Bus, type Ctx } from './context.ts';
 import { openDb } from './db/index.ts';
+import { indexMissing } from './history.ts';
 import { JobRunner } from './jobs/runner.ts';
 import { Scheduler } from './scheduler/index.ts';
 import { SlackBridge } from './slack/bridge.ts';
@@ -42,6 +43,7 @@ export async function serve(
 
   const runner = new JobRunner(ctx);
   runner.recover();
+  indexMissing(ctx);
   // The bundled Dopbase runs next to the core whatever the mode, so switching to it in Settings needs no restart.
   ctx.localDopbase = new LocalDopbase(ctx);
   if (ctx.settings.dopbase.mode === 'bundled' && !process.env.YAHO_NO_DOPBASE) await ctx.localDopbase.start();

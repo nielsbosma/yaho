@@ -17,6 +17,8 @@ const HELP = `yaho - talk to the Yaho orchestrator from inside a job
   yaho inbox mark-read <id> [--unread]  mark handled (or back to unread)
   yaho send --to human|agent:<name> [--type question|instruction|info] [--title T] [--body B] [--reply-to ID] < msg.yaml
   yaho query agents|projects|resources|jobs
+  yaho history search <words> [--since 30d] [--limit 10]   find your past jobs
+  yaho history show <job>               one past job: trigger, summary, recap, what you said
   yaho project files <project> [<file> [--out <path>]]
   yaho artifact add <project> <file> [--kind <kind>]
   yaho briefing show
@@ -122,6 +124,8 @@ async function main(argv: string[]): Promise<void> {
       search: { type: 'string' },
       subject: { type: 'string' },
       cc: { type: 'string' },
+      since: { type: 'string' },
+      limit: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -151,6 +155,15 @@ async function main(argv: string[]): Promise<void> {
     }
     case 'query':
       return out(await call('GET', `/query/${need(sub, 'what to query: agents, projects, resources or jobs')}`));
+    case 'history':
+      if (sub === 'search') {
+        const q = new URLSearchParams({ q: need(p.slice(2).join(' '), 'words to search for') });
+        if (f.since) q.set('since', f.since);
+        if (f.limit) q.set('limit', f.limit);
+        return out(await call('GET', `/history/search?${q}`));
+      }
+      if (sub === 'show') return out(await call('GET', `/history/${encodeURIComponent(need(a1, 'job id'))}`));
+      break;
     case 'project':
       if (sub === 'files') {
         const project = need(a1, 'project name');

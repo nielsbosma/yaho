@@ -181,7 +181,13 @@ export const migrations: string[] = [
    CREATE INDEX webhook_deliveries_webhook ON webhook_deliveries(webhook, created);
    CREATE INDEX webhook_deliveries_job ON webhook_deliveries(job);
    CREATE UNIQUE INDEX webhook_deliveries_delivery ON webhook_deliveries(webhook, delivery) WHERE delivery IS NOT NULL;`,
-  // 12: Command Rules: a command an Ask rule held back, the inbox question about it, and the human's answer.
+  // 12: past jobs, searchable (yaho history). summary is the agent's own from yaho finish, recap a short one written
+  // by a model when the job ended; job_search indexes both with what started the job and what the agent said.
+  `ALTER TABLE jobs ADD COLUMN summary TEXT;
+   ALTER TABLE jobs ADD COLUMN recap TEXT;
+   CREATE VIRTUAL TABLE job_search USING fts5(job UNINDEXED, agent UNINDEXED, trigger, messages, summary, recap, tokenize = 'porter unicode61');
+   CREATE TRIGGER jobs_search_delete AFTER DELETE ON jobs BEGIN DELETE FROM job_search WHERE job = old.id; END;`,
+  // 13: Command Rules: a command an Ask rule held back, the inbox question about it, and the human's answer.
   // used: an approved command runs once.
   `CREATE TABLE command_approvals (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE ON UPDATE CASCADE, job TEXT NOT NULL, session TEXT, command TEXT NOT NULL, message TEXT, status TEXT NOT NULL DEFAULT 'pending', used INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, decided TEXT);
    CREATE INDEX command_approvals_message ON command_approvals(message);
