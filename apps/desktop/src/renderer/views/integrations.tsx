@@ -984,15 +984,15 @@ function EmailSettings({
   server,
   onChange,
 }: {
-  value: NonNullable<Settings['resend']>;
+  value: ResendValue;
   stored: Record<string, boolean>;
   server: boolean;
-  onChange: (v: NonNullable<Settings['resend']>) => void;
+  onChange: (v: ResendValue) => void;
 }) {
   const status = useApi<EmailStatus>('/api/resend', (e) => e.type === 'changed' && (e.entity === 'resend' || e.entity === 'settings'));
   const st = status.data;
   const [actionError, post] = useAction();
-  const set = (patch: Partial<NonNullable<Settings['resend']>>) => onChange({ ...value, ...patch });
+  const set = (patch: Partial<ResendValue>) => onChange({ ...value, ...patch });
   const webhook = st ? (server ? `${location.origin}${st.webhook_path}` : `https://<your tunnel>${st.webhook_path}`) : '';
   const { line, state: tone } = SUMMARY.email(st ?? undefined);
   const steps: Array<[string, ReactNode]> = [
@@ -1099,10 +1099,31 @@ function EmailSettings({
             <Switch checked={!!value.accept_new} onChange={(v) => set({ accept_new: v || undefined })} label="Accept New Emails" />
           </div>
         </Field>
+        <Field label="Allowed Senders" hint="Addresses or domains that may write to agents, comma-separated. Empty: anyone.">
+          <Input
+            value={listText(value.allow)}
+            placeholder="anna@example.com, partner.io"
+            onChange={(e) => set({ allow: e.target.value || undefined })}
+          />
+        </Field>
+        <Field label="Only Thread Participants" hint="On: a reply to a thread must come from an address already in it.">
+          <div className="flex h-9 items-center">
+            <Switch
+              checked={!!value.participants_only}
+              onChange={(v) => set({ participants_only: v || undefined })}
+              label="Only Thread Participants"
+            />
+          </div>
+        </Field>
       </div>
     </Card>
   );
 }
+
+/** Email and SMS settings this page edits beyond the shared Settings type. */
+type ResendValue = NonNullable<Settings['resend']> & { allow?: string | string[]; participants_only?: boolean };
+type TwilioValue = NonNullable<Settings['twilio']> & { allow?: string | string[]; public_url?: string };
+const listText = (v?: string | string[]) => (Array.isArray(v) ? v.join(', ') : (v ?? ''));
 
 interface SmsStatus {
   configured: boolean;
@@ -1125,16 +1146,16 @@ function SmsSettings({
   server,
   onChange,
 }: {
-  value: NonNullable<Settings['twilio']>;
+  value: TwilioValue;
   stored: Record<string, boolean>;
   server: boolean;
-  onChange: (v: NonNullable<Settings['twilio']>) => void;
+  onChange: (v: TwilioValue) => void;
 }) {
   const status = useApi<SmsStatus>('/api/twilio', (e) => e.type === 'changed' && (e.entity === 'twilio' || e.entity === 'settings'));
   const agents = useApi<Array<{ name: string; sms?: boolean }>>('/api/agents');
   const st = status.data;
   const [actionError, post] = useAction();
-  const set = (patch: Partial<NonNullable<Settings['twilio']>>) => onChange({ ...value, ...patch });
+  const set = (patch: Partial<TwilioValue>) => onChange({ ...value, ...patch });
   const webhook = st ? (server ? `${location.origin}${st.webhook_path}` : `https://<your tunnel>${st.webhook_path}`) : '';
   const { line, state: tone } = SUMMARY.sms(st ?? undefined);
   const steps: Array<[string, ReactNode]> = [
@@ -1248,6 +1269,20 @@ function SmsSettings({
                 </option>
               ))}
           </Select>
+        </Field>
+        <Field label="Allowed Numbers" hint="Phones that may text agents, comma-separated. Empty: any phone.">
+          <Input
+            value={listText(value.allow)}
+            placeholder="+46701234567, +46709876543"
+            onChange={(e) => set({ allow: e.target.value || undefined })}
+          />
+        </Field>
+        <Field label="Public URL" hint="Where Twilio reaches Yaho, checked against its signatures. Empty: the request's own host.">
+          <Input
+            value={value.public_url ?? ''}
+            placeholder="https://yaho.example.com"
+            onChange={(e) => set({ public_url: e.target.value.trim() || undefined })}
+          />
         </Field>
       </div>
     </Card>

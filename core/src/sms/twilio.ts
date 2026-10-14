@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Ctx } from '../context.ts';
 import { now } from '../db/index.ts';
+import { errorText, phoneAllowed, RateLimit, serial } from '../mirror/util.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
 
@@ -15,6 +16,16 @@ export const DAILY_LIMIT = 50;
 export const MAX_LENGTH = 1600;
 /** Carrier keywords Twilio answers itself (opt-out and opt-in); they never reach an agent. */
 const KEYWORDS = /^(stop|stopall|unsubscribe|cancel|end|quit|start|unstop)$/i;
+/** Inbound texts taken per phone and per agent in an hour; more are dropped, so a stranger cannot start job after job. */
+export const INBOUND_PER_SENDER = 20;
+export const INBOUND_PER_AGENT = 100;
+const HOUR = 3600_000;
+
+/**
+ * settings.twilio, with allow (the only phones that may text in; empty: any) and public_url (the address Twilio calls,
+ * such as https://yaho.example.com, which webhook signatures are checked against; unset: the request's own host).
+ */
+type TwilioSettings = NonNullable<Ctx['settings']['twilio']> & { allow?: string | string[]; public_url?: string };
 
 export interface OutgoingSms {
   from: string;
@@ -87,8 +98,12 @@ export function verifyWebhook(token: string, urls: string[], params: URLSearchPa
   });
 }
 
-/** The URLs Twilio may have called: behind a tunnel or proxy the request reaches Yaho as plain http on another host. */
-function calledUrls(raw: IncomingMessage): string[] {
+/**
+ * The URLs Twilio may have called: the configured public URL, or else (behind a tunnel or proxy the request reaches
+ * Yaho as plain http on another host) what the request's headers say.
+ */
+function calledUrls(raw: IncomingMessage, base?: string): string[] {
+  if (base?.trim()) return [`${base.trim().replace(/\/+$/, '')}${raw.url ?? WEBHOOK_PATH}`];
   const first = (h: string | string[] | undefined) =>
     String(Array.isArray(h) ? h[0] : (h ?? ''))
       .split(',')[0]!
@@ -110,13 +125,15 @@ export class SmsBridge {
   api: TwilioApi | null = null;
   status: SmsStatus = { configured: false, connected: false };
   connect: (sid: string, token: string) => TwilioApi;
+  private bySender = new RateLimit(INBOUND_PER_SENDER, HOUR);
+  private byAgent = new RateLimit(INBOUND_PER_AGENT, HOUR);
 
   constructor(ctx: Ctx, connect?: (sid: string, token: string) => TwilioApi) {
     this.ctx = ctx;
     this.connect = connect ?? realApi;
   }
 
-  get settings() {
+  get settings(): TwilioSettings {
     return this.ctx.settings.twilio ?? {};
   }
 
@@ -127,6 +144,11 @@ export class SmsBridge {
   private setStatus(next: Partial<SmsStatus>) {
     this.status = { ...this.status, ...next };
     this.ctx.bus.emitEvent({ type: 'changed', entity: 'twilio' });
+  }
+
+  fail(err: unknown) {
+    console.error(`[twilio] ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+    this.setStatus({ error: errorText(err) });
   }
 
   private ignore(why: string) {
@@ -150,7 +172,7 @@ export class SmsBridge {
         error: n ? undefined : `${this.number} is not a phone number in this Twilio account`,
       });
     } catch (err) {
-      this.setStatus({ connected: false, error: (err as Error).message });
+      this.setStatus({ connected: false, error: errorText(err) });
     }
   }
 
@@ -195,6 +217,21 @@ export class SmsBridge {
         input.to ? `${input.to} is not a phone number; use the international form, +46701234567` : 'to is required: a phone number',
       );
     if (to === this.number) throw new HttpError(400, `${to} is Yaho's own number; use yaho send to reach other agents`);
+    const api = this.api;
+    const from = this.number;
+    // One send per agent at a time, so concurrent sends cannot all pass the daily check.
+    return serial(`sms:${agent}`, () => this.sendNow(api, from, agent, job, to, body, input.reply_to));
+  }
+
+  private async sendNow(
+    api: TwilioApi,
+    from: string,
+    agent: string,
+    job: string | null,
+    to: string,
+    body: string,
+    replyTo: string | undefined,
+  ): Promise<{ id: string; to: string; from: string }> {
     const sent = Number(
       (
         this.ctx.db
@@ -204,8 +241,8 @@ export class SmsBridge {
     );
     if (sent >= DAILY_LIMIT) throw new HttpError(429, `you have sent ${sent} texts in the last 24 hours, the limit is ${DAILY_LIMIT}`);
 
-    const sid = await this.api.send({ from: this.number, to, body });
-    const last = input.reply_to ?? this.lastOf(agent, to);
+    const sid = await api.send({ from, to, body });
+    const last = replyTo ?? this.lastOf(agent, to);
     const msg = s.sendMessage(this.ctx, {
       from: `agent:${agent}`,
       to: `sms:${to}`,
@@ -220,7 +257,7 @@ export class SmsBridge {
     this.ctx.db
       .prepare('INSERT INTO sms (message, agent, phone, direction, sid, created) VALUES (?,?,?,?,?,?)')
       .run(msg.id, agent, to, 'out', sid, now());
-    return { id: msg.id, to, from: this.number };
+    return { id: msg.id, to, from };
   }
 
   // ---------- in ----------
@@ -232,6 +269,7 @@ export class SmsBridge {
     if (phone(sms.to) !== this.number) return this.ignore(`to ${sms.to}, not ${this.number}`);
     if (sms.sid && this.ctx.db.prepare('SELECT 1 FROM sms WHERE sid = ?').get(sms.sid)) return;
     if (KEYWORDS.test(sms.body.trim())) return this.ignore(`${sms.body.trim().toUpperCase()} from ${from}, which Twilio handles`);
+    if (!phoneAllowed(this.settings.allow, from)) return this.ignore(`from ${from}: not on the allowed numbers`);
 
     const latest = this.ctx.db.prepare('SELECT agent FROM sms WHERE phone = ? ORDER BY created DESC, rowid DESC LIMIT 1').get(from) as
       | Row
@@ -239,6 +277,8 @@ export class SmsBridge {
     const agent = (latest?.agent as string | undefined) ?? this.settings.new_agent;
     if (!agent) return this.ignore(`from ${from}: no agent has texted this number`);
     if (!this.enabledFor(agent)) return this.ignore(`from ${from}: ${agent} does not have SMS on`);
+    if (!this.bySender.take(from)) return this.ignore(`from ${from}: more than ${INBOUND_PER_SENDER} texts in an hour`);
+    if (!this.byAgent.take(agent)) return this.ignore(`from ${from}: ${agent} got more than ${INBOUND_PER_AGENT} texts in an hour`);
 
     const last = this.lastOf(agent, from);
     const text = sms.body.trim() || '(empty text)';
@@ -268,7 +308,8 @@ export async function handleTwilioWebhook(ctx: Ctx, raw: IncomingMessage, res: S
   if (raw.method !== 'POST') return plain(405);
   const token = bridge.settings.auth_token;
   const params = new URLSearchParams((await read()).toString('utf8'));
-  if (!token || !verifyWebhook(token, calledUrls(raw), params, String(raw.headers['x-twilio-signature'] ?? ''))) return plain(401);
+  if (!token || !verifyWebhook(token, calledUrls(raw, bridge.settings.public_url), params, String(raw.headers['x-twilio-signature'] ?? '')))
+    return plain(401);
   // Empty TwiML: Yaho answers later, if the agent decides to, with its own text.
   res
     .writeHead(200, { 'Content-Type': 'text/xml; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -281,10 +322,7 @@ export async function handleTwilioWebhook(ctx: Ctx, raw: IncomingMessage, res: S
       body: params.get('Body') ?? '',
       media: Number(params.get('NumMedia') ?? 0) || 0,
     })
-    .catch((err) => {
-      console.error(`[twilio] ${(err as Error).stack ?? err}`);
-      bridge.status = { ...bridge.status, error: (err as Error).message };
-    });
+    .catch((err) => bridge.fail(err));
 }
 
 /** The real Twilio REST API over fetch. */
