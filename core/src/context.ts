@@ -27,7 +27,11 @@ export interface Ctx {
   updates?: import('./updates.ts').Updates;
   /** Git history of agent workspaces. */
   versions?: import('./versions.ts').Versions;
-  scheduler?: { upcoming(agent: string): Array<{ type: string; at: string; cron?: string }>; tick(at?: Date): void };
+  scheduler?: {
+    upcoming(agent: string): Array<{ type: string; at: string; cron?: string }>;
+    tick(at?: Date): void;
+    dreams(at?: Date): void;
+  };
   /** Set by the job runner; lets the scheduler and API start and stop jobs without import cycles. */
   runner?: {
     enqueue(agent: string, trigger: string, opts?: { detail?: string; hop?: number; sessionId?: string | null; force?: boolean }): unknown;

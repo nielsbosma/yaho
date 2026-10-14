@@ -188,6 +188,8 @@ export interface Agent {
   email?: boolean;
   sms?: boolean;
   browser?: boolean;
+  /** The nightly dream; on unless false. */
+  dreaming?: boolean;
   guardrails: {
     rate_per_hour?: number;
     cooldown_seconds?: number;
@@ -223,6 +225,10 @@ export interface Job {
   created: string;
   started: string | null;
   ended: string | null;
+  summary?: string | null;
+  /** The workspace version the job started from, and the one it ended with (null when it changed nothing). */
+  base_sha?: string | null;
+  commit_sha?: string | null;
 }
 
 export interface JobEvent {
