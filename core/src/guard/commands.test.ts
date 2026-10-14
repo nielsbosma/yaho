@@ -165,6 +165,18 @@ describe('Command Rules', () => {
     expect(prompt.data.user).toContain('the human denied `git reset --hard`');
   });
 
+  it('takes only the exact choices as approval', async () => {
+    steps('steps.json', [{ cmd: 'git reset --hard HEAD' }, { sleep_ms: 10_000 }]);
+    const job = await api<Job>('/api/agents/gamma/run', { method: 'POST' });
+    await until(() => api<Job>(`/api/jobs/${job.id}`), ended);
+    const q = await question();
+    steps('steps-resume.json', [{ cmd: 'yaho finish' }]);
+    await api('/api/messages', { body: { to: 'agent:gamma', reply_to: q.id, body: 'yes... actually no' } });
+    const r = await until(jobs, (js) => js.some((j) => j.trigger_detail?.includes('They answered: yes... actually no') && ended(j)));
+    expect(r.find((j) => j.trigger_detail?.includes('They answered'))!.trigger_detail).toContain('the human denied `git reset --hard HEAD`');
+    expect(ctx.db.prepare('SELECT status FROM command_approvals WHERE message = ?').get(q.id)).toEqual({ status: 'denied' });
+  });
+
   it('refuses bad rules when saving', async () => {
     await expect(
       api('/api/agents/gamma', {

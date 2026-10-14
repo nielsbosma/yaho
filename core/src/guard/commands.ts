@@ -91,9 +91,10 @@ export function answerApproval(ctx: Ctx, m: Message): boolean {
   if (m.from !== 'human' || !m.reply_to) return false;
   const a = ctx.db.prepare('SELECT * FROM command_approvals WHERE message = ?').get(m.reply_to) as Row | undefined;
   if (!a) return false;
-  const answer = m.body.trim().toLowerCase();
-  const always = answer.startsWith('always');
-  const ok = always || /^(allow|approve|yes|ok)\b/.test(answer);
+  // Only the choices themselves count: anything else, even a "yes", is a denial (with what they said passed on).
+  const answer = m.body.trim().replace(/\s+/g, ' ').replace(/[.!]$/, '').toLowerCase();
+  const always = answer === 'always allow';
+  const ok = always || answer === 'allow once';
   const agent = a.agent as string;
   const cmd = a.command as string;
   // Claim the answer first: marking it read fires this again.
@@ -106,7 +107,7 @@ export function answerApproval(ctx: Ctx, m: Message): boolean {
     const g = getAgent(ctx, agent).guardrails;
     saveAgent(ctx, { name: agent, guardrails: { ...g, command_rules: [...(g.command_rules ?? []), exactRule(cmd)] } }, { author: 'human' });
   }
-  const note = ok || /^deny\b/.test(answer) ? '' : ` They said: ${m.body.trim()}`;
+  const note = ok || answer === 'deny' ? '' : ` They answered: ${m.body.trim()}`;
   const detail = ok
     ? `the human approved \`${cmd}\`${always ? ' for good' : ' (once)'}. Run it now, then carry on with your work.`
     : `the human denied \`${cmd}\`. Do not run it or a variant of it; do the work another way or finish.${note}`;
