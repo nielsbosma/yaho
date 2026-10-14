@@ -61,6 +61,7 @@ const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
  */
 export function writeFileUnder(root: string, p: string, data: string | Uint8Array, opts: { append?: boolean; mode?: number } = {}): void {
   const full = joinUnder(root, p);
+  assertUnder(root, dirname(full));
   mkdirSync(dirname(full), { recursive: true });
   assertUnder(root, dirname(full));
   if (isLink(full)) throw new UnsafePathError('refusing to write through a symlink');

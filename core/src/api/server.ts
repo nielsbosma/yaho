@@ -100,9 +100,10 @@ export function sendFile(res: Req['res'], root: string, rel: string, download?: 
   const headers: Record<string, string | number> = {
     'Content-Type': MIME[ext] ?? 'application/octet-stream',
     'Content-Length': st.size,
-    'Content-Security-Policy': 'sandbox',
     'X-Content-Type-Options': 'nosniff',
   };
+  // Chromium's PDF viewer refuses sandboxed documents; PDFs run no script of the page's origin.
+  if (ext !== '.pdf') headers['Content-Security-Policy'] = 'sandbox';
   if (download || ACTIVE.has(ext)) headers['Content-Disposition'] = disposition('attachment', download || basename(file));
   res.writeHead(200, headers);
   createReadStream('', { fd }).pipe(res);
