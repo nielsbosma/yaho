@@ -99,6 +99,17 @@ export interface Settings {
   /** Past jobs: recaps by the agent's last model when a job ends, for yaho history search (default on). */
   history?: { recaps?: boolean };
   /**
+   * Versions: each agent's workspace and definition under git, committed when a job ends and when the definition
+   * changes (default on). History older than keep_days (90) is squashed; files over max_file_mb (5) are left out.
+   */
+  versions?: { enabled?: boolean; keep_days?: number; max_file_mb?: number };
+  /**
+   * Dreaming: a nightly job per agent that reviews its notes, scripts and database and tidies them (default on, at 3:00
+   * local time). model: the model dreams use (default the agent's last, usually its cheapest); max_usd caps one dream;
+   * max_minutes stops one that runs long. Agents can opt out with dreaming: false.
+   */
+  dreaming?: { enabled?: boolean; cron?: string; model?: string; max_usd?: number; max_minutes?: number };
+  /**
    * A browser for agents with browser on (yaho browser). provider: local (Chrome, Edge or Chromium on this machine;
    * executable overrides which, headless false shows its window on the desktop) or a cloud browser over CDP: Browserbase
    * (api_key, project_id), Steel (api_key) or any CDP endpoint (cdp_url). allowed_sites (Guard Rails): the sites its

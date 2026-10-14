@@ -25,6 +25,8 @@ export interface Ctx {
   /** The core's MCP client for MCP resources. */
   mcp?: import('./mcp/hub.ts').McpHub;
   updates?: import('./updates.ts').Updates;
+  /** Git history of agent workspaces. */
+  versions?: import('./versions.ts').Versions;
   scheduler?: { upcoming(agent: string): Array<{ type: string; at: string; cron?: string }>; tick(at?: Date): void };
   /** Set by the job runner; lets the scheduler and API start and stop jobs without import cycles. */
   runner?: {

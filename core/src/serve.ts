@@ -24,6 +24,7 @@ import { TelegramBridge } from './telegram/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
+import { Versions } from './versions.ts';
 import { McpHub } from './mcp/hub.ts';
 import { SANDBOX_GUARD, sandboxGuardScript } from './harness/sandbox.ts';
 import { COMMAND_GUARD, commandGuardScript } from './harness/commandGuard.ts';
@@ -44,6 +45,7 @@ export async function serve(
   const ctx: Ctx = { db: openDb(p.db), settings, paths: p, apiToken: apiToken(), bus: new Bus(), apiUrl: '' };
   loadTotp(ctx);
 
+  const versions = new Versions(ctx);
   const runner = new JobRunner(ctx);
   runner.recover();
   indexMissing(ctx);
@@ -99,6 +101,7 @@ export async function serve(
 
   const close = async () => {
     scheduler.stop();
+    versions.stop();
     await ctx.slack?.stop();
     ctx.whatsapp?.stop();
     ctx.email?.stop();
@@ -123,6 +126,7 @@ export async function serve(
     console.log(`yaho core listening on ${ctx.apiUrl} (data: ${p.root})`);
   }
 
+  await versions.start();
   runner.pump();
   scheduler.start(Number(process.env.YAHO_TICK_MS ?? 5000));
   return { ctx, close };

@@ -10,7 +10,7 @@ import { nativeToolName, toolEnabled, type McpConfig } from '../mcp/config.ts';
 import { commandRulesOn } from '../guard/commands.ts';
 import { deliveryForJob } from '../webhooks/hooks.ts';
 
-function briefingsDir(): string {
+export function briefingsDir(): string {
   if (process.env.YAHO_BRIEFINGS_DIR) return process.env.YAHO_BRIEFINGS_DIR;
   const here = dirname(fileURLToPath(import.meta.url));
   for (const c of [join(here, '../../../briefings'), join(here, '../briefings'), join(here, 'briefings')])

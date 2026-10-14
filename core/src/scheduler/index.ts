@@ -2,6 +2,7 @@ import type { BusEvent, Ctx } from '../context.ts';
 import type { Message } from '../store.ts';
 import { agentExists, getAgent, nextCron, sendMessage } from '../store.ts';
 import { answerApproval } from '../guard/commands.ts';
+import { dreamSettings, hasNewWork } from '../jobs/dream.ts';
 
 type Row = Record<string, unknown>;
 
@@ -48,6 +49,33 @@ export class Scheduler {
         db.prepare('DELETE FROM triggers WHERE id = ?').run(t.id as string);
         this.ctx.runner!.enqueue(agent, 'delay', { sessionId: t.session_id as string, detail: `woke from yaho sleep` });
       }
+    }
+    this.dreams(at);
+  }
+
+  /**
+   * Each agent with dreaming on dreams once per slot of the dreaming schedule (03:00 by default), counted from its last
+   * dream, so a night missed while Yaho was off dreams once at start. Nothing new since the last dream: skipped.
+   */
+  dreams(at = new Date()): void {
+    const cfg = dreamSettings(this.ctx);
+    if (!cfg.enabled) return;
+    const { db } = this.ctx;
+    const iso = at.toISOString();
+    for (const a of db.prepare('SELECT name, created, last_dream FROM agents WHERE enabled = 1 AND dreaming = 1').all() as Row[]) {
+      const name = a.name as string;
+      let due: string | null;
+      try {
+        due = nextCron(cfg.cron, new Date((a.last_dream ?? a.created) as string));
+      } catch {
+        return;
+      }
+      if (!due || due > iso) continue;
+      db.prepare('UPDATE agents SET last_dream = ? WHERE name = ?').run(iso, name);
+      if (!hasNewWork(this.ctx, name, (a.last_dream ?? a.created) as string)) continue;
+      if (db.prepare("SELECT 1 FROM jobs WHERE agent = ? AND trigger_type = 'dream' AND status IN ('queued','running')").get(name))
+        continue;
+      this.ctx.runner!.enqueue(name, 'dream', { detail: 'nightly' });
     }
   }
 
@@ -110,14 +138,28 @@ export class Scheduler {
     return null;
   }
 
-  /** Upcoming cron and delay fires for an agent, for the UI. */
+  /** Upcoming cron and delay fires for an agent, and its next dream, for the UI. */
   upcoming(agent: string): Array<{ type: string; at: string; cron?: string }> {
-    return (
-      this.ctx.db
-        .prepare(
-          "SELECT type, cron, next_fire FROM triggers WHERE agent = ? AND type IN ('cron','delay') AND next_fire IS NOT NULL ORDER BY next_fire",
-        )
-        .all(agent) as Row[]
-    ).map((t) => ({ type: t.type as string, at: t.next_fire as string, ...(t.cron ? { cron: t.cron as string } : {}) }));
+    const cfg = dreamSettings(this.ctx);
+    const a = this.ctx.db.prepare('SELECT enabled, dreaming FROM agents WHERE name = ?').get(agent) as Row | undefined;
+    let dream: Array<{ type: string; at: string; cron: string }> = [];
+    if (cfg.enabled && a?.enabled && a.dreaming) {
+      try {
+        const at = nextCron(cfg.cron);
+        if (at) dream = [{ type: 'dream', at, cron: cfg.cron }];
+      } catch {
+        // An invalid schedule shows in Settings.
+      }
+    }
+    return [
+      ...(
+        this.ctx.db
+          .prepare(
+            "SELECT type, cron, next_fire FROM triggers WHERE agent = ? AND type IN ('cron','delay') AND next_fire IS NOT NULL ORDER BY next_fire",
+          )
+          .all(agent) as Row[]
+      ).map((t) => ({ type: t.type as string, at: t.next_fire as string, ...(t.cron ? { cron: t.cron as string } : {}) })),
+      ...dream,
+    ].sort((x, y) => x.at.localeCompare(y.at));
   }
 }
