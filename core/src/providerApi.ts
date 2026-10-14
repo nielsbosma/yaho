@@ -126,6 +126,9 @@ export interface ChatReply {
   usage?: { input: number; output: number };
 }
 
+/** A chat round can be a long answer, but not one that never comes. */
+const CHAT_TIMEOUT = 300_000;
+
 /** One round of the assistant's chat on this provider. */
 export async function chatRound(
   p: ProviderConfig,
@@ -140,6 +143,7 @@ export async function chatRound(
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     // Only the standard fields: some providers reject what others add to their replies (Berget: function_call: null).
     body: JSON.stringify({ ...forProvider(p.kind, body), messages: body.messages.map(clean), tools: body.tools.length ? body.tools : undefined }),
+    signal: AbortSignal.timeout(CHAT_TIMEOUT),
   });
   if (!res.ok) throw new HttpError(502, `${p.id}: ${res.status} ${(await res.text()).slice(0, 300)}`);
   const j = (await res.json()) as {
@@ -191,6 +195,7 @@ async function anthropicChat(base: string, key: string, body: { model: string; m
       messages: turns,
       tools: body.tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters ?? { type: 'object' } })),
     }),
+    signal: AbortSignal.timeout(CHAT_TIMEOUT),
   });
   if (!res.ok) throw new HttpError(502, `Anthropic: ${res.status} ${(await res.text()).slice(0, 300)}`);
   const j = (await res.json()) as {
@@ -370,6 +375,7 @@ async function openRouterKey(management: string, o: { name: string; limit: numbe
     method: 'POST',
     headers: { Authorization: `Bearer ${management}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: o.name, limit: Math.max(0.01, Number(o.limit.toFixed(4))) }),
+    signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) throw new Error(`OpenRouter could not create a key for this job: ${res.status} ${(await res.text()).slice(0, 200)}`);
   const j = (await res.json()) as { key: string; data: { hash: string } };
@@ -377,11 +383,23 @@ async function openRouterKey(management: string, o: { name: string; limit: numbe
 }
 
 async function openRouterKeyUsage(management: string, hash: string): Promise<number> {
-  const res = await fetch(`${OR_KEYS}/${hash}`, { headers: { Authorization: `Bearer ${management}` } });
+  const res = await fetch(`${OR_KEYS}/${hash}`, { headers: { Authorization: `Bearer ${management}` }, signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`OpenRouter key usage: ${res.status}`);
   return Number(((await res.json()) as { data?: { usage?: number } }).data?.usage ?? 0);
 }
 
+/** A key left behind keeps what is left of its limit spendable: try twice, and say so when it stays. */
 async function openRouterDeleteKey(management: string, hash: string): Promise<void> {
-  await fetch(`${OR_KEYS}/${hash}`, { method: 'DELETE', headers: { Authorization: `Bearer ${management}` } });
+  let why = '';
+  for (let i = 0; i < 2; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const res = await fetch(`${OR_KEYS}/${hash}`, { method: 'DELETE', headers: { Authorization: `Bearer ${management}` }, signal: AbortSignal.timeout(20_000) });
+      if (res.ok || res.status === 404) return;
+      why = `${res.status} ${(await res.text()).slice(0, 200)}`;
+    } catch (e) {
+      why = (e as Error).message;
+    }
+  }
+  throw new Error(`OpenRouter did not delete the key ${hash}: ${why}`);
 }
