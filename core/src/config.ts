@@ -68,6 +68,8 @@ export interface Settings {
   telegram?: { bot_token?: string; owner?: string; since?: string; link_code?: string; bot?: string; post?: 'all' | 'expects_response' };
   /** Run harnesses in their sandbox (writes only to the agent's workspace). Unset: on in the server version, off on the desktop. */
   sandbox?: boolean;
+  /** Past jobs: recaps by the agent's last model when a job ends, for yaho history search (default on). */
+  history?: { recaps?: boolean };
   /**
    * A browser for agents with browser on (yaho browser). provider: local (Chrome, Edge or Chromium on this machine;
    * executable overrides which, headless false shows its window on the desktop) or a cloud browser over CDP: Browserbase

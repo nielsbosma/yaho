@@ -20,6 +20,7 @@ import { schedule } from '../schedule.ts';
 import { slackCreateUrl, slackManifest } from '../slack/manifest.ts';
 import { WEBHOOK_PATH as TWILIO_WEBHOOK } from '../sms/twilio.ts';
 import { stats } from '../stats.ts';
+import { listWebhooks, rotateUrl, setSecret } from '../webhooks/hooks.ts';
 import { Router, type Req } from './http.ts';
 import { safeJoin, sendFile } from './server.ts';
 
@@ -183,6 +184,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return ctx.sms?.status;
   });
 
+  // ---- Webhooks (agents define them as triggers; the URL and secret are only shown here) ----
+  r.on('GET', '/api/webhooks', (req) => listWebhooks(ctx, req.query.get('agent') ?? undefined));
+  r.on('POST', '/api/webhooks/:id/rotate', (req) => rotateUrl(ctx, req.params.id!));
+  r.on('PUT', '/api/webhooks/:id/secret', async (req) => setSecret(ctx, req.params.id!, (await req.body<{ secret?: string }>()).secret));
   // ---- the browser for agents ----
   r.on('GET', '/api/browser', () => ctx.browser?.status() ?? { provider: 'local', ready: false, detail: 'not available', running: 0 });
   r.on('POST', '/api/browser/test', async () => (ctx.browser ? ctx.browser.test() : { ok: false, error: 'not available' }));

@@ -123,6 +123,7 @@ export interface ChatReply {
   message: OAIMessage;
   /** stop, tool_calls, or length (cut off at the output limit). */
   finish_reason?: string;
+  usage?: { input: number; output: number };
 }
 
 /** One round of the assistant's chat on this provider. */
@@ -138,11 +139,18 @@ export async function chatRound(
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     // Only the standard fields: some providers reject what others add to their replies (Berget: function_call: null).
-    body: JSON.stringify({ ...forProvider(p.kind, body), messages: body.messages.map(clean) }),
+    body: JSON.stringify({ ...forProvider(p.kind, body), messages: body.messages.map(clean), tools: body.tools.length ? body.tools : undefined }),
   });
   if (!res.ok) throw new HttpError(502, `${p.id}: ${res.status} ${(await res.text()).slice(0, 300)}`);
-  const j = (await res.json()) as { choices: Array<{ message: OAIMessage; finish_reason?: string }> };
-  return { message: j.choices[0]!.message, finish_reason: j.choices[0]!.finish_reason };
+  const j = (await res.json()) as {
+    choices: Array<{ message: OAIMessage; finish_reason?: string }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  return {
+    message: j.choices[0]!.message,
+    finish_reason: j.choices[0]!.finish_reason,
+    ...(j.usage ? { usage: { input: j.usage.prompt_tokens ?? 0, output: j.usage.completion_tokens ?? 0 } } : {}),
+  };
 }
 
 /** Anthropic's Messages API behind the same shape: system apart, tool calls as content blocks, tool results as user turns. */
@@ -185,7 +193,11 @@ async function anthropicChat(base: string, key: string, body: { model: string; m
     }),
   });
   if (!res.ok) throw new HttpError(502, `Anthropic: ${res.status} ${(await res.text()).slice(0, 300)}`);
-  const j = (await res.json()) as { content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>; stop_reason?: string };
+  const j = (await res.json()) as {
+    content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>;
+    stop_reason?: string;
+    usage?: { input_tokens?: number; output_tokens?: number };
+  };
   const text = j.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
   const tool_calls = j.content
     .filter((b) => b.type === 'tool_use')
@@ -193,6 +205,7 @@ async function anthropicChat(base: string, key: string, body: { model: string; m
   return {
     message: { role: 'assistant', content: text, ...(tool_calls.length ? { tool_calls } : {}) },
     finish_reason: j.stop_reason === 'max_tokens' ? 'length' : j.stop_reason === 'tool_use' ? 'tool_calls' : 'stop',
+    ...(j.usage ? { usage: { input: j.usage.input_tokens ?? 0, output: j.usage.output_tokens ?? 0 } } : {}),
   };
 }
 

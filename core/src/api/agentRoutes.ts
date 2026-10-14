@@ -3,6 +3,7 @@ import { basename, join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { Composio } from '../secrets/composio.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
+import { searchHistory, showHistory } from '../history.ts';
 import { fileIdea, type Idea } from '../ideas.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
@@ -77,6 +78,15 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     return ctx.sms.send(w.agent, w.job, await req.body());
   });
 
+  // ---- history: the agent's own past jobs ----
+  on('GET', '/history/search', (req, w) => {
+    const since = req.query.get('since');
+    return searchHistory(ctx, w.agent, req.query.get('q') ?? '', {
+      since: since ? new Date(Date.now() - parseDuration(since)).toISOString() : undefined,
+      limit: Number(req.query.get('limit')) || undefined,
+    });
+  });
+  on('GET', '/history/:job', (req, w) => showHistory(ctx, w.agent, req.params.job!));
   // ---- the browser (yaho browser) ----
   on('POST', '/browser', async (req, w) => {
     if (!ctx.browser) throw new HttpError(400, 'the browser is not available in Yaho');

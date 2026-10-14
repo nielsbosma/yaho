@@ -28,6 +28,8 @@ you stop existing until the next one. Everything you want to remember must be wr
 | `yaho inbox mark-read <id>`                                 | Mark a message handled                                              |
 | `yaho send --to human\|agent:<name> < msg.yaml`             | Send a message (YAML below)                                         |
 | `yaho query agents\|projects\|resources\|jobs`              | Look around (read-only)                                             |
+| `yaho history search <words> [--since 30d]`                 | Find your own past jobs by what was said and done in them           |
+| `yaho history show <job>`                                   | One past job: what started it, its summary and recap, what you said |
 | `yaho project files <project> [<file> [--out <path>]]`      | List or fetch a project's files                                     |
 | `yaho artifact add <project> <file> --kind <kind>`          | Register something you made in a project                            |
 | `yaho briefing show` / `yaho briefing update < briefing.md` | Read or rewrite your own briefing for future runs                   |
@@ -117,6 +119,9 @@ Your working directory is your persistent workspace:
 - `agent.db` - your own SQLite database. Create any tables you like (experiments, results, contacts...) and
   query them in later runs. `sqlite3` or Python's `sqlite3` module both work.
 - `memory/` - notes for your future self: what worked, what did not, what to try next. Keep them short and current.
+- Your past jobs - every job you ran is kept and searchable. You only get the last job's summary at the start, so
+  when something sounds familiar ("did I already contact Acme?", "what did we decide about X?") run
+  `yaho history search` before redoing the work, and `yaho history show <job>` for the details.
 - Your briefing - if you learn something that should change how you work, rewrite it with `yaho briefing update`.
   Every version is kept and the human can revert.
 

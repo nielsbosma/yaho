@@ -13,12 +13,14 @@ import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
 import { ago, Badge, Card, Empty, ErrorNote, money, PageHeader, Section, StatusBadge, Tabs } from '../components/ui/display.tsx';
 import { Field, Input, Select, Switch, Textarea } from '../components/ui/form.tsx';
-import { api, useApi, type Agent, type Artifact, type Job, type Project, type Resource, type TriggerSpec } from '../lib/api.ts';
+import { api, useApi, type Agent, type Artifact, type Job, type Project, type Resource, type TriggerSpec, type WebhookTrigger } from '../lib/api.ts';
+import type { AppState } from '../App.tsx';
 import { go, href } from '../lib/router.ts';
 import { AgentInbox } from './inbox.tsx';
 import type { ViewProps } from './index.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
 import { MultiPicker } from '../components/MultiPicker.tsx';
+import { WebhookTriggers } from '../components/WebhookTriggers.tsx';
 import { ArtifactGrid } from './artifacts.tsx';
 import { JobList } from './jobs.tsx';
 
@@ -132,7 +134,8 @@ function AgentList() {
   );
 }
 
-export const triggerLabel = (t: TriggerSpec) => ('cron' in t ? describeCron(t.cron) : 'on inbox messages');
+export const triggerLabel = (t: TriggerSpec) =>
+  'cron' in t ? describeCron(t.cron) : 'webhook' in t ? `webhook ${t.webhook}${t.paused ? ' (paused)' : ''}` : 'on inbox messages';
 
 function AgentDetail({ name, tab }: { name: string; tab: string }) {
   const agent = useApi<Agent>(`/api/agents/${encodeURIComponent(name)}`, agentChanged(name));
@@ -352,6 +355,7 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
   const resources = useApi<Resource[]>('/api/resources');
   const email = useApi<{ configured: boolean; domain?: string }>('/api/resend');
   const sms = useApi<{ configured: boolean; number?: string }>('/api/twilio');
+  const state = useApi<AppState>('/api/state');
   const browser = useApi<{ ready: boolean; detail: string }>('/api/browser');
   const [forgot, setForgot] = useState(false);
   useEffect(() => {
@@ -391,8 +395,9 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
   const set = <K extends keyof Agent>(k: K, v: Agent[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const crons = draft.triggers.filter((t): t is { cron: string } => 'cron' in t).map((t) => t.cron);
   const inbox = draft.triggers.some((t) => 'inbox' in t);
-  const setTriggers = (c: string[], i: boolean) =>
-    set('triggers', [...c.map((cron) => ({ cron })), ...(i ? [{ inbox: true as const }] : [])]);
+  const hooks = draft.triggers.filter((t): t is WebhookTrigger => 'webhook' in t);
+  const setTriggers = (c: string[], i: boolean, h = hooks) =>
+    set('triggers', [...c.map((cron) => ({ cron })), ...(i ? [{ inbox: true as const }] : []), ...h]);
 
   const body = (
     <div className="max-w-3xl space-y-5">
@@ -489,6 +494,16 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
                       label="Wait for Me"
                     />
                   </div>
+                </Field>
+              </div>
+              <div className="border-t border-line pt-4">
+                <Field label="Webhooks" hint="Any service can start a job by posting to the webhook's URL. Renaming a webhook gives it a new URL." group>
+                  <WebhookTriggers
+                    agent={existing?.name ?? null}
+                    value={hooks}
+                    onChange={(h) => setTriggers(crons, inbox, h)}
+                    server={!!state.data?.server}
+                  />
                 </Field>
               </div>
             </Card>

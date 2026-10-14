@@ -1,10 +1,12 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, MonitorX } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, MonitorX, Webhook as WebhookIcon } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { Card, Section } from '../components/ui/display.tsx';
 import { Field, Input, Select, Switch } from '../components/ui/form.tsx';
 import { BrandLogo } from '../components/BrandLogo.tsx';
-import { api, useApi } from '../lib/api.ts';
+import { api, useApi, type Webhook } from '../lib/api.ts';
+import { VERIFY_LABEL, webhookUrl } from '../components/WebhookTriggers.tsx';
+import { ago } from '../components/ui/display.tsx';
 import { platform } from '../lib/platform.ts';
 import { href } from '../lib/router.ts';
 import { cn } from '../components/ui/cn.ts';
@@ -93,6 +95,17 @@ const SUMMARY = {
           })
     );
   },
+  webhooks: (list?: Webhook[]): Summary => {
+    if (!list) return { state: 'off', line: '' };
+    if (!list.length) return { state: 'off', line: 'Not set up.' };
+    const day = new Date(Date.now() - 86_400_000).toISOString();
+    const refused = list.filter((w) => w.last_rejected && w.last_rejected > day && w.last_rejected > (w.last_delivery ?? ''));
+    const agents = new Set(list.map((w) => w.agent)).size;
+    const count = `${list.length} webhook${list.length === 1 ? '' : 's'} on ${agents} agent${agents === 1 ? '' : 's'}`;
+    return refused.length
+      ? { state: 'warn', line: `${count}. Refused lately: ${refused.map((w) => `${w.agent}/${w.name}`).join(', ')}.` }
+      : { state: 'ok', line: `${count}.` };
+  },
 };
 
 interface ComposioHealth {
@@ -132,7 +145,7 @@ function useComposioHealth(enabled: boolean): ComposioHealth | undefined {
   return { configured: true, connections: conns.data };
 }
 
-type Id = 'slack' | 'telegram' | 'whatsapp' | 'email' | 'sms' | 'browser' | 'composio';
+type Id = 'slack' | 'telegram' | 'whatsapp' | 'email' | 'sms' | 'webhooks' | 'browser' | 'composio';
 
 /** Every integration: what it is, its logo, and whether it needs Yaho reachable from the internet (the server version). */
 const INTEGRATIONS: Array<{ id: Id; name: string; brand: string; about: string; online?: boolean; status?: string; entity?: string }> = [
@@ -178,6 +191,15 @@ const INTEGRATIONS: Array<{ id: Id; name: string; brand: string; about: string; 
     online: true,
     status: '/api/twilio',
     entity: 'twilio',
+  },
+  {
+    id: 'webhooks',
+    name: 'Webhooks',
+    brand: 'webhook',
+    about: 'Any service can start an agent by posting to its own signed URL.',
+    online: true,
+    status: '/api/webhooks',
+    entity: 'webhooks',
   },
   {
     id: 'browser',
@@ -230,7 +252,7 @@ export function Integrations({
         <ArrowLeft className="size-4" /> All Integrations
       </a>
       <h2 className="flex items-center gap-3 text-lg font-semibold">
-        <BrandLogo brand={def.brand} />
+        <IntegrationLogo brand={def.brand} />
         {def.name}
       </h2>
       {!available ? (
@@ -250,10 +272,61 @@ export function Integrations({
         <BrowserSettings value={s.browser ?? {}} stored={stored} server={server} onChange={(v) => upd((d) => void (d.browser = v))} />
       ) : def.id === 'sms' ? (
         <SmsSettings value={s.twilio ?? {}} stored={stored} server={server} onChange={(v) => upd((d) => void (d.twilio = v))} />
+      ) : def.id === 'webhooks' ? (
+        <WebhooksSettings server={server} />
       ) : (
         <ComposioSettings settings={s} upd={upd} save={save} />
       )}
     </section>
+  );
+}
+
+/** A brand's mark, or for Webhooks (no brand) the generic icon on the same tile. */
+function IntegrationLogo({ brand, className }: { brand: string; className?: string }) {
+  if (brand !== 'webhook') return <BrandLogo brand={brand} className={className} />;
+  return (
+    <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-white text-[#3b3b3b]', className)}>
+      <WebhookIcon className="size-5" />
+    </span>
+  );
+}
+
+/** Every agent's webhooks in one list. They are added and changed in each agent's definition, under When It Runs. */
+function WebhooksSettings({ server }: { server: boolean }) {
+  const list = useApi<Webhook[]>('/api/webhooks', (e) => e.type === 'changed' && (e.entity === 'webhooks' || e.entity === 'agents'));
+  const summary = SUMMARY.webhooks(list.data ?? undefined);
+  return (
+    <Card className="space-y-4 p-4">
+      {list.data && <StatusLine {...summary} />}
+      <p className="text-sm text-muted">
+        A webhook is a trigger: each delivery to its URL starts a job for its agent, with the payload saved in the agent's workspace and shown
+        in its inbox. Add one in an agent's <b className="text-ink">Definition</b> under <b className="text-ink">When It Runs</b>. Repeated
+        deliveries are dropped, and each webhook takes a limited number per hour.
+      </p>
+      {!!list.data?.length && (
+        <div className="divide-y divide-line rounded-lg border border-line">
+          {list.data.map((w) => (
+            <div key={w.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+              <div className="min-w-0 flex-1">
+                <a href={href('agents', w.agent, 'edit')} className="font-medium hover:underline">
+                  {w.agent} / {w.name}
+                </a>
+                <div className="truncate text-xs text-muted">
+                  {VERIFY_LABEL[w.verify]}
+                  {w.paused && ' · paused'}
+                  {' · '}
+                  {w.last_delivery ? `last delivery ${ago(w.last_delivery)}, ${w.deliveries_24h} in the last day` : 'no deliveries yet'}
+                  {w.last_rejected && ` · last refused ${ago(w.last_rejected.split(' ')[0])}: ${w.last_rejected.split(' ').slice(1).join(' ')}`}
+                </div>
+              </div>
+              <Button size="sm" onClick={() => void navigator.clipboard.writeText(webhookUrl(w.path, server))}>
+                Copy URL
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -273,7 +346,7 @@ function IntegrationRow({ def, available }: { def: (typeof INTEGRATIONS)[number]
         : undefined;
   return (
     <a href={href('settings', 'integrations', def.id)} className="flex items-center gap-3 px-4 py-3 hover:bg-hover/60">
-      <BrandLogo brand={def.brand} className={cn(!available && 'opacity-50 grayscale')} />
+      <IntegrationLogo brand={def.brand} className={cn(!available && 'opacity-50 grayscale')} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 font-medium">
           {def.name}

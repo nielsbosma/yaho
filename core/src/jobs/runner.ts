@@ -12,6 +12,7 @@ import type { Agent, Job } from '../store.ts';
 import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, totalSpend, updateJob } from '../store.ts';
 import { contextPrompt, systemPrompt } from './prompt.ts';
 import type { ModelPrice } from './litellm.ts';
+import { indexJob, writeRecap } from '../history.ts';
 import { harnessFits, jobAccess, priceFor } from '../providerApi.ts';
 
 type Row = Record<string, unknown>;
@@ -358,8 +359,17 @@ export class JobRunner {
     const job = getJob(ctx, r.job);
     if (end.summary && job.session_id)
       ctx.db.prepare('UPDATE sessions SET summary = ?, updated = ? WHERE id = ?').run(end.summary, now(), job.session_id);
-    updateJob(ctx, r.job, { status: end.status, reason: end.reason ?? null, ended: now(), resume_at: end.resumeAt ?? null, pid: null });
+    updateJob(ctx, r.job, {
+      status: end.status,
+      reason: end.reason ?? null,
+      ended: now(),
+      resume_at: end.resumeAt ?? null,
+      pid: null,
+      ...(end.summary ? { summary: end.summary } : {}),
+    });
     addJobEvent(ctx, r.job, 'status', { text: `Job ${end.status}${end.reason ? `: ${end.reason}` : ''}` });
+    indexJob(ctx, r.job);
+    void writeRecap(ctx, r.job).catch((e) => addJobEvent(ctx, r.job, 'system', { text: `no recap: ${(e as Error).message}` }));
     if (end.status === 'failed') {
       ctx.bus.emitEvent({ type: 'notify', title: `${job.agent}: job failed`, body: end.reason ?? '' });
     }

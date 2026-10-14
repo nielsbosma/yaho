@@ -32,15 +32,15 @@ Electron app (UI, tray, notifications)
         │  HTTP + server-sent events, token auth
         ▼
 TypeScript core (runs headless with `yaho serve`) ── SQLite (agents, jobs, messages, …)
-   ├─ scheduler: cron, inbox and delay triggers        ── Dopbase (key values, fetched at job start)
+   ├─ scheduler: cron, inbox, webhook and delay triggers ── Dopbase (key values, fetched at job start)
    ├─ job runner: sessions, budgets, resume
    └─ harness adapter ─► Claude Code ─► LiteLLM proxy ─► models
                              │
                              └─ the agent calls back with the `yaho` CLI (YAML in, YAML out)
 ```
 
-- **Every run of an agent is a job.** Something triggers it (cron, a new inbox message, Run now, or a delay the
-  agent asked for). The prompt is layered: the [base briefing](briefings/base.md), the agent's briefing, then
+- **Every run of an agent is a job.** Something triggers it (cron, a new inbox message, a webhook delivery, Run now, or a
+  delay the agent asked for). The prompt is layered: the [base briefing](briefings/base.md), the agent's briefing, then
   context (projects, resources by key name, unread inbox, the last session's summary).
 - **Jobs end** with `yaho finish`, `yaho sleep <duration>` (the same Claude Code session resumes later), a failure,
   or budget exhaustion. A stopped or budget-exhausted job can be continued in place after raising the budget.
@@ -73,6 +73,7 @@ Then open **Settings**:
 | Composio (optional)           | An API key from composio.dev. Then **Resources → From Composio** lists your connections and every app you can connect; any connection becomes a resource agents use with `yaho tools` / `yaho tool`. Yaho makes those calls, so the key never reaches an agent.                                                                         |
 | Email (optional, server)      | A domain in [Resend](https://resend.com) with receiving on, a full-access API key and the signing secret of a webhook for `email.received` pointed at `/api/resend/webhook`. Agents with **Email** on get `<name>@<domain>`; replies land in their inbox and start a job. Yaho must be reachable from the internet.                     |
 | SMS (optional, server)        | A [Twilio](https://twilio.com) number that can send SMS, the account SID and auth token, and the number's **A message comes in** webhook pointed at `/api/twilio/webhook`. Agents with **SMS** on text from it; a reply goes to the agent that texted that phone last and starts a job.                                                 |
+| Webhooks (optional, server)   | Nothing here: add a webhook to an agent under **When It Runs**. Each gets its own URL (`/api/hooks/<token>`), and optionally a GitHub, Stripe, Svix or Yaho signature check. A delivery is saved in the agent's workspace, shown in its inbox, and starts a job; repeats are dropped and each webhook takes 60 an hour by default.      |
 | Telegram (optional)           | A bot from [BotFather](https://t.me/BotFather) and its token. Then **Open in Telegram** and press Start: the link carries a one-time code, so only your chat can use the bot. Your inbox is posted there with buttons; replies, taps and ✅ reactions answer like the app. Works on the desktop too (no webhook).                       |
 | Browser (optional)            | Agents with **Browser** on get a real browser in each job (`yaho browser`). **This computer** (default) runs the installed Chrome, Edge or Chromium, with a profile per agent so sign-ins last; the server image includes Chromium. Or a cloud browser: Browserbase, Steel or any CDP URL. Sites it may open: Guard Rails.              |
 | Global spend cap              | When total spend reaches it, no job starts and running jobs stop.                                                                                                                                                                                                                                                                       |
