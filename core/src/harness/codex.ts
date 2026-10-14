@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { asAgent } from './asAgent.ts';
-import { killTree, resolveCommand } from './claudeCode.ts';
+import { killTree, resolveCommand, transcriptWriter } from './claudeCode.ts';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
 
 const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more chars)` : s);
@@ -65,12 +65,13 @@ export const codex: HarnessAdapter = {
     child.stdin.end(run.prompt);
 
     let gotResult = false;
+    const transcript = transcriptWriter(run, onEvent);
     let lastMessage = '';
     let usageCount = 0;
     if (!base) onEvent({ kind: 'stderr', text: 'no model provider address for Codex (YAHO_CODEX_BASE_URL)' });
     createInterface({ input: child.stdout }).on('line', (line) => {
       if (!line.trim()) return;
-      if (run.transcriptPath) appendFileSync(run.transcriptPath, `${line}\n`);
+      transcript(line);
       let m: Record<string, unknown>;
       try {
         m = JSON.parse(line);

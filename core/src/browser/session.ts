@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { assertUnder, isLink, writeFileUnder } from '../fsSafe.ts';
 import type { Launched } from './launch.ts';
 import { renderSnapshot } from './snapshot.ts';
 
@@ -36,6 +37,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export interface SessionOptions {
   /** Whether the browser may open a page (Guard Rails → allowed sites). */
   allowed: (url: string) => boolean;
+  /** The agent's workspace: files the browser saves (screenshots, PDFs, cookies) stay in it, never through a link. */
+  root: string;
   /** Where downloads land (local browsers only). */
   downloads: string;
   /** Cookies are saved here between jobs when the browser itself keeps no profile (cloud browsers). */
@@ -132,8 +135,9 @@ export class BrowserSession {
       await cdp
         .send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: this.opts.downloads, eventsEnabled: true })
         .catch(() => undefined);
-    else if (existsSync(this.opts.cookieFile)) {
+    else if (existsSync(this.opts.cookieFile) && !isLink(this.opts.cookieFile)) {
       try {
+        assertUnder(this.opts.root, this.opts.cookieFile);
         await cdp.send('Storage.setCookies', { cookies: JSON.parse(readFileSync(this.opts.cookieFile, 'utf8')) });
       } catch {
         /* stale or unreadable cookies: start signed out */
@@ -434,15 +438,13 @@ export class BrowserSession {
       { format: 'png', ...(clip ? { clip, captureBeyondViewport: true } : o.full ? { captureBeyondViewport: true } : {}) },
       60_000,
     );
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, Buffer.from(data, 'base64'));
+    writeFileUnder(this.opts.root, file, Buffer.from(data, 'base64'));
     return this.report(`Saved ${file}`);
   }
 
   async pdf(file: string): Promise<string> {
     const { data } = await this.send<{ data: string }>('Page.printToPDF', { printBackground: true }, 60_000);
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, Buffer.from(data, 'base64'));
+    writeFileUnder(this.opts.root, file, Buffer.from(data, 'base64'));
     return this.report(`Saved ${file}`);
   }
 
@@ -492,8 +494,11 @@ export class BrowserSession {
     if (!this.launched.keepsProfile && !this.cdp.closed) {
       const r = await this.cdp.send<{ cookies: unknown[] }>('Storage.getCookies', {}, undefined, 5000).catch(() => null);
       if (r) {
-        mkdirSync(dirname(this.opts.cookieFile), { recursive: true });
-        writeFileSync(this.opts.cookieFile, JSON.stringify(r.cookies), { mode: 0o660 });
+        try {
+          writeFileUnder(this.opts.root, this.opts.cookieFile, JSON.stringify(r.cookies), { mode: 0o660 });
+        } catch {
+          /* a link where the cookie file goes: the sign-ins are not kept */
+        }
       }
     }
     await this.launched.close();

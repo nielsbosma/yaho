@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { isAbsolute, join, normalize, sep } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import type { Ctx } from '../context.ts';
+import { resolveUnder, UnsafePathError } from '../fsSafe.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
 import { connectCloud, findBrowser, launchLocal, providerOf } from './launch.ts';
@@ -165,6 +166,7 @@ export class BrowserManager {
     try {
       return await BrowserSession.start(launched, {
         allowed: (url) => siteAllowed(url, this.ctx.settings.browser?.allowed_sites),
+        root: this.ctx.paths.agent(agent),
         downloads,
         cookieFile: join(profile, 'cookies.json'),
       });
@@ -189,10 +191,14 @@ export class BrowserManager {
 
   /** A file the agent named, which must be in its workspace. */
   private file(agent: string, cwd: string | undefined, path: string | undefined, fallback: string): string {
-    const root = normalize(this.ctx.paths.agent(agent));
-    const full = normalize(isAbsolute(path ?? '') ? path! : join(cwd && isAbsolute(cwd) ? cwd : root, path || fallback));
-    if (full !== root && !full.startsWith(root + sep)) throw new HttpError(400, `save files in your workspace (${root})`);
-    return full;
+    const root = this.ctx.paths.agent(agent);
+    const want = isAbsolute(path ?? '') ? path! : join(cwd && isAbsolute(cwd) ? cwd : root, path || fallback);
+    try {
+      return resolveUnder(root, want);
+    } catch (e) {
+      if (e instanceof UnsafePathError) throw new HttpError(400, `save files in your workspace (${root}), not through a link out of it`);
+      throw e;
+    }
   }
 
   /** Run one yaho browser command for a job; commands of the same job wait for each other. */

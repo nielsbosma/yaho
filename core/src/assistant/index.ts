@@ -127,7 +127,7 @@ function tools(ctx: Ctx): Record<string, Tool> {
       description:
         'Read a file on this computer by its full path. PDFs and Office files (docx, xlsx, pptx) are extracted to text; text formats (md, txt, csv, json, yaml, html, code...) are read as they are; images (png, jpg, gif, webp, such as screenshots) are shown to you to look at. Use it when the human points at a file, e.g. to write a briefing from a document or to see a screenshot.',
       parameters: obj({ path: str('full path, e.g. D:\\Docs\\plan.pdf') }, ['path']),
-      run: (a) => readLocalFile(String(a.path)),
+      run: (a) => readLocalFile(ctx, String(a.path)),
     },
     add_project_file: {
       description: "Copy a file on this computer into a project's context files, where its agents can read it.",
@@ -140,7 +140,7 @@ function tools(ctx: Ctx): Record<string, Tool> {
     list_folder: {
       description: 'List a folder on this computer by its full path (names, sizes, subfolders; one level). Use it to see what a folder holds before reading or copying.',
       parameters: obj({ path: str('full path, e.g. D:\\Workspaces\\Jobs') }, ['path']),
-      run: (a) => listLocalFolder(String(a.path)),
+      run: (a) => listLocalFolder(ctx, String(a.path)),
     },
     copy_to_agent_workspace: {
       description:

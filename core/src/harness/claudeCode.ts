@@ -1,10 +1,11 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { delimiter, extname, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
 import { asAgent } from './asAgent.ts';
 import { claudeSandboxSettings } from './sandbox.ts';
+import { writeFileUnder } from '../fsSafe.ts';
 
 const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more chars)` : s);
 
@@ -30,6 +31,23 @@ export function resolveCommand(cmd: string, env: Record<string, string | undefin
     }
   }
   return cmd;
+}
+
+/**
+ * Appends each raw output line to the run's transcript, in the workspace (cwd), never through a link the agent put
+ * there. A transcript that cannot be written is reported once and then skipped; the job goes on.
+ */
+export function transcriptWriter(run: HarnessRun, onEvent: (e: HarnessEvent) => void): (line: string) => void {
+  let path = run.transcriptPath;
+  return (line) => {
+    if (!path) return;
+    try {
+      writeFileUnder(run.cwd, path, `${line}\n`, { append: true });
+    } catch (e) {
+      onEvent({ kind: 'stderr', text: `transcript not kept: ${(e as Error).message}` });
+      path = undefined;
+    }
+  };
 }
 
 /** Kill a process and its whole tree; on Windows a plain kill leaves the harness's children running. */
@@ -94,10 +112,11 @@ export const claudeCode: HarnessAdapter = {
     child.stdin.end(run.prompt);
 
     let gotResult = false;
+    const transcript = transcriptWriter(run, onEvent);
     const lines = createInterface({ input: child.stdout });
     lines.on('line', (line) => {
       if (!line.trim()) return;
-      if (run.transcriptPath) appendFileSync(run.transcriptPath, `${line}\n`);
+      transcript(line);
       let m: Record<string, unknown>;
       try {
         m = JSON.parse(line);
