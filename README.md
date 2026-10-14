@@ -70,7 +70,7 @@ Then open **Settings**:
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | LiteLLM proxy URL and API key | Every model an agent may use must exist in the proxy. With a master key instead, Yaho mints one budget-capped key per job and shows cost live.                                                                                                                                                                                          |
 | Dopbase                       | **Bundled** (default): Yaho runs its own Dopbase on 127.0.0.1:4702, data in `<data dir>\dopbase`, set up automatically on first start. **External**: an existing Dopbase server and a token that can create projects and set secrets. Either way each resource becomes the Dopbase project `yaho-<resource>`, environment `production`. |
-| Composio (optional)           | An API key from composio.dev. Then **Resources → From Composio** lists your connections and every app you can connect; any connection becomes a resource agents use with `yaho tools` / `yaho tool`. Yaho makes those calls, so the key never reaches an agent.                                                                         |
+| Composio (optional)           | An API key from composio.dev. Then **Resources → New Integration** lists your connections and every app you can connect; any connection becomes a resource agents use with `yaho tools` / `yaho tool`. Yaho makes those calls, so the key never reaches an agent.                                                                       |
 | Email (optional, server)      | A domain in [Resend](https://resend.com) with receiving on, a full-access API key and the signing secret of a webhook for `email.received` pointed at `/api/resend/webhook`. Agents with **Email** on get `<name>@<domain>`; replies land in their inbox and start a job. Yaho must be reachable from the internet.                     |
 | SMS (optional, server)        | A [Twilio](https://twilio.com) number that can send SMS, the account SID and auth token, and the number's **A message comes in** webhook pointed at `/api/twilio/webhook`. Agents with **SMS** on text from it; a reply goes to the agent that texted that phone last and starts a job.                                                 |
 | Telegram (optional)           | A bot from [BotFather](https://t.me/BotFather) and its token. Then **Open in Telegram** and press Start: the link carries a one-time code, so only your chat can use the bot. Your inbox is posted there with buttons; replies, taps and ✅ reactions answer like the app. Works on the desktop too (no webhook).                       |
@@ -78,7 +78,7 @@ Then open **Settings**:
 
 ### MCP servers
 
-Any [MCP](https://modelcontextprotocol.io) server can be a resource: **Resources → MCP Server**, then fill in a local
+Any [MCP](https://modelcontextprotocol.io) server can be a resource: **Resources → New MCP Server**, then fill in a local
 command or a remote URL, or paste the `mcpServers` JSON from Claude Desktop, Claude Code or Cursor.
 
 - **stdio, Streamable HTTP and SSE.** Yaho itself connects to the server (stdio servers run as the agents' user in the

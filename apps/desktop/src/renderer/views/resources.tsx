@@ -53,10 +53,10 @@ function ResourceList() {
           <>
             <LayoutSwitch value={layout} onChange={setLayout} />
             <Button onClick={() => go('resources', 'composio')}>
-              <Blocks /> From Composio
+              <Blocks /> New Integration
             </Button>
             <Button onClick={() => go('resources', 'mcp')}>
-              <Server /> MCP Server
+              <Server /> New MCP Server
             </Button>
             <Button variant="primary" onClick={() => go('resources', 'new')}>
               <Plus /> New Resource
