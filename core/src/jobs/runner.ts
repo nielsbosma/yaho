@@ -550,7 +550,8 @@ export class JobRunner {
     indexJob(ctx, r.job);
     void writeRecap(ctx, r.job).catch((e) => addJobEvent(ctx, r.job, 'system', { text: `no recap: ${(e as Error).message}` }));
     void this.versionEnd(r.job).catch((e) => addJobEvent(ctx, r.job, 'system', { text: `not versioned: ${(e as Error).message}` }));
-    if (r.dream) addJobEvent(ctx, r.job, 'dream', { tables: tableCounts(join(ctx.paths.agent(job.agent), 'agent.db')) });
+    const tables = r.dream ? tableCounts(join(ctx.paths.agent(job.agent), 'agent.db')) : null;
+    if (tables) addJobEvent(ctx, r.job, 'dream', { tables });
     if (end.status === 'failed') {
       ctx.bus.emitEvent({ type: 'notify', title: `${job.agent}: job failed`, body: end.reason ?? '' });
     }

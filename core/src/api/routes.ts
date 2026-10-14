@@ -148,6 +148,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const next = await definition<Settings>(req);
     try {
       if (next.command_rules?.rules !== undefined) next.command_rules.rules = validateRules(next.command_rules.rules);
+      if (next.dreaming?.cron) s.nextCron(next.dreaming.cron);
     } catch (e) {
       throw new HttpError(400, (e as Error).message);
     }
