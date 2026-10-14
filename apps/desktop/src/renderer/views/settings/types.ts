@@ -21,8 +21,22 @@ export interface Settings {
     template?: string;
     template_language?: string;
   };
-  resend?: { api_key?: string; webhook_secret?: string; domain?: string; accept_new?: boolean };
-  twilio?: { account_sid?: string; auth_token?: string; number?: string; new_agent?: string };
+  resend?: {
+    api_key?: string;
+    webhook_secret?: string;
+    domain?: string;
+    accept_new?: boolean;
+    allow?: string | string[];
+    participants_only?: boolean;
+  };
+  twilio?: {
+    account_sid?: string;
+    auth_token?: string;
+    number?: string;
+    new_agent?: string;
+    allow?: string | string[];
+    public_url?: string;
+  };
   browser?: {
     provider?: 'local' | 'browserbase' | 'steel' | 'cdp';
     executable?: string;
