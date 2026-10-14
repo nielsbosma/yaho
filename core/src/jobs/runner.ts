@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { resolveModel } from '../providers.ts';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { newId, now } from '../db/index.ts';
@@ -12,7 +12,8 @@ import type { HarnessEvent, HarnessProcess } from '../harness/types.ts';
 import { envForAgent } from '../secrets/dopbase.ts';
 import { jobEnv } from '../harness/asAgent.ts';
 import type { Agent, Job } from '../store.ts';
-import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, totalSpend, updateJob } from '../store.ts';
+import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, updateJob } from '../store.ts';
+import { procId, sameProc } from '../harness/proc.ts';
 import { contextPrompt, systemPrompt } from './prompt.ts';
 import type { ModelPrice } from './litellm.ts';
 import { indexJob, writeRecap } from '../history.ts';
@@ -22,10 +23,17 @@ type Row = Record<string, unknown>;
 
 interface Running {
   job: string;
+  agent: string;
+  /** The session it runs in, once known: another job in it waits until this one ends. */
+  session: string | null;
   proc: HarnessProcess | null;
   /** Set when the job is being ended on purpose (finish, sleep, stop, budget). The close handler applies it. */
   ending?: { status: string; reason?: string; summary?: string; resumeAt?: string };
   baseCost: number;
+  /** The job's cost so far (cost_usd), and the budget it was given at start: what it holds of the agent's budget. */
+  cost: number;
+  cap?: number;
+  killTimer?: NodeJS.Timeout;
   /** A key minted for this job alone (LiteLLM, OpenRouter with a management key): its spend, and its removal. */
   capped?: { spend(): Promise<number>; release(): Promise<void> };
   /** Live estimate from token usage when LiteLLM cannot report spend per job. Keyed by response id. */
@@ -60,6 +68,8 @@ export class JobRunner {
   running = new Map<string, Running>();
   pumping = false;
   shuttingDown = false;
+  /** Spend per agent and in total, from the database at most every few seconds and kept current by setCost between. */
+  private spendCache = { at: 0, total: 0, agents: new Map<string, number>() };
 
   constructor(ctx: Ctx) {
     this.ctx = ctx;
@@ -72,9 +82,39 @@ export class JobRunner {
    */
   recover(): void {
     for (const j of this.ctx.db.prepare("SELECT id, pid FROM jobs WHERE status = 'running'").all() as Row[]) {
-      if (j.pid) killTree(Number(j.pid));
+      // Only the very process that job started (same pid and start time): a pid may belong to another process by now.
+      const file = this.pidFile(j.id as string);
+      const pid = existsSync(file) ? sameProc(readFileSync(file, 'utf8').trim()) : null;
+      if (pid) killTree(pid);
+      rmSync(file, { force: true });
       this.requeueInterrupted(j.id as string, 'the Yaho core stopped while the job was running');
     }
+  }
+
+  private pidFile(job: string): string {
+    return join(this.ctx.paths.root, 'run', `${job}.pid`);
+  }
+
+  private refreshSpend(maxAgeMs = 2000): void {
+    if (Date.now() - this.spendCache.at < maxAgeMs) return;
+    const rows = this.ctx.db.prepare('SELECT agent, COALESCE(SUM(cost_usd),0) s FROM jobs GROUP BY agent').all() as Row[];
+    this.spendCache = { at: Date.now(), total: rows.reduce((a, r) => a + Number(r.s), 0), agents: new Map(rows.map((r) => [r.agent as string, Number(r.s)])) };
+  }
+
+  private spent(agent?: string): number {
+    this.refreshSpend();
+    return agent === undefined ? this.spendCache.total : (this.spendCache.agents.get(agent) ?? 0);
+  }
+
+  /**
+   * What an agent may still spend on a new job: its budget less what it spent, and less what its other running jobs
+   * were given and have not used yet, so parallel jobs share the budget instead of each getting all of it.
+   */
+  private available(agent: Agent, except?: Running): number {
+    let held = 0;
+    for (const r of this.running.values())
+      if (r !== except && r.agent === agent.name && r.cap !== undefined) held += Math.max(0, r.cap - (r.cost - r.baseCost));
+    return Math.max(0, agent.budget_usd - this.spent(agent.name) - held);
   }
 
   private requeueInterrupted(id: string, why: string): void {
@@ -106,8 +146,9 @@ export class JobRunner {
     this.pumping = true;
     try {
       const queued = this.ctx.db.prepare("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created").all() as unknown as Job[];
+      this.refreshSpend(queued.length ? 0 : 2000);
       for (const job of queued) {
-        if (totalSpend(this.ctx) >= this.ctx.settings.global_spend_cap_usd) {
+        if (this.spent() >= this.ctx.settings.global_spend_cap_usd) {
           if (job.reason !== 'global spend cap reached') updateJob(this.ctx, job.id, { reason: 'global spend cap reached' });
           continue;
         }
@@ -121,9 +162,12 @@ export class JobRunner {
           updateJob(this.ctx, job.id, { status: 'stopped', reason: 'agent disabled', ended: now() });
           continue;
         }
-        const active = [...this.running.values()].filter((r) => getJob(this.ctx, r.job).agent === agent.name).length;
-        if (active >= agent.max_parallel) continue;
-        if (agentSpend(this.ctx, agent.name) >= agent.budget_usd) {
+        const mine = [...this.running.values()].filter((r) => r.agent === agent.name);
+        if (mine.length >= agent.max_parallel) continue;
+        // One harness per session: a job for a session that is still running waits for it (an answer to an approval
+        // that arrives before the paused job has ended, a follow-up).
+        if (job.session_id && [...this.running.values()].some((r) => r.session === job.session_id)) continue;
+        if (this.spent(agent.name) >= agent.budget_usd) {
           updateJob(this.ctx, job.id, {
             status: 'budget_exhausted',
             reason: `agent budget of $${agent.budget_usd} is spent`,
@@ -131,10 +175,14 @@ export class JobRunner {
           });
           continue;
         }
-        const r: Running = { job: job.id, proc: null, baseCost: job.cost_usd, usage: new Map() };
+        // The rest of the budget is held by the agent's running jobs: wait for one to end.
+        if (mine.length && this.available(agent) < 0.01) continue;
+        const r: Running = { job: job.id, agent: agent.name, session: job.session_id, proc: null, baseCost: job.cost_usd, cost: job.cost_usd, usage: new Map() };
         this.running.set(job.id, r);
         updateJob(this.ctx, job.id, { status: 'running', started: job.started ?? now(), reason: null });
         this.start(agent, job, r).catch((e) => {
+          // A job forgotten meanwhile (its agent was deleted) has nothing left to record.
+          if (!this.running.has(r.job)) return this.release(r);
           addJobEvent(this.ctx, job.id, 'system', { text: `failed to start: ${(e as Error).message}` });
           this.finalize(r, { status: 'failed', reason: (e as Error).message });
         });
@@ -177,9 +225,11 @@ export class JobRunner {
     const model = agent.models[0] ?? settings.defaults.models[0];
     if (!model) throw new Error('the agent has no allowed models');
     const ses = this.session(agent, job);
+    r.session = ses.id;
     const cwd = ensureAgentWorkspace(ctx, agent.name);
 
-    const remaining = Math.max(0, agent.budget_usd - agentSpend(ctx, agent.name));
+    const remaining = this.available(agent, r);
+    r.cap = remaining;
     // The provider serving the model, and how Claude Code reaches it (a capped key per job where the provider can).
     const { provider, model: providerModel } = resolveModel(settings, model);
 
@@ -240,6 +290,7 @@ export class JobRunner {
     addJobEvent(ctx, job.id, 'prompt', { system: systemPrompt(agent), user: prompt });
     addJobEvent(ctx, job.id, 'status', { text: `${ses.resumed ? 'Resuming' : 'Starting'} ${agent.harness} with ${model}` });
 
+    if (!this.running.has(r.job)) return this.release(r);
     if (r.ending) return this.finalize(r, r.ending); // stopped while starting
     // Raw harness output, kept per session in the agent's workspace under .yaho/ (the Session's transcript ref).
     mkdirSync(join(cwd, '.yaho'), { recursive: true });
@@ -263,8 +314,15 @@ export class JobRunner {
       (e) => this.onEvent(r, ses.id, e),
     );
     updateJob(ctx, job.id, { pid: r.proc.pid ?? null });
+    void procId(r.proc.pid).then((id) => {
+      if (!id || !this.running.has(r.job)) return;
+      mkdirSync(join(ctx.paths.root, 'run'), { recursive: true });
+      writeFileSync(this.pidFile(r.job), id);
+    });
     if (r.capped) r.poll = setInterval(() => void this.pollCost(r), 10_000);
     const code = await r.proc.done;
+    if (r.killTimer) clearTimeout(r.killTimer);
+    if (!this.running.has(r.job)) return;
     if (r.capped) await this.pollCost(r);
     const end =
       r.ending ??
@@ -276,6 +334,8 @@ export class JobRunner {
 
   private onEvent(r: Running, sessionId: string, e: HarnessEvent): void {
     const { ctx } = this;
+    // A job forgotten (its agent deleted) may still print a few lines before its harness is gone.
+    if (!this.running.has(r.job)) return;
     switch (e.kind) {
       case 'usage':
         if (!r.capped && r.price) {
@@ -291,7 +351,7 @@ export class JobRunner {
         if (e.summary)
           ctx.db.prepare('UPDATE sessions SET last_state = ?, updated = ? WHERE id = ?').run(e.summary.slice(0, 4000), now(), sessionId);
         // The harness's own total only ever raises the cost: the provider's usage and the estimate from tokens may be higher.
-        if (typeof e.cost_usd === 'number' && r.baseCost + e.cost_usd > getJob(this.ctx, r.job).cost_usd) this.setCost(r, r.baseCost + e.cost_usd);
+        if (typeof e.cost_usd === 'number' && r.baseCost + e.cost_usd > r.cost) this.setCost(r, r.baseCost + e.cost_usd);
         if (!e.ok && !r.ending) {
           const budget = /budget/i.test(e.error ?? '');
           r.ending = { status: budget ? 'budget_exhausted' : 'failed', reason: e.error };
@@ -308,28 +368,34 @@ export class JobRunner {
     if (!r.capped) return;
     const spend = await r.capped.spend().catch(() => null);
     // Only upward: the harness may already have reported a higher total than the provider's (lagging) usage.
-    if (spend !== null && r.baseCost + spend > getJob(this.ctx, r.job).cost_usd) this.setCost(r, r.baseCost + spend);
+    if (spend !== null && this.running.has(r.job) && r.baseCost + spend > r.cost) this.setCost(r, r.baseCost + spend);
   }
 
   private setCost(r: Running, cost: number): void {
-    const job = getJob(this.ctx, r.job);
-    if (Math.abs(job.cost_usd - cost) < 1e-9) return;
+    if (Math.abs(r.cost - cost) < 1e-9) return;
+    const delta = cost - r.cost;
+    r.cost = cost;
+    this.spendCache.total += delta;
+    this.spendCache.agents.set(r.agent, (this.spendCache.agents.get(r.agent) ?? 0) + delta);
     updateJob(this.ctx, r.job, { cost_usd: cost });
     addJobEvent(this.ctx, r.job, 'cost', { total_usd: cost });
-    this.enforceBudgets(job.agent);
+    this.enforceBudgets(r.agent);
   }
 
-  /** Stop jobs whose agent budget, or the global cap, is spent. */
+  /** Stop jobs whose agent budget, their share of it, or the global cap is spent. */
   enforceBudgets(agentName?: string): void {
     const { ctx } = this;
-    const globalHit = totalSpend(ctx) >= ctx.settings.global_spend_cap_usd;
+    const globalHit = this.spent() >= ctx.settings.global_spend_cap_usd;
     for (const r of this.running.values()) {
-      const job = getJob(ctx, r.job);
-      if (agentName && !globalHit && job.agent !== agentName) continue;
-      const agent = getAgent(ctx, job.agent);
-      if (globalHit) this.stop(job.id, 'budget_exhausted', 'global spend cap reached');
-      else if (agentSpend(ctx, agent.name) >= agent.budget_usd)
-        this.stop(job.id, 'budget_exhausted', `agent budget of $${agent.budget_usd} is spent`);
+      if (agentName && !globalHit && r.agent !== agentName) continue;
+      if (globalHit) {
+        this.stop(r.job, 'budget_exhausted', 'global spend cap reached');
+        continue;
+      }
+      const agent = getAgent(ctx, r.agent);
+      if (this.spent(agent.name) >= agent.budget_usd) this.stop(r.job, 'budget_exhausted', `agent budget of $${agent.budget_usd} is spent`);
+      else if (r.cap !== undefined && r.cost - r.baseCost >= r.cap + 1e-9)
+        this.stop(r.job, 'budget_exhausted', `its share of the agent budget ($${r.cap.toFixed(2)}) is spent`);
     }
   }
 
@@ -347,7 +413,31 @@ export class JobRunner {
     // finish and sleep come from the agent itself: let the harness wrap up and report its cost, but not for long.
     // A stop from the human (or a budget) is immediate, after the calling request has had its response.
     const grace = wait ?? (status === 'finished' || status === 'sleeping' ? 30_000 : 750);
-    setTimeout(() => r.proc?.kill(), grace);
+    r.killTimer = setTimeout(() => r.proc?.kill(), grace);
+  }
+
+  /**
+   * Forget a running job whose agent is being deleted: its harness is killed now and nothing more is recorded for it
+   * (its rows go with the agent).
+   */
+  detach(jobId: string): void {
+    const r = this.running.get(jobId);
+    if (!r) return;
+    this.running.delete(jobId);
+    r.ending ??= { status: 'stopped', reason: 'agent deleted' };
+    if (r.poll) clearInterval(r.poll);
+    if (r.killTimer) clearTimeout(r.killTimer);
+    this.release(r);
+    rmSync(this.pidFile(jobId), { force: true });
+    void this.ctx.browser?.close(jobId);
+    r.proc?.kill();
+  }
+
+  /** Remove the key minted for the job, once. */
+  private release(r: Running): void {
+    const capped = r.capped;
+    r.capped = undefined;
+    void capped?.release().catch((e) => console.error(`[yaho] could not remove the key minted for ${r.job}: ${(e as Error).message}`));
   }
 
   private finalize(r: Running, end: { status: string; reason?: string; summary?: string; resumeAt?: string }): void {
@@ -355,7 +445,9 @@ export class JobRunner {
     if (!this.running.has(r.job)) return;
     this.running.delete(r.job);
     if (r.poll) clearInterval(r.poll);
-    if (r.capped) void r.capped.release().catch(() => undefined);
+    if (r.killTimer) clearTimeout(r.killTimer);
+    this.release(r);
+    rmSync(this.pidFile(r.job), { force: true });
     ctx.db.prepare('DELETE FROM job_tokens WHERE job = ?').run(r.job);
     void ctx.browser?.close(r.job);
     if (this.shuttingDown) return this.requeueInterrupted(r.job, 'the Yaho core restarted');

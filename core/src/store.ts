@@ -332,10 +332,12 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
 
 export function deleteAgent(ctx: Ctx, name: string): void {
   getAgent(ctx, name);
-  for (const j of ctx.db.prepare("SELECT id FROM jobs WHERE agent = ? AND status IN ('running','queued')").all(name) as Row[])
-    ctx.runner?.stop(j.id as string, 'stopped', 'agent deleted');
+  // Its running jobs are forgotten before their rows go: nothing they still print is recorded.
+  for (const j of ctx.db.prepare("SELECT id FROM jobs WHERE agent = ? AND status = 'running'").all(name) as Row[])
+    ctx.runner?.detach(j.id as string);
   ctx.db.prepare('DELETE FROM agents WHERE name = ?').run(name);
   ctx.bus.emitEvent({ type: 'changed', entity: 'agents', name });
+  ctx.runner?.pump();
 }
 
 /** Keep each webhook's token and secret across saves: rows are matched by name, new ones get their own. */
@@ -816,9 +818,14 @@ export function updateJob(ctx: Ctx, id: string, fields: Partial<Job>): Job {
 
 export function addJobEvent(ctx: Ctx, job: string, kind: string, data: unknown) {
   const created = now();
-  const r = ctx.db
-    .prepare('INSERT INTO job_events (job, kind, data, created) VALUES (?,?,?,?)')
-    .run(job, kind, JSON.stringify(data), created);
+  let r;
+  try {
+    r = ctx.db.prepare('INSERT INTO job_events (job, kind, data, created) VALUES (?,?,?,?)').run(job, kind, JSON.stringify(data), created);
+  } catch (e) {
+    // The job is gone (its agent was deleted): there is nothing to record it on.
+    if (/FOREIGN KEY/i.test((e as Error).message)) return;
+    throw e;
+  }
   ctx.bus.emitEvent({ type: 'job_event', job, event: { id: Number(r.lastInsertRowid), kind, data, created } });
 }
 
