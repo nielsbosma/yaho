@@ -39,7 +39,7 @@ export interface SlackStatus {
 }
 
 /** settings.slack, with what the core manages: the link code, and the workspace the owner belongs to. */
-type SlackSettings = NonNullable<Ctx['settings']['slack']> & { link_code?: string; team_id?: string };
+type SlackSettings = NonNullable<Ctx['settings']['slack']>;
 
 const NOT_OWNER = 'Only the person who connected Yaho can use it.';
 const NOT_LINKED = 'Yaho is not connected to anyone yet: send `/yaho link <code>` with the code from Settings → Integrations → Slack.';

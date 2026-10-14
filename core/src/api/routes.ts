@@ -297,7 +297,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return ctx.slack?.status;
   });
   r.on('POST', '/api/slack/forget-owner', () => {
-    // A new owner is whoever opens the app in Slack next.
+    // A new owner is whoever sends the new link code next.
     if (ctx.settings.slack) {
       delete ctx.settings.slack.owner;
       delete ctx.settings.slack.since;

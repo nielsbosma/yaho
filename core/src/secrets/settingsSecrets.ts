@@ -129,7 +129,7 @@ export function applySettingsUpdate(current: Settings, next: Settings & { secret
   const kept = {
     epoch: current.server.session_epoch,
     onboarded: current.onboarded_at,
-    slack: current.slack as (Settings['slack'] & { link_code?: string; team_id?: string }) | undefined,
+    slack: current.slack,
     whatsapp: current.whatsapp,
     telegram: current.telegram,
   };

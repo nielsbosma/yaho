@@ -25,7 +25,7 @@ const HOUR = 3600_000;
  * settings.twilio, with allow (the only phones that may text in; empty: any) and public_url (the address Twilio calls,
  * such as https://yaho.example.com, which webhook signatures are checked against; unset: the request's own host).
  */
-type TwilioSettings = NonNullable<Ctx['settings']['twilio']> & { allow?: string | string[]; public_url?: string };
+type TwilioSettings = NonNullable<Ctx['settings']['twilio']>;
 
 export interface OutgoingSms {
   from: string;

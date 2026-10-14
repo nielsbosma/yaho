@@ -25,7 +25,7 @@ const MESSAGE_ID = /^<[^<>\s]+>$/;
  * settings.resend, with allow (the only addresses or domains that may write in; empty: any) and participants_only
  * (a reply to a thread must come from an address already in it).
  */
-type ResendSettings = NonNullable<Ctx['settings']['resend']> & { allow?: string | string[]; participants_only?: boolean };
+type ResendSettings = NonNullable<Ctx['settings']['resend']>;
 
 /** A Message-ID as stored: <id@host>, or null when it is not one. */
 function messageId(v: unknown): string | null {
