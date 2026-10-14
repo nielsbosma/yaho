@@ -394,8 +394,12 @@ export class JobRunner {
       }
       const agent = getAgent(ctx, r.agent);
       if (this.spent(agent.name) >= agent.budget_usd) this.stop(r.job, 'budget_exhausted', `agent budget of $${agent.budget_usd} is spent`);
-      else if (r.cap !== undefined && r.cost - r.baseCost >= r.cap + 1e-9)
-        this.stop(r.job, 'budget_exhausted', `its share of the agent budget ($${r.cap.toFixed(2)}) is spent`);
+      else if (r.cap !== undefined && r.cost - r.baseCost >= r.cap + 1e-9) {
+        // What is not held by the agent's other jobs (a budget raised since, a job that ended) extends its share.
+        const more = this.available(agent, r);
+        if (more >= 0.01) r.cap += more;
+        else this.stop(r.job, 'budget_exhausted', `its share of the agent budget ($${r.cap.toFixed(2)}) is spent`);
+      }
     }
   }
 
