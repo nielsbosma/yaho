@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { serverMode } from '../api/session.ts';
 import type { Ctx } from '../context.ts';
 import { assertUnder, isLink, joinUnder, resolveUnder, UnsafePathError, writeFileUnder } from '../fsSafe.ts';
+import { coreFiles } from '../harness/sandbox.ts';
 import { HttpError } from '../store.ts';
 import * as s from '../store.ts';
 
@@ -28,7 +29,7 @@ const under = (root: string, p: string) => {
  */
 function guardPath(ctx: Ctx, p: string): void {
   const r = ctx.paths;
-  const core = [r.token, r.db, `${r.db}-wal`, `${r.db}-shm`, `${r.db}-journal`, r.settings, r.server, r.totp, join(r.root, 'dopbase'), join(r.root, '.core')];
+  const core = coreFiles(r);
   if ([...core, '/proc'].some((c) => under(c, p))) throw new HttpError(403, `${p} is Yaho's own file; the chat cannot read or copy it`);
   if (serverMode() && ![r.agents, r.projects].some((root) => under(root, p)))
     throw new HttpError(403, `in the server version the chat only reaches the agents' workspaces (${r.agents}) and the projects (${r.projects})`);

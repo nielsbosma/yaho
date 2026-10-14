@@ -70,7 +70,7 @@ export function killTree(pid: number | undefined): void {
 /** Claude Code's --settings for a job: the sandbox, and the Command Rules hook on Bash. Null when neither is on. */
 export function claudeSettings(run: Pick<HarnessRun, 'sandbox' | 'commandGuard'>): Record<string, unknown> | null {
   if (!run.sandbox && !run.commandGuard) return null;
-  const base = run.sandbox ? claudeSandboxSettings(run.sandbox.guard) : {};
+  const base = run.sandbox ? claudeSandboxSettings(run.sandbox.guard, run.sandbox) : {};
   const pre = ((base.hooks as { PreToolUse?: unknown[] } | undefined)?.PreToolUse ?? []).slice();
   if (run.commandGuard) pre.push({ matcher: 'Bash', hooks: [{ type: 'command', command: run.commandGuard }] });
   return { ...base, hooks: { PreToolUse: pre } };
@@ -91,6 +91,9 @@ export const claudeCode: HarnessAdapter = {
       run.model,
       '--permission-mode',
       'bypassPermissions',
+      // No settings files: the workspace's .claude/settings*.json and the agents' own ~/.claude are the agent's to
+      // write, and could turn Yaho's hooks or sandbox off. Only what Yaho passes here applies.
+      '--setting-sources=',
       ...(settings ? ['--settings', JSON.stringify(settings)] : []),
       '--append-system-prompt',
       run.systemPrompt,

@@ -5,7 +5,7 @@ import { delimiter, join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { newId, now } from '../db/index.ts';
 import { adapters, killTree } from '../harness/index.ts';
-import { sandboxGuardCommand, sandboxOn, sandboxProblem } from '../harness/sandbox.ts';
+import { coreFiles, sandboxGuardCommand, sandboxOn, sandboxProblem } from '../harness/sandbox.ts';
 import { COMMAND_GUARD, hookCommand } from '../harness/commandGuard.ts';
 import { commandRulesOn } from '../guard/commands.ts';
 import type { HarnessEvent, HarnessProcess } from '../harness/types.ts';
@@ -257,7 +257,7 @@ export class JobRunner {
         resumeSessionId: ses.harnessId,
         transcriptPath: transcript,
         maxBudgetUsd: remaining,
-        sandbox: sandbox ? { guard: sandboxGuardCommand(ctx.paths.bin) } : undefined,
+        sandbox: sandbox ? { guard: sandboxGuardCommand(ctx.paths.bin), socket: ctx.paths.socket, denyRead: coreFiles(ctx.paths) } : undefined,
         commandGuard: commandRulesOn(settings) ? hookCommand(ctx.paths.bin, COMMAND_GUARD) : undefined,
       },
       (e) => this.onEvent(r, ses.id, e),
