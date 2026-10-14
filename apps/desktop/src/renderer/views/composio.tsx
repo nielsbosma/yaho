@@ -135,7 +135,9 @@ function Connections({ onAdd, onBrowse }: { onAdd: (c: { id: string; toolkit: st
             key={c.id}
             className="flex items-center gap-3 px-4 py-3"
             onContextMenu={(e) =>
-              menu.open(e, [{ label: 'Delete', icon: <Trash2 />, danger: true, onSelect: () => del.ask(c.id, logos[c.toolkit]?.name ?? c.toolkit) }])
+              menu.open(e, [
+                { label: 'Delete', icon: <Trash2 />, danger: true, onSelect: () => del.ask(c.id, logos[c.toolkit]?.name ?? c.toolkit) },
+              ])
             }
           >
             <AppLogo src={logos[c.toolkit]?.logo} name={c.toolkit} />
@@ -156,7 +158,7 @@ function Connections({ onAdd, onBrowse }: { onAdd: (c: { id: string; toolkit: st
             <Button
               size="sm"
               variant="ghost"
-              title={c.resources.length ? `Used by ${c.resources.join(', ')}: delete those resources first` :'Delete connection'}
+              title={c.resources.length ? `Used by ${c.resources.join(', ')}: delete those resources first` : 'Delete connection'}
               disabled={c.resources.length > 0}
               onClick={() => del.ask(c.id, logos[c.toolkit]?.name ?? c.toolkit)}
             >

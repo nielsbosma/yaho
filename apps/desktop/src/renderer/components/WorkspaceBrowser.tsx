@@ -1,6 +1,6 @@
 import { Database, Download, FileCode, FileImage, FileText, ScrollText, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { api, url, useApi, type FileEntry } from '../lib/api.ts';
+import { api, downloadFile, url, useApi, type FileEntry } from '../lib/api.ts';
 import { Markdown } from './Markdown.tsx';
 import { Button } from './ui/button.tsx';
 import { cn } from './ui/cn.ts';
@@ -177,15 +177,19 @@ function FileView({ agent, file }: { agent: string; file: FileEntry }) {
   const header = (
     <div className="flex items-center gap-2 border-b border-line px-4 py-2">
       <code className="truncate text-[12.5px]">{file.path}</code>
-      <a
-        href={url(`/api/agents/${agent}/workspace/file`, { path: file.path, download: file.path.split('/').pop()! })}
+      <Button
+        size="sm"
+        variant="ghost"
         className="ml-auto"
         title="Download"
+        onClick={() =>
+          downloadFile(`/api/agents/${agent}/workspace/file`, { path: file.path }, file.path.split('/').pop()!).catch((e) =>
+            setError((e as Error).message),
+          )
+        }
       >
-        <Button size="sm" variant="ghost">
-          <Download /> Download
-        </Button>
-      </a>
+        <Download /> Download
+      </Button>
     </div>
   );
 

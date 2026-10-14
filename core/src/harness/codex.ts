@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { asAgent } from './asAgent.ts';
-import { killTree, resolveCommand } from './claudeCode.ts';
+import { killTree, resolveCommand, transcriptWriter } from './claudeCode.ts';
 import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from './types.ts';
 
 const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more chars)` : s);
@@ -40,6 +41,29 @@ function direct(command: string): [string, string[]] {
 }
 
 /**
+ * Codex reads a project's own .codex/ (config.toml, hooks.json) in the folder it runs in and the folders above it. In a
+ * workspace those are the agent's to write, and could change Codex's hooks, sandbox or approvals: such a file stops the
+ * job instead. The person's own ~/.codex is not a project's and is ignored here (Yaho passes --ignore-user-config).
+ */
+export function codexOverride(cwd: string): string | null {
+  const home = homedir();
+  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+    if (dir !== home) {
+      if (existsSync(join(dir, '.codex', 'hooks.json'))) return join(dir, '.codex', 'hooks.json');
+      const config = join(dir, '.codex', 'config.toml');
+      if (
+        existsSync(config) &&
+        /\b(hooks|features|sandbox\w*|approval\w*|permissions|profiles?|model_providers?|shell_environment_policy|notify)\b/.test(
+          readFileSync(config, 'utf8'),
+        )
+      )
+        return config;
+    }
+    if (dirname(dir) === dir) return null;
+  }
+}
+
+/**
  * OpenAI's Codex CLI (codex exec --json). It reaches the model through OpenAI's Responses API: the runner gives the
  * provider's address and key as YAHO_CODEX_BASE_URL and YAHO_MODEL_KEY, which become a "yaho" model provider here, so
  * the person's own ~/.codex/config.toml is never used. The agent's system prompt goes in as developer instructions.
@@ -47,6 +71,11 @@ function direct(command: string): [string, string[]] {
 export const codex: HarnessAdapter = {
   name: 'codex',
   start(run: HarnessRun, onEvent: (e: HarnessEvent) => void): HarnessProcess {
+    const override = codexOverride(run.cwd);
+    if (override)
+      throw new Error(
+        `${override} could change Codex's hooks or sandbox, so the job did not start. Remove it from the workspace (it is not needed: Yaho gives Codex its settings).`,
+      );
     const base = run.env.YAHO_CODEX_BASE_URL;
     const common = [
       '--json',
@@ -55,6 +84,17 @@ export const codex: HarnessAdapter = {
       ...(run.sandbox
         ? ['-c', 'sandbox_mode="workspace-write"', '-c', 'sandbox_workspace_write.network_access=true', '-c', 'approval_policy="never"']
         : ['--dangerously-bypass-approvals-and-sandbox']),
+      // Command Rules: Codex runs the same PreToolUse hook as Claude Code (it calls its shell tool Bash). The hook is
+      // Yaho's own, so it needs no trust review.
+      ...(run.commandGuard
+        ? [
+            '-c',
+            'features.hooks=true',
+            '-c',
+            `hooks.PreToolUse=[{matcher="Bash",hooks=[{type="command",command=${toml(run.commandGuard)}}]}]`,
+            '--dangerously-bypass-hook-trust',
+          ]
+        : []),
       '--ignore-user-config',
       '-m',
       run.model,
@@ -66,7 +106,12 @@ export const codex: HarnessAdapter = {
       `developer_instructions=${toml(run.systemPrompt)}`,
       ...(run.mcp ? codexMcp(run.mcp) : []),
     ];
-    const args = [...(run.args ?? []), 'exec', ...(run.resumeSessionId ? ['resume', ...common, run.resumeSessionId] : [...common, '-C', run.cwd]), '-'];
+    const args = [
+      ...(run.args ?? []),
+      'exec',
+      ...(run.resumeSessionId ? ['resume', ...common, run.resumeSessionId] : [...common, '-C', run.cwd]),
+      '-',
+    ];
     if (run.env.CODEX_HOME) mkdirSync(run.env.CODEX_HOME, { recursive: true });
     const [command, prefix] = direct(resolveCommand(run.command, run.env));
     const child = spawn(...asAgent(command, [...prefix, ...args]), {
@@ -80,12 +125,13 @@ export const codex: HarnessAdapter = {
     child.stdin.end(run.prompt);
 
     let gotResult = false;
+    const transcript = transcriptWriter(run, onEvent);
     let lastMessage = '';
     let usageCount = 0;
     if (!base) onEvent({ kind: 'stderr', text: 'no model provider address for Codex (YAHO_CODEX_BASE_URL)' });
     createInterface({ input: child.stdout }).on('line', (line) => {
       if (!line.trim()) return;
-      if (run.transcriptPath) appendFileSync(run.transcriptPath, `${line}\n`);
+      transcript(line);
       let m: Record<string, unknown>;
       try {
         m = JSON.parse(line);
@@ -99,20 +145,34 @@ export const codex: HarnessAdapter = {
           onEvent({ kind: 'session', sessionId: String(m.thread_id) });
           break;
         case 'item.started':
-          if (item?.type === 'command_execution') onEvent({ kind: 'tool_use', id: String(item.id), name: 'shell', input: { command: item.command } });
-          if (item?.type === 'mcp_tool_call') onEvent({ kind: 'tool_use', id: String(item.id), name: String(item.tool ?? 'tool'), input: item.arguments });
+          if (item?.type === 'command_execution')
+            onEvent({ kind: 'tool_use', id: String(item.id), name: 'shell', input: { command: item.command } });
+          if (item?.type === 'mcp_tool_call')
+            onEvent({ kind: 'tool_use', id: String(item.id), name: String(item.tool ?? 'tool'), input: item.arguments });
           break;
         case 'item.completed':
           if (item?.type === 'agent_message' && item.text) {
             lastMessage = String(item.text);
             onEvent({ kind: 'text', text: lastMessage });
           } else if (item?.type === 'command_execution')
-            onEvent({ kind: 'tool_result', id: String(item.id), output: clip(String(item.aggregated_output ?? '')), is_error: item.exit_code !== 0 });
-          else if (item?.type === 'file_change') onEvent({ kind: 'tool_use', id: String(item.id), name: 'apply_patch', input: item.changes });
+            onEvent({
+              kind: 'tool_result',
+              id: String(item.id),
+              output: clip(String(item.aggregated_output ?? '')),
+              is_error: item.exit_code !== 0,
+            });
+          else if (item?.type === 'file_change')
+            onEvent({ kind: 'tool_use', id: String(item.id), name: 'apply_patch', input: item.changes });
           else if (item?.type === 'mcp_tool_call')
-            onEvent({ kind: 'tool_result', id: String(item.id), output: clip(JSON.stringify(item.result ?? item.error ?? '')), is_error: !!item.error });
+            onEvent({
+              kind: 'tool_result',
+              id: String(item.id),
+              output: clip(JSON.stringify(item.result ?? item.error ?? '')),
+              is_error: !!item.error,
+            });
           // Codex reports missing model metadata as an "error" item; it carries on, so it is a note, not a failure.
-          else if (item?.type === 'error') onEvent({ kind: 'stderr', text: String(item.message) });
+          else if (item?.type === 'error' && !/dangerously-bypass-hook-trust/.test(String(item.message)))
+            onEvent({ kind: 'stderr', text: String(item.message) });
           break;
         case 'turn.completed': {
           const u = m.usage as Record<string, number> | undefined;
@@ -141,7 +201,8 @@ export const codex: HarnessAdapter = {
     });
     createInterface({ input: child.stderr }).on('line', (text) => {
       // Codex says it reads the prompt from stdin, and warns about helper links; neither matters to the job.
-      if (text.trim() && !/^Reading (additional )?(input|prompt) from stdin|could not create PATH aliases/.test(text)) onEvent({ kind: 'stderr', text });
+      if (text.trim() && !/^Reading (additional )?(input|prompt) from stdin|could not create PATH aliases/.test(text))
+        onEvent({ kind: 'stderr', text });
     });
 
     const done = new Promise<number | null>((resolve) => {

@@ -107,7 +107,10 @@ export function Assistant({
 
   /** Screenshots pasted into the box go along with the next message, so the model can see them. */
   const paste = (e: React.ClipboardEvent) => {
-    const files = [...e.clipboardData.items].filter((i) => i.type.startsWith('image/')).map((i) => i.getAsFile()).filter((f): f is File => !!f);
+    const files = [...e.clipboardData.items]
+      .filter((i) => i.type.startsWith('image/'))
+      .map((i) => i.getAsFile())
+      .filter((f): f is File => !!f);
     if (!files.length) return;
     e.preventDefault();
     for (const f of files) void toDataUrl(f).then((url) => setImages((xs) => [...xs, url]));
@@ -121,7 +124,10 @@ export function Assistant({
     const pics = images;
     setImages([]);
     const parts = pics.length
-      ? [...(content ? [{ type: 'text' as const, text: content }] : []), ...pics.map((url) => ({ type: 'image_url' as const, image_url: { url } }))]
+      ? [
+          ...(content ? [{ type: 'text' as const, text: content }] : []),
+          ...pics.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+        ]
       : content;
     const history: ChatMessage[] = [...state.history, { role: 'user', content: parts }];
     const turns: Turn[] = [...state.turns, { role: 'user', text: content, images: pics }];
@@ -159,11 +165,16 @@ export function Assistant({
           <span className="hidden font-serif text-lg whitespace-nowrap @[8.5rem]:inline">Chat with Yaho</span>
         </div>
         <div className="ml-auto flex shrink-0 gap-1">
-          <Button size="icon" variant="ghost" title="New Chat" onClick={() => {
-            reset();
-            onLeaveJob();
-            onLeaveFocus();
-          }}>
+          <Button
+            size="icon"
+            variant="ghost"
+            title="New Chat"
+            onClick={() => {
+              reset();
+              onLeaveJob();
+              onLeaveFocus();
+            }}
+          >
             <SquarePen />
           </Button>
           <Button size="icon" variant="ghost" title="Close (Ctrl+J)" onClick={onClose}>
@@ -176,102 +187,110 @@ export function Assistant({
         <JobChat job={job} onLeave={onLeaveJob} />
       ) : (
         <>
-      {focus && (
-        <div className="flex items-center gap-2 border-b border-line bg-panel/60 px-4 py-2 text-xs">
-          <span className="min-w-0 flex-1 truncate text-muted">
-            About {focus.kind} <span className="font-medium text-ink">{focus.name}</span>
-          </span>
-          <button type="button" onClick={onLeaveFocus} title="Chat about anything" className="cursor-pointer text-muted hover:text-ink">
-            <X className="size-3.5" />
-          </button>
-        </div>
-      )}
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {!state.turns.length && (
-          <p className="text-sm text-muted">
-            {focus?.kind === 'agent'
-              ? `Ask about ${focus.name}: how it works, why it did something, what it costs. Or ask for a change, like a better briefing, another model or a schedule, and Yaho makes it.`
-              : focus
-                ? `Ask about ${focus.name}: what it is for, which agents work on it, what they made. Or ask for a change, like a sharper briefing or another agent on it, and Yaho makes it.`
-              : 'Ask for anything you can do in Yaho: create or change agents, projects and resources, run jobs, read your inbox, adjust settings.'}
-          </p>
-        )}
-        {state.turns.map((t, i) =>
-          t.role === 'user' ? (
-            <div key={i} className="ml-8 space-y-2 rounded-xl bg-hover px-3 py-2 text-sm break-words whitespace-pre-wrap">
-              {t.images?.length ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {t.images.map((src, j) => (
-                    <img key={j} src={src} alt="Pasted screenshot" className="max-h-32 max-w-full rounded-md border border-line" />
-                  ))}
-                </div>
-              ) : null}
-              {t.text}
-            </div>
-          ) : (
-            <div key={i} className="space-y-2">
-              {t.steps?.length ? (
-                <div className="space-y-1">
-                  {t.steps.map((s, j) => (
-                    <StepRow key={j} step={s} />
-                  ))}
-                </div>
-              ) : null}
-              {t.text && <Markdown className="text-sm">{t.text}</Markdown>}
-            </div>
-          ),
-        )}
-        {busy && (
-          <div className="flex items-center gap-2 text-sm text-muted">
-            <span className="size-2 animate-pulse rounded-full bg-accent" /> Working…
-          </div>
-        )}
-        {error && <div className="rounded-lg border border-danger/30 bg-danger/8 px-3 py-2 text-sm text-danger">{error}</div>}
-        <div ref={bottom} />
-      </div>
-
-      <div className="border-t border-line p-3">
-        <div className="rounded-xl border border-line bg-panel p-2 focus-within:border-accent/50">
-          {images.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {images.map((src, j) => (
-                <div key={j} className="group relative">
-                  <img src={src} alt="Pasted screenshot" className="h-14 rounded-md border border-line" />
-                  <button
-                    type="button"
-                    title="Remove"
-                    onClick={() => setImages((xs) => xs.filter((_, k) => k !== j))}
-                    className="absolute -top-1.5 -right-1.5 flex size-4 cursor-pointer items-center justify-center rounded-full bg-ink text-panel opacity-0 group-hover:opacity-100"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              ))}
+          {focus && (
+            <div className="flex items-center gap-2 border-b border-line bg-panel/60 px-4 py-2 text-xs">
+              <span className="min-w-0 flex-1 truncate text-muted">
+                About {focus.kind} <span className="font-medium text-ink">{focus.name}</span>
+              </span>
+              <button type="button" onClick={onLeaveFocus} title="Chat about anything" className="cursor-pointer text-muted hover:text-ink">
+                <X className="size-3.5" />
+              </button>
             </div>
           )}
-          <div className="flex items-end gap-2">
-          <textarea
-            onPaste={paste}
-            ref={input}
-            rows={2}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                void send(text);
-              }
-            }}
-            placeholder={focus ? `Ask about ${focus.name}…` : 'Ask Yaho to do something…'}
-            className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 text-sm outline-none placeholder:text-muted/70"
-          />
-          <Button size="icon" variant="primary" disabled={(!text.trim() && !images.length) || busy} onClick={() => void send(text)} title="Send (Enter)">
-            <ArrowUp />
-          </Button>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+            {!state.turns.length && (
+              <p className="text-sm text-muted">
+                {focus?.kind === 'agent'
+                  ? `Ask about ${focus.name}: how it works, why it did something, what it costs. Or ask for a change, like a better briefing, another model or a schedule, and Yaho makes it.`
+                  : focus
+                    ? `Ask about ${focus.name}: what it is for, which agents work on it, what they made. Or ask for a change, like a sharper briefing or another agent on it, and Yaho makes it.`
+                    : 'Ask for anything you can do in Yaho: create or change agents, projects and resources, run jobs, read your inbox, adjust settings.'}
+              </p>
+            )}
+            {state.turns.map((t, i) =>
+              t.role === 'user' ? (
+                <div key={i} className="ml-8 space-y-2 rounded-xl bg-hover px-3 py-2 text-sm break-words whitespace-pre-wrap">
+                  {t.images?.length ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {t.images.map((src, j) => (
+                        <img key={j} src={src} alt="Pasted screenshot" className="max-h-32 max-w-full rounded-md border border-line" />
+                      ))}
+                    </div>
+                  ) : null}
+                  {t.text}
+                </div>
+              ) : (
+                <div key={i} className="space-y-2">
+                  {t.steps?.length ? (
+                    <div className="space-y-1">
+                      {t.steps.map((s, j) => (
+                        <StepRow key={j} step={s} />
+                      ))}
+                    </div>
+                  ) : null}
+                  {t.text && <Markdown className="text-sm">{t.text}</Markdown>}
+                </div>
+              ),
+            )}
+            {busy && (
+              <div className="flex items-center gap-2 text-sm text-muted">
+                <span className="size-2 animate-pulse rounded-full bg-accent" /> Working…
+              </div>
+            )}
+            {error && <div className="rounded-lg border border-danger/30 bg-danger/8 px-3 py-2 text-sm text-danger">{error}</div>}
+            <div ref={bottom} />
           </div>
-        </div>
-        <p className="mt-1.5 px-1 text-[11px] text-muted">Paste screenshots with Ctrl+V. Never paste secret values here; set them on the resource page.</p>
-      </div>
+
+          <div className="border-t border-line p-3">
+            <div className="rounded-xl border border-line bg-panel p-2 focus-within:border-accent/50">
+              {images.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {images.map((src, j) => (
+                    <div key={j} className="group relative">
+                      <img src={src} alt="Pasted screenshot" className="h-14 rounded-md border border-line" />
+                      <button
+                        type="button"
+                        title="Remove"
+                        onClick={() => setImages((xs) => xs.filter((_, k) => k !== j))}
+                        className="absolute -top-1.5 -right-1.5 flex size-4 cursor-pointer items-center justify-center rounded-full bg-ink text-panel opacity-0 group-hover:opacity-100"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-end gap-2">
+                <textarea
+                  onPaste={paste}
+                  ref={input}
+                  rows={2}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      void send(text);
+                    }
+                  }}
+                  placeholder={focus ? `Ask about ${focus.name}…` : 'Ask Yaho to do something…'}
+                  className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 text-sm outline-none placeholder:text-muted/70"
+                />
+                <Button
+                  size="icon"
+                  variant="primary"
+                  disabled={(!text.trim() && !images.length) || busy}
+                  onClick={() => void send(text)}
+                  title="Send (Enter)"
+                >
+                  <ArrowUp />
+                </Button>
+              </div>
+            </div>
+            <p className="mt-1.5 px-1 text-[11px] text-muted">
+              Paste screenshots with Ctrl+V. Never paste secret values here; set them on the resource page.
+            </p>
+          </div>
         </>
       )}
     </aside>

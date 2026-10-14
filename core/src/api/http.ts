@@ -23,14 +23,16 @@ interface Route {
   parts: string[];
   handler: Handler;
   agent: boolean;
+  /** The largest request body, for routes that take uploads; others get readBytes' default. */
+  maxBody?: number;
 }
 
 /** A tiny path router: `/api/agents/:name`. Routes are human-only unless registered with `agent: true`. */
 export class Router {
   routes: Route[] = [];
 
-  on(method: string, path: string, handler: Handler, opts: { agent?: boolean } = {}): void {
-    this.routes.push({ method, parts: path.split('/').filter(Boolean), handler, agent: !!opts.agent });
+  on(method: string, path: string, handler: Handler, opts: { agent?: boolean; maxBody?: number } = {}): void {
+    this.routes.push({ method, parts: path.split('/').filter(Boolean), handler, agent: !!opts.agent, maxBody: opts.maxBody });
   }
 
   match(method: string, path: string): { route: Route; params: Record<string, string> } | null {
@@ -41,7 +43,7 @@ export class Router {
       let ok = true;
       for (let i = 0; i < parts.length; i++) {
         const p = route.parts[i]!;
-        if (p.startsWith(':')) params[p.slice(1)] = decodeURIComponent(parts[i]!);
+        if (p.startsWith(':')) params[p.slice(1)] = decodePart(parts[i]!);
         else if (p !== parts[i]) {
           ok = false;
           break;
@@ -53,7 +55,19 @@ export class Router {
   }
 }
 
-export async function readBytes(req: IncomingMessage, limit = 512 * 1024 * 1024): Promise<Buffer> {
+/** decodeURIComponent, with a bad % escape a 400 rather than a crash. */
+export function decodePart(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    throw new HttpError(400, 'bad % escape in the path');
+  }
+}
+
+/** Uploads: project files and artifacts. */
+export const UPLOAD_LIMIT = 512 * 1024 * 1024;
+
+export async function readBytes(req: IncomingMessage, limit = 16 * 1024 * 1024): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const c of req) {

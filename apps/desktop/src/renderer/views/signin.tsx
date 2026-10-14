@@ -103,7 +103,8 @@ export function SignIn({ totp, onSignedIn }: { totp: boolean; onSignedIn: () => 
         {lost ? (
           <p className="text-muted">
             The password is YAHO_PASSWORD in this server's deploy settings. Change it there and redeploy to set a new one.
-            {totp && ' Lost your phone? Set YAHO_TOTP_RESET=1 there and redeploy, sign in with the password and set up the authenticator again, then remove YAHO_TOTP_RESET.'}
+            {totp &&
+              ' Lost your phone? Set YAHO_TOTP_RESET=1 there and redeploy, sign in with the password and set up the authenticator again, then remove YAHO_TOTP_RESET.'}
           </p>
         ) : (
           <button type="button" onClick={() => setLost(true)} className="cursor-pointer text-muted hover:text-ink hover:underline">
@@ -146,7 +147,8 @@ export function TotpSetup({ onDone }: { onDone: () => void }) {
   return (
     <Panel title="Set Up Two-Factor" onSubmit={submit}>
       <p className="text-sm text-muted">
-        Scan this with your authenticator app (Microsoft Authenticator, Google Authenticator, 1Password and others all work), then enter the code it shows. From now on, signing in asks for the password and a code.
+        Scan this with your authenticator app (Microsoft Authenticator, Google Authenticator, 1Password and others all work), then enter the
+        code it shows. From now on, signing in asks for the password and a code.
       </p>
       <ErrorNote>{error}</ErrorNote>
       {setup && (
@@ -155,7 +157,9 @@ export function TotpSetup({ onDone }: { onDone: () => void }) {
           <p className="text-center text-xs text-muted">
             Or enter this key: <code className="select-all">{setup.secret.match(/.{1,4}/g)!.join(' ')}</code>
           </p>
-          <p className="text-xs text-muted">Keep a copy of the key, for example in a password manager, so a lost phone does not lock you out.</p>
+          <p className="text-xs text-muted">
+            Keep a copy of the key, for example in a password manager, so a lost phone does not lock you out.
+          </p>
         </>
       )}
       <CodeInput label="Code From Your Authenticator App" value={code} onChange={setCode} />

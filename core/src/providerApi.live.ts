@@ -19,7 +19,16 @@ const providers: Array<[ProviderConfig, string]> = [
   [{ id: 'openai', kind: 'openai', api_key: env.OPENAI_API_KEY }, 'gpt-5-mini'],
 ];
 const s = { providers: providers.map(([p]) => p) } as unknown as Settings;
-const tools = [{ type: 'function' as const, function: { name: 'get_weather', description: 'Weather for a city', parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] } } }];
+const tools = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_weather',
+      description: 'Weather for a city',
+      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] },
+    },
+  },
+];
 
 for (const [p, model] of providers) {
   const line: string[] = [p.id.padEnd(10)];
@@ -29,7 +38,9 @@ for (const [p, model] of providers) {
     line.push(`models: ${(e as Error).message.slice(0, 80)}`);
   }
   try {
-    const messages: Parameters<typeof chatRound>[1]['messages'] = [{ role: 'user', content: 'What is the weather in Stockholm? Use the tool, then answer in five words.' }];
+    const messages: Parameters<typeof chatRound>[1]['messages'] = [
+      { role: 'user', content: 'What is the weather in Stockholm? Use the tool, then answer in five words.' },
+    ];
     const first = await chatRound(p, { model, messages, tools, max_tokens: 300 });
     const call = first.message.tool_calls?.[0];
     line.push(call ? `tool ${call.function.name}(${call.function.arguments})` : `no tool call (${first.finish_reason})`);

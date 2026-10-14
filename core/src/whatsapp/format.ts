@@ -1,3 +1,4 @@
+import { splitText } from '../mirror/util.ts';
 import type { Message } from '../store.ts';
 
 export type Payload = Record<string, unknown>;
@@ -50,23 +51,14 @@ export function toWhatsApp(md: string): string {
     }
     out.push(inline(line));
   }
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return out
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** Cut text into message-sized pieces at paragraph or line breaks. */
-export function chunks(text: string, max = TEXT_MAX): string[] {
-  const out: string[] = [];
-  let rest = text;
-  while (rest.length > max) {
-    let at = rest.lastIndexOf('\n\n', max);
-    if (at < max / 2) at = rest.lastIndexOf('\n', max);
-    if (at < max / 2) at = max;
-    out.push(rest.slice(0, at));
-    rest = rest.slice(at).replace(/^\n+/, '');
-  }
-  if (rest) out.push(rest);
-  return out;
-}
+export const chunks = (text: string, max = TEXT_MAX): string[] => splitText(text, max);
 
 const agentOf = (addr: string) => (addr.startsWith('agent:') ? addr.slice(6) : addr);
 const cut = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
@@ -106,7 +98,11 @@ export function messagePayloads(m: Message): Array<{ payload: Payload; actions: 
     const long = choices.some((c) => c.length > BUTTON_MAX);
     if (long) choiceList = choices.map((c, i) => `*${String.fromCharCode(65 + i)}.* ${c}`).join('\n');
     choices.forEach((c, i) =>
-      rows.push({ id: `choice:${m.id}:${i}`, title: long ? String.fromCharCode(65 + i) : c, ...(long ? { description: cut(c, ROW_DESC_MAX) } : {}) }),
+      rows.push({
+        id: `choice:${m.id}:${i}`,
+        title: long ? String.fromCharCode(65 + i) : c,
+        ...(long ? { description: cut(c, ROW_DESC_MAX) } : {}),
+      }),
     );
     if (m.type !== 'question' || !m.choices?.length) rows.push({ id: `done:${m.id}`, title: 'Done' });
   }
@@ -123,7 +119,12 @@ export function messagePayloads(m: Message): Array<{ payload: Payload; actions: 
   const footer = { text: 'Or reply to this message to answer' };
   const buttons = rows.length <= 3 && rows.every((r) => r.title.length <= BUTTON_MAX && !r.description);
   const interactive = buttons
-    ? { type: 'button', body: { text: body }, footer, action: { buttons: rows.map((r) => ({ type: 'reply', reply: { id: r.id, title: r.title } })) } }
+    ? {
+        type: 'button',
+        body: { text: body },
+        footer,
+        action: { buttons: rows.map((r) => ({ type: 'reply', reply: { id: r.id, title: r.title } })) },
+      }
     : {
         type: 'list',
         body: { text: body },

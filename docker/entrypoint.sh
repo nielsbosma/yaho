@@ -20,20 +20,29 @@ chown 1000:1000 /data /data/.core
 chmod 0711 /data
 chmod 0700 /data/.core
 # What the core and the agents share: group yaho-agents, group-writable, and new files keep the group (setgid).
+# Only what is not so already is changed, so a start does not rewrite every file on a large volume; symlinks are
+# never followed.
 shared() {
-  chown -R "$1":1001 "$2"
-  chmod -R g+rwX,o-rwx "$2"
-  find "$2" -type d -exec chmod g+s {} +
+  find "$2" \( ! -user "$1" -o ! -group 1001 \) -exec chown -h "$1":1001 {} +
+  find "$2" -type d \( ! -perm -2070 -o -perm /0007 \) -exec chmod g+rwxs,o-rwx {} +
+  find "$2" ! -type d ! -type l \( ! -perm -0060 -o -perm /0007 \) -exec chmod g+rw,o-rwx {} +
+  find "$2" -type f -perm -0100 ! -perm -0010 -exec chmod g+x {} +
 }
 shared 1000 /data/agents
 shared 1000 /data/projects
 shared 1001 /data/codex
-shared 1000 /data/bin
 # Where stdio MCP servers run: the core starts them as yaho-agent.
 shared 1000 /data/mcp
 shared 1001 /data/home
+# Agents work inside their workspace and projects; only the core adds or removes them.
+chmod g-w /data/agents /data/projects
+# The yaho shims and guard scripts that every job runs: the core's, readable by all, writable by no agent.
+find /data/bin \( ! -user 1000 -o ! -group 1000 \) -exec chown -h 1000:1000 {} +
+find /data/bin ! -type l -perm /0022 -exec chmod go-w {} +
+chmod 0755 /data/bin
 # Everything else in /data is the core's alone.
-find /data -mindepth 1 -maxdepth 1 ! -name home ! -name agents ! -name projects ! -name codex ! -name bin ! -name mcp -exec chmod -R o-rwx {} +
+find /data -mindepth 1 \( -path /data/home -o -path /data/agents -o -path /data/projects -o -path /data/codex -o -path /data/bin -o -path /data/mcp \) -prune \
+  -o ! -type l -perm /0007 -exec chmod o-rwx {} +
 
 cd /data
 # umask 007: nothing the core writes is readable by others. The core keeps three capabilities, to start agents as
@@ -46,6 +55,6 @@ exec setpriv --reuid=1000 --regid=1000 --init-groups --reset-env \
   YAHO_DOPBASE_BIN="$YAHO_DOPBASE_BIN" YAHO_TRUST_PROXY="${YAHO_TRUST_PROXY:-}" YAHO_PASSWORD="$YAHO_PASSWORD" \
   YAHO_TOTP="${YAHO_TOTP:-}" YAHO_TOTP_RESET="${YAHO_TOTP_RESET:-}" \
   YAHO_PUBLIC_URL="${YAHO_PUBLIC_URL:-}" YAHO_DEBUG="${YAHO_DEBUG:-}" \
-  YAHO_AGENT_UID="$YAHO_AGENT_UID" YAHO_AGENT_GID="$YAHO_AGENT_GID" YAHO_AGENT_HOME="$YAHO_AGENT_HOME" \
+  YAHO_AGENT_UID="$YAHO_AGENT_UID" YAHO_AGENT_GID="$YAHO_AGENT_GID" YAHO_AGENT_HOME="$YAHO_AGENT_HOME" YAHO_BROWSER="${YAHO_BROWSER:-}" \
   XDG_CACHE_HOME="$XDG_CACHE_HOME" NODE_ENV="$NODE_ENV" \
   node /opt/yaho/core/main.mjs serve --port "${PORT:-4700}"

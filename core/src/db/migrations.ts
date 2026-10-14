@@ -174,4 +174,37 @@ export const migrations: string[] = [
   // replies and reactions find their message.
   `CREATE TABLE telegram_posts (chat TEXT NOT NULL, tg_id INTEGER NOT NULL, message TEXT NOT NULL, actions INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, PRIMARY KEY (chat, tg_id));
    CREATE INDEX telegram_posts_message ON telegram_posts(message);`,
+  // 11: inbound webhooks, a trigger type: each has an unguessable URL token and an optional signature check.
+  // webhook_deliveries keeps each accepted delivery, for the hourly limit and for dropping repeats by the sender's id.
+  `CREATE TABLE webhooks (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE ON UPDATE CASCADE, name TEXT NOT NULL, token TEXT NOT NULL UNIQUE, verify TEXT NOT NULL DEFAULT 'none', secret TEXT NOT NULL, instructions TEXT NOT NULL DEFAULT '', hourly_limit INTEGER NOT NULL DEFAULT 60, paused INTEGER NOT NULL DEFAULT 0, last_delivery TEXT, last_rejected TEXT, created TEXT NOT NULL, UNIQUE (agent, name));
+   CREATE TABLE webhook_deliveries (id TEXT PRIMARY KEY, webhook TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE, delivery TEXT, job TEXT, message TEXT, file TEXT NOT NULL, created TEXT NOT NULL);
+   CREATE INDEX webhook_deliveries_webhook ON webhook_deliveries(webhook, created);
+   CREATE INDEX webhook_deliveries_job ON webhook_deliveries(job);
+   CREATE UNIQUE INDEX webhook_deliveries_delivery ON webhook_deliveries(webhook, delivery) WHERE delivery IS NOT NULL;`,
+  // 12: past jobs, searchable (yaho history). summary is the agent's own from yaho finish, recap a short one written
+  // by a model when the job ended; job_search indexes both with what started the job and what the agent said.
+  `ALTER TABLE jobs ADD COLUMN summary TEXT;
+   ALTER TABLE jobs ADD COLUMN recap TEXT;
+   CREATE VIRTUAL TABLE job_search USING fts5(job UNINDEXED, agent UNINDEXED, trigger, messages, summary, recap, tokenize = 'porter unicode61');
+   CREATE TRIGGER jobs_search_delete AFTER DELETE ON jobs BEGIN DELETE FROM job_search WHERE job = old.id; END;`,
+  // 13: Command Rules: a command an Ask rule held back, the inbox question about it, and the human's answer.
+  // used: an approved command runs once.
+  `CREATE TABLE command_approvals (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE ON UPDATE CASCADE, job TEXT NOT NULL, session TEXT, command TEXT NOT NULL, message TEXT, status TEXT NOT NULL DEFAULT 'pending', used INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, decided TEXT);
+   CREATE INDEX command_approvals_message ON command_approvals(message);
+   CREATE INDEX command_approvals_session ON command_approvals(session, command);`,
+  // 14: the browser for agents (yaho browser); agents.browser opts an agent in.
+  `ALTER TABLE agents ADD COLUMN browser INTEGER NOT NULL DEFAULT 0;`,
+  // 15: each job's row in job_search, so replacing or deleting it goes by rowid instead of scanning the index
+  // (job is UNINDEXED there).
+  `CREATE TABLE job_search_rows (job TEXT PRIMARY KEY, row INTEGER NOT NULL);
+   INSERT OR REPLACE INTO job_search_rows (job, row) SELECT job, rowid FROM job_search;
+   DROP TRIGGER jobs_search_delete;
+   CREATE TRIGGER jobs_search_delete AFTER DELETE ON jobs BEGIN
+     DELETE FROM job_search WHERE rowid = (SELECT row FROM job_search_rows WHERE job = old.id);
+     DELETE FROM job_search_rows WHERE job = old.id;
+   END;`,
+  // 16: indexes for a message's thread, a job's messages and a session's jobs.
+  `CREATE INDEX messages_reply_to ON messages(reply_to);
+   CREATE INDEX messages_job ON messages(job);
+   CREATE INDEX jobs_session ON jobs(session_id, created);`,
 ];

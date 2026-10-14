@@ -125,6 +125,20 @@ describe('yaho CLI inside a job', () => {
     expect(YAML.parse(outs[2]!)[0]).toMatchObject({ from: 'agent:alpha', title: 'hi' });
   });
 
+  it('searches and shows its own past jobs', async () => {
+    script('alpha', [
+      { cmd: 'yaho history search all done' },
+      { cmd: 'yaho history show "$(yaho history search all done | sed -n "s/^- job: //p" | head -1)"' },
+      { cmd: 'yaho finish' },
+    ]);
+    const job = await api<Job>('/api/agents/alpha/run', { method: 'POST' });
+    await waitFor(job.id);
+    const outs = await toolOutputs(job.id);
+    const hits = YAML.parse(outs[0]!);
+    expect(hits[0]).toMatchObject({ trigger: 'manual', status: 'finished', recap: 'all done' });
+    expect(YAML.parse(outs[1]!)).toMatchObject({ job: hits[0].job, summary: 'all done' });
+  });
+
   it('refuses expired and finished-job tokens, and human-only routes', async () => {
     ctx.db
       .prepare("INSERT INTO job_tokens (token, job, agent, expires) VALUES ('old', (SELECT id FROM jobs LIMIT 1), 'alpha', '2000-01-01')")

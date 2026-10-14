@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
@@ -9,21 +9,24 @@ import { mcpRoutes } from './api/mcpRoutes.ts';
 import { fontRoutes } from './api/fonts.ts';
 import { exampleRoutes, humanRoutes, yahoVersion } from './api/routes.ts';
 import { startServer } from './api/server.ts';
-import { apiToken, loadSettings, paths, saveSettings } from './config.ts';
+import { apiToken, loadSettings, paths, privateDir, saveSettings, writePrivate } from './config.ts';
 import { Bus, type Ctx } from './context.ts';
 import { openDb } from './db/index.ts';
+import { indexMissing } from './history.ts';
 import { JobRunner } from './jobs/runner.ts';
 import { Scheduler } from './scheduler/index.ts';
 import { SlackBridge } from './slack/bridge.ts';
 import { WhatsAppBridge } from './whatsapp/bridge.ts';
 import { EmailBridge } from './email/resend.ts';
 import { SmsBridge } from './sms/twilio.ts';
+import { BrowserManager } from './browser/index.ts';
 import { TelegramBridge } from './telegram/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
 import { Updates } from './updates.ts';
 import { McpHub } from './mcp/hub.ts';
 import { SANDBOX_GUARD, sandboxGuardScript } from './harness/sandbox.ts';
+import { COMMAND_GUARD, commandGuardScript } from './harness/commandGuard.ts';
 import { checkServerPassword, loadTotp, serverMode } from './api/session.ts';
 
 // node:sqlite prints an ExperimentalWarning on Node 22; it is expected.
@@ -35,7 +38,7 @@ export async function serve(
 ): Promise<{ ctx: Ctx; close: () => Promise<void> }> {
   if (opts.dataDir) process.env.YAHO_DATA_DIR = opts.dataDir;
   const p = paths();
-  mkdirSync(p.root, { recursive: true });
+  privateDir(p.root);
   checkServerPassword();
   const settings = loadSettings();
   const ctx: Ctx = { db: openDb(p.db), settings, paths: p, apiToken: apiToken(), bus: new Bus(), apiUrl: '' };
@@ -43,6 +46,7 @@ export async function serve(
 
   const runner = new JobRunner(ctx);
   runner.recover();
+  indexMissing(ctx);
   // The bundled Dopbase runs next to the core whatever the mode, so switching to it in Settings needs no restart.
   ctx.localDopbase = new LocalDopbase(ctx);
   if (ctx.settings.dopbase.mode === 'bundled' && !process.env.YAHO_NO_DOPBASE) await ctx.localDopbase.start();
@@ -59,6 +63,7 @@ export async function serve(
   ctx.whatsapp = new WhatsAppBridge(ctx);
   ctx.email = new EmailBridge(ctx);
   ctx.sms = new SmsBridge(ctx);
+  ctx.browser = new BrowserManager(ctx);
   ctx.telegram = new TelegramBridge(ctx);
   ctx.mcp = new McpHub(ctx);
 
@@ -80,7 +85,7 @@ export async function serve(
   const addr = server.address();
   const actualPort = typeof addr === 'object' && addr ? addr.port : port;
   ctx.apiUrl = `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${actualPort}`;
-  writeFileSync(p.server, YAML.stringify({ url: ctx.apiUrl, pid: process.pid, started: new Date().toISOString() }));
+  writePrivate(p.server, YAML.stringify({ url: ctx.apiUrl, pid: process.pid, started: new Date().toISOString() }));
 
   // The integrations connect in the background; a bad token shows in Settings, never blocks the core.
   if (!opts.embedded) void ctx.slack.start();
@@ -103,6 +108,7 @@ export async function serve(
     await ctx.mcp?.closeAll();
     ctx.localDopbase?.stop();
     await runner.shutdown();
+    await ctx.browser?.closeAll();
     rmSync(p.server, { force: true });
     server.closeAllConnections();
     await new Promise((r) => server.close(r));
@@ -132,12 +138,22 @@ function writeShims(ctx: Ctx): void {
   const node = process.execPath;
   const electron = !!process.versions.electron;
   const flags = cli.endsWith('.ts') ? '--experimental-strip-types --no-warnings' : '--no-warnings';
+  // Agents run these, so only the core may change them: the folder and files are its own, readable by everyone.
   mkdirSync(ctx.paths.bin, { recursive: true });
+  chmodSync(ctx.paths.bin, 0o755);
+  // A fresh file each time: never write through whatever stands at the name now.
+  const put = (name: string, data: string, mode: number) => {
+    const file = join(ctx.paths.bin, name);
+    rmSync(file, { force: true });
+    writeFileSync(file, data, { mode, flag: 'wx' });
+    chmodSync(file, mode);
+  };
   const cmd = ['@echo off', ...(electron ? ['set ELECTRON_RUN_AS_NODE=1'] : []), `"${node}" ${flags} "${cli}" %*`];
-  writeFileSync(join(ctx.paths.bin, 'yaho.cmd'), cmd.join('\r\n') + '\r\n');
+  put('yaho.cmd', cmd.join('\r\n') + '\r\n', 0o644);
   const posix = (p: string) => p.replaceAll('\\', '/');
   const sh = ['#!/bin/sh', `${electron ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}exec "${posix(node)}" ${flags} "${posix(cli)}" "$@"`];
-  writeFileSync(join(ctx.paths.bin, 'yaho'), sh.join('\n') + '\n', { mode: 0o755 });
+  put('yaho', sh.join('\n') + '\n', 0o755);
   ctx.cli = { command: node, args: [...flags.split(' '), cli], env: electron ? { ELECTRON_RUN_AS_NODE: '1' } : {} };
-  writeFileSync(join(ctx.paths.bin, SANDBOX_GUARD), sandboxGuardScript());
+  put(SANDBOX_GUARD, sandboxGuardScript(), 0o644);
+  put(COMMAND_GUARD, commandGuardScript(), 0o644);
 }

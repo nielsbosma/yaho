@@ -28,11 +28,29 @@ export function createShortcuts(icon: string, pngIcon: string): string[] {
   for (const file of places()) {
     mkdirSync(join(file, '..'), { recursive: true });
     if (process.platform === 'win32') {
-      shell.writeShortcutLink(file, 'create', { target: process.execPath, icon, iconIndex: 0, appUserModelId: APP_ID, description: 'Yaho' });
+      shell.writeShortcutLink(file, 'create', {
+        target: process.execPath,
+        icon,
+        iconIndex: 0,
+        appUserModelId: APP_ID,
+        description: 'Yaho',
+      });
     } else {
+      // Started as this instance was: with --no-sandbox only where the launcher found Chromium's sandbox unusable.
       writeFileSync(
         file,
-        ['[Desktop Entry]', 'Type=Application', 'Name=Yaho', 'Comment=Yet Another Harness Orchestrator', `Exec="${process.execPath}" --no-sandbox`, `Icon=${pngIcon}`, 'Terminal=false', 'Categories=Development;Utility;', `StartupWMClass=Yaho`, ''].join('\n'),
+        [
+          '[Desktop Entry]',
+          'Type=Application',
+          'Name=Yaho',
+          'Comment=Yet Another Harness Orchestrator',
+          `Exec="${process.execPath}"${app.commandLine.hasSwitch('no-sandbox') ? ' --no-sandbox' : ''}`,
+          `Icon=${pngIcon}`,
+          'Terminal=false',
+          'Categories=Development;Utility;',
+          `StartupWMClass=Yaho`,
+          '',
+        ].join('\n'),
         { mode: 0o755 },
       );
     }

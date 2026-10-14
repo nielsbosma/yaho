@@ -12,7 +12,11 @@ import { HttpError } from './store.ts';
 const ENDPOINTS: Record<string, { chat: string; claude?: string; models: string }> = {
   anthropic: { chat: 'https://api.anthropic.com', models: 'https://api.anthropic.com/v1/models' },
   openrouter: { chat: 'https://openrouter.ai/api/v1', claude: 'https://openrouter.ai/api', models: 'https://openrouter.ai/api/v1/models' },
-  opper: { chat: 'https://api.opper.ai/v3/compat', claude: 'https://api.opper.ai/v3/compat', models: 'https://api.opper.ai/v3/compat/models' },
+  opper: {
+    chat: 'https://api.opper.ai/v3/compat',
+    claude: 'https://api.opper.ai/v3/compat',
+    models: 'https://api.opper.ai/v3/compat/models',
+  },
   berget: { chat: 'https://api.berget.ai/v1', models: 'https://api.berget.ai/v1/models' },
   openai: { chat: 'https://api.openai.com/v1', models: 'https://api.openai.com/v1/models' },
 };
@@ -24,7 +28,8 @@ const needKey = (p: ProviderConfig) => {
   if (!k) throw new HttpError(503, `set the API key for ${p.id} in Settings first`);
   return k;
 };
-const chatBase = (p: ProviderConfig) => (p.kind === 'litellm' ? `${(p.url ?? '').replace(/\/$/, '')}/v1` : (p.url?.replace(/\/$/, '') ?? ENDPOINTS[p.kind]?.chat));
+const chatBase = (p: ProviderConfig) =>
+  p.kind === 'litellm' ? `${(p.url ?? '').replace(/\/$/, '')}/v1` : (p.url?.replace(/\/$/, '') ?? ENDPOINTS[p.kind]?.chat);
 
 /** Model names this provider offers. */
 export async function listModels(s: Settings, p: ProviderConfig): Promise<string[]> {
@@ -45,7 +50,8 @@ export async function listModels(s: Settings, p: ProviderConfig): Promise<string
   // Berget also serves speech, embeddings and rerankers; only chat models with tool calling can run agents.
   if (p.kind === 'berget') list = list.filter((m) => m.capabilities?.function_calling);
   // OpenAI also lists embeddings, speech, images and moderation; agents need chat models.
-  if (p.kind === 'openai') list = list.filter((m) => /^(gpt-|o\d|chatgpt-)/.test(m.id) && !/(audio|realtime|transcribe|tts|image|search|embedding)/.test(m.id));
+  if (p.kind === 'openai')
+    list = list.filter((m) => /^(gpt-|o\d|chatgpt-)/.test(m.id) && !/(audio|realtime|transcribe|tts|image|search|embedding)/.test(m.id));
   return list.map((m) => m.id).sort();
 }
 
@@ -65,7 +71,10 @@ const modelCache = new Map<string, { at: number; models: string[] }>();
  * provider, "<id>/<model>" on the others. provider_of says which provider (its id) each name belongs to. Providers that
  * fail to answer are left out, not fatal. OpenRouter is limited to Anthropic's models, the ones it serves Claude Code.
  */
-export async function allModels(s: Settings, defaultId: string): Promise<{ models: string[]; provider_of: Record<string, string>; errors: Record<string, string> }> {
+export async function allModels(
+  s: Settings,
+  defaultId: string,
+): Promise<{ models: string[]; provider_of: Record<string, string>; errors: Record<string, string> }> {
   const models: string[] = [];
   const provider_of: Record<string, string> = {};
   const errors: Record<string, string> = {};
@@ -108,12 +117,23 @@ interface OAITool {
 const clean = (m: OAIMessage): OAIMessage => ({
   role: m.role,
   content: m.content,
-  ...(m.tool_calls?.length ? { tool_calls: m.tool_calls.map((t) => ({ id: t.id, type: 'function' as const, function: { name: t.function.name, arguments: t.function.arguments } })) } : {}),
+  ...(m.tool_calls?.length
+    ? {
+        tool_calls: m.tool_calls.map((t) => ({
+          id: t.id,
+          type: 'function' as const,
+          function: { name: t.function.name, arguments: t.function.arguments },
+        })),
+      }
+    : {}),
   ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
 });
 
 /** OpenAI's newer models take max_completion_tokens and refuse max_tokens. */
-export function forProvider<T extends { max_tokens?: number }>(kind: string, body: T): T | (Omit<T, 'max_tokens'> & { max_completion_tokens?: number }) {
+export function forProvider<T extends { max_tokens?: number }>(
+  kind: string,
+  body: T,
+): T | (Omit<T, 'max_tokens'> & { max_completion_tokens?: number }) {
   if (kind !== 'openai' || body.max_tokens === undefined) return body;
   const { max_tokens, ...rest } = body;
   return { ...rest, max_completion_tokens: max_tokens };
@@ -123,7 +143,11 @@ export interface ChatReply {
   message: OAIMessage;
   /** stop, tool_calls, or length (cut off at the output limit). */
   finish_reason?: string;
+  usage?: { input: number; output: number };
 }
+
+/** A chat round can be a long answer, but not one that never comes. */
+const CHAT_TIMEOUT = 300_000;
 
 /** One round of the assistant's chat on this provider. */
 export async function chatRound(
@@ -138,16 +162,35 @@ export async function chatRound(
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     // Only the standard fields: some providers reject what others add to their replies (Berget: function_call: null).
-    body: JSON.stringify({ ...forProvider(p.kind, body), messages: body.messages.map(clean) }),
+    body: JSON.stringify({
+      ...forProvider(p.kind, body),
+      messages: body.messages.map(clean),
+      tools: body.tools.length ? body.tools : undefined,
+    }),
+    signal: AbortSignal.timeout(CHAT_TIMEOUT),
   });
   if (!res.ok) throw new HttpError(502, `${p.id}: ${res.status} ${(await res.text()).slice(0, 300)}`);
-  const j = (await res.json()) as { choices: Array<{ message: OAIMessage; finish_reason?: string }> };
-  return { message: j.choices[0]!.message, finish_reason: j.choices[0]!.finish_reason };
+  const j = (await res.json()) as {
+    choices: Array<{ message: OAIMessage; finish_reason?: string }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  return {
+    message: j.choices[0]!.message,
+    finish_reason: j.choices[0]!.finish_reason,
+    ...(j.usage ? { usage: { input: j.usage.prompt_tokens ?? 0, output: j.usage.completion_tokens ?? 0 } } : {}),
+  };
 }
 
 /** Anthropic's Messages API behind the same shape: system apart, tool calls as content blocks, tool results as user turns. */
-async function anthropicChat(base: string, key: string, body: { model: string; messages: OAIMessage[]; tools: OAITool[]; max_tokens: number }): Promise<ChatReply> {
-  const system = body.messages.filter((m) => m.role === 'system').map((m) => (typeof m.content === 'string' ? m.content : '')).join('\n\n');
+async function anthropicChat(
+  base: string,
+  key: string,
+  body: { model: string; messages: OAIMessage[]; tools: OAITool[]; max_tokens: number },
+): Promise<ChatReply> {
+  const system = body.messages
+    .filter((m) => m.role === 'system')
+    .map((m) => (typeof m.content === 'string' ? m.content : ''))
+    .join('\n\n');
   type Block = Record<string, unknown>;
   const turns: Array<{ role: 'user' | 'assistant'; content: Block[] }> = [];
   const push = (role: 'user' | 'assistant', blocks: Block[]) => {
@@ -161,14 +204,22 @@ async function anthropicChat(base: string, key: string, body: { model: string; m
     return c.map((part) => {
       if (part.type === 'text') return { type: 'text', text: part.text };
       const m = /^data:([^;]+);base64,(.*)$/.exec(part.image_url.url);
-      return m ? { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } } : { type: 'image', source: { type: 'url', url: part.image_url.url } };
+      return m
+        ? { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } }
+        : { type: 'image', source: { type: 'url', url: part.image_url.url } };
     });
   };
   for (const m of body.messages) {
     if (m.role === 'system') continue;
-    if (m.role === 'tool') push('user', [{ type: 'tool_result', tool_use_id: m.tool_call_id, content: typeof m.content === 'string' ? m.content : '' }]);
+    if (m.role === 'tool')
+      push('user', [{ type: 'tool_result', tool_use_id: m.tool_call_id, content: typeof m.content === 'string' ? m.content : '' }]);
     else if (m.role === 'assistant') {
-      const calls = (m.tool_calls ?? []).map((t) => ({ type: 'tool_use', id: t.id, name: t.function.name, input: safeJson(t.function.arguments) }));
+      const calls = (m.tool_calls ?? []).map((t) => ({
+        type: 'tool_use',
+        id: t.id,
+        name: t.function.name,
+        input: safeJson(t.function.arguments),
+      }));
       const blocks = [...blocksOf(m.content), ...calls];
       if (blocks.length) push('assistant', blocks);
     } else push('user', blocksOf(m.content));
@@ -181,18 +232,31 @@ async function anthropicChat(base: string, key: string, body: { model: string; m
       max_tokens: body.max_tokens,
       ...(system ? { system } : {}),
       messages: turns,
-      tools: body.tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters ?? { type: 'object' } })),
+      tools: body.tools.map((t) => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters ?? { type: 'object' },
+      })),
     }),
+    signal: AbortSignal.timeout(CHAT_TIMEOUT),
   });
   if (!res.ok) throw new HttpError(502, `Anthropic: ${res.status} ${(await res.text()).slice(0, 300)}`);
-  const j = (await res.json()) as { content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>; stop_reason?: string };
-  const text = j.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  const j = (await res.json()) as {
+    content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>;
+    stop_reason?: string;
+    usage?: { input_tokens?: number; output_tokens?: number };
+  };
+  const text = j.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
   const tool_calls = j.content
     .filter((b) => b.type === 'tool_use')
     .map((b) => ({ id: b.id!, type: 'function' as const, function: { name: b.name!, arguments: JSON.stringify(b.input ?? {}) } }));
   return {
     message: { role: 'assistant', content: text, ...(tool_calls.length ? { tool_calls } : {}) },
     finish_reason: j.stop_reason === 'max_tokens' ? 'length' : j.stop_reason === 'tool_use' ? 'tool_calls' : 'stop',
+    ...(j.usage ? { usage: { input: j.usage.input_tokens ?? 0, output: j.usage.output_tokens ?? 0 } } : {}),
   };
 }
 
@@ -277,7 +341,10 @@ async function claudeAccess(
   if (claude) return { env: { ANTHROPIC_BASE_URL: p.url ?? claude, ANTHROPIC_AUTH_TOKEN: key, ANTHROPIC_API_KEY: '' }, budget: 'counted' };
   // Chat Completions only (Berget): Claude Code talks to the core's bridge with its job token; the key stays in the core.
   if (ENDPOINTS[p.kind] && o.bridge)
-    return { env: { ANTHROPIC_BASE_URL: `${o.bridge.apiUrl}/bridge/${p.id}`, ANTHROPIC_AUTH_TOKEN: o.bridge.token, ANTHROPIC_API_KEY: '' }, budget: 'counted' };
+    return {
+      env: { ANTHROPIC_BASE_URL: `${o.bridge.apiUrl}/bridge/${p.id}`, ANTHROPIC_AUTH_TOKEN: o.bridge.token, ANTHROPIC_API_KEY: '' },
+      budget: 'counted',
+    };
   throw new Error(`provider ${p.id} (${p.kind}) cannot run jobs yet`);
 }
 
@@ -357,6 +424,7 @@ async function openRouterKey(management: string, o: { name: string; limit: numbe
     method: 'POST',
     headers: { Authorization: `Bearer ${management}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: o.name, limit: Math.max(0.01, Number(o.limit.toFixed(4))) }),
+    signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) throw new Error(`OpenRouter could not create a key for this job: ${res.status} ${(await res.text()).slice(0, 200)}`);
   const j = (await res.json()) as { key: string; data: { hash: string } };
@@ -364,11 +432,30 @@ async function openRouterKey(management: string, o: { name: string; limit: numbe
 }
 
 async function openRouterKeyUsage(management: string, hash: string): Promise<number> {
-  const res = await fetch(`${OR_KEYS}/${hash}`, { headers: { Authorization: `Bearer ${management}` } });
+  const res = await fetch(`${OR_KEYS}/${hash}`, {
+    headers: { Authorization: `Bearer ${management}` },
+    signal: AbortSignal.timeout(20_000),
+  });
   if (!res.ok) throw new Error(`OpenRouter key usage: ${res.status}`);
   return Number(((await res.json()) as { data?: { usage?: number } }).data?.usage ?? 0);
 }
 
+/** A key left behind keeps what is left of its limit spendable: try twice, and say so when it stays. */
 async function openRouterDeleteKey(management: string, hash: string): Promise<void> {
-  await fetch(`${OR_KEYS}/${hash}`, { method: 'DELETE', headers: { Authorization: `Bearer ${management}` } });
+  let why = '';
+  for (let i = 0; i < 2; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const res = await fetch(`${OR_KEYS}/${hash}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${management}` },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (res.ok || res.status === 404) return;
+      why = `${res.status} ${(await res.text()).slice(0, 200)}`;
+    } catch (e) {
+      why = (e as Error).message;
+    }
+  }
+  throw new Error(`OpenRouter did not delete the key ${hash}: ${why}`);
 }

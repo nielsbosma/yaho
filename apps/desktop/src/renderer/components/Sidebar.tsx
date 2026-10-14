@@ -144,7 +144,9 @@ export function Sidebar({
         <div className="app-drag titlebar-left relative flex h-16 shrink-0 items-center justify-center">
           {toggle}
           {/* Only when something is wrong: a connected app shows nothing. */}
-          {!connected && <span title="Reconnecting to the core…" className="absolute top-3 right-3 size-1.5 animate-pulse rounded-full bg-warn" />}
+          {!connected && (
+            <span title="Reconnecting to the core…" className="absolute top-3 right-3 size-1.5 animate-pulse rounded-full bg-warn" />
+          )}
         </div>
       ) : (
         <div className="app-drag titlebar-left flex h-16 shrink-0 items-center gap-2 px-4">

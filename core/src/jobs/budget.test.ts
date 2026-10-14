@@ -91,4 +91,35 @@ describe('budgets', () => {
     ctx.runner!.pump();
     expect((await until(second.id, ended)).status).toBe('finished');
   });
+
+  it('gives parallel jobs a share of the budget, not all of it each', async () => {
+    await api('/api/agents', { body: { name: 'pair', budget_usd: 1, max_parallel: 2 } });
+    mkdirSync(join(dir, 'agents', 'pair'), { recursive: true });
+    writeFileSync(join(dir, 'agents', 'pair', 'steps.json'), JSON.stringify([{ sleep_ms: 1500 }]));
+    const first = await api<Job>('/api/agents/pair/run', { method: 'POST' });
+    await until(first.id, (j) => j.status === 'running');
+    const second = await api<Job>('/api/agents/pair/run', { method: 'POST' });
+    await new Promise((r) => setTimeout(r, 500));
+    // The first job holds the whole budget until it ends.
+    expect((await api<Job>(`/api/jobs/${second.id}`)).status).toBe('queued');
+    expect((await until(first.id, ended)).status).toBe('finished');
+    expect((await until(second.id, ended)).status).toBe('finished');
+  });
+
+  it('survives deleting an agent while its job runs', async () => {
+    await api('/api/agents', { body: { name: 'doomed', budget_usd: 1 } });
+    mkdirSync(join(dir, 'agents', 'doomed'), { recursive: true });
+    writeFileSync(
+      join(dir, 'agents', 'doomed', 'steps.json'),
+      JSON.stringify([{ sleep_ms: 800 }, { cmd: 'echo late' }, { sleep_ms: 5000 }]),
+    );
+    const job = await api<Job>('/api/agents/doomed/run', { method: 'POST' });
+    await until(job.id, (j) => j.status === 'running');
+    await new Promise((r) => setTimeout(r, 300));
+    await api('/api/agents/doomed', { method: 'DELETE' });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(ctx.db.prepare('SELECT 1 FROM jobs WHERE id = ?').get(job.id)).toBeUndefined();
+    // The core is still up.
+    expect(Array.isArray(await api('/api/agents'))).toBe(true);
+  });
 });

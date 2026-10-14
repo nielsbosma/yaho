@@ -18,6 +18,8 @@ export const serverMode = () => process.env.YAHO_SERVER === '1';
 const COOKIE = 'yaho_session';
 const DAYS = 30;
 export const MIN_PASSWORD = 12;
+/** The largest sign-in request: a password and a code. */
+export const SESSION_BODY = 4096;
 
 /**
  * The password, read once at start and then removed from the environment, so that nothing the core starts (agents'
@@ -47,7 +49,9 @@ export function loadTotp(ctx: Ctx): void {
   delete process.env.YAHO_TOTP_RESET;
   if (reset && existsSync(ctx.paths.totp)) {
     rmSync(ctx.paths.totp);
-    console.warn('[yaho] YAHO_TOTP_RESET=1: the authenticator was removed. Sign in with the password to set it up again, then remove YAHO_TOTP_RESET.');
+    console.warn(
+      '[yaho] YAHO_TOTP_RESET=1: the authenticator was removed. Sign in with the password to set it up again, then remove YAHO_TOTP_RESET.',
+    );
   }
   if (enabled && existsSync(ctx.paths.totp)) secret = Buffer.from(readFileSync(ctx.paths.totp, 'utf8').trim(), 'hex');
 }
@@ -60,7 +64,9 @@ const eq = (a: string, b: string) => {
 
 function key(ctx: Ctx): Buffer {
   const epoch = ctx.settings.server.session_epoch ?? 0;
-  return createHmac('sha256', ctx.apiToken).update(`${password}\n${epoch}\n${secret?.toString('hex') ?? ''}`).digest();
+  return createHmac('sha256', ctx.apiToken)
+    .update(`${password}\n${epoch}\n${secret?.toString('hex') ?? ''}`)
+    .digest();
 }
 
 const sign = (ctx: Ctx, payload: string) => createHmac('sha256', key(ctx)).update(payload).digest('base64url');
@@ -69,13 +75,23 @@ function cookies(req: IncomingMessage): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i <= 0) continue;
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      // Some other site's cookie with a bad % escape: not ours, skip it.
+    }
   }
   return out;
 }
 
-/** Behind Sliplane or Caddy the request arrives as HTTP; the proxy says it was HTTPS. */
-const isHttps = (req: IncomingMessage) => req.headers['x-forwarded-proto'] === 'https' || !!(req.socket as { encrypted?: boolean }).encrypted;
+/** Behind Sliplane or Caddy (YAHO_TRUST_PROXY=1) the request arrives as HTTP; the proxy says it was HTTPS. */
+const isHttps = (req: IncomingMessage) =>
+  !!(req.socket as { encrypted?: boolean }).encrypted ||
+  (process.env.YAHO_TRUST_PROXY === '1' &&
+    String(req.headers['x-forwarded-proto'] ?? '')
+      .split(',')[0]!
+      .trim() === 'https');
 
 function setCookie(req: IncomingMessage, res: ServerResponse, value: string, maxAge: number): void {
   const parts = [`${COOKIE}=${value}`, 'Path=/', 'HttpOnly', 'SameSite=Strict', `Max-Age=${maxAge}`];
@@ -161,7 +177,11 @@ const MAX_TRACKED = 10_000;
  */
 function clientAddress(req: IncomingMessage): string {
   if (process.env.YAHO_TRUST_PROXY === '1') {
-    const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').map((x) => x.trim()).filter(Boolean).at(-1);
+    const fwd = String(req.headers['x-forwarded-for'] ?? '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .at(-1);
     if (fwd) return fwd;
   }
   return req.socket.remoteAddress ?? 'unknown';
@@ -172,29 +192,43 @@ function clientAddress(req: IncomingMessage): string {
  * 401 when wrong; which of the two was wrong is not said.
  */
 function checkPassword(req: IncomingMessage, given: unknown, code?: unknown): void {
-  attempt(req, () => {
-    if (!(typeof given === 'string' && eq(given, configured()))) return false;
-    if (!secret) return true;
-    const s = codeStep(secret, code, lastStep);
-    if (s === null) return false;
-    lastStep = s;
-    return true;
-  }, secret ? 'Wrong password or code.' : 'Wrong password.');
+  attempt(
+    req,
+    () => {
+      if (!(typeof given === 'string' && eq(given, configured()))) return false;
+      if (!secret) return true;
+      const s = codeStep(secret, code, lastStep);
+      if (s === null) return false;
+      lastStep = s;
+      return true;
+    },
+    secret ? 'Wrong password or code.' : 'Wrong password.',
+  );
 }
 
-/** One guess against the lockout: five wrong lock the address out, and a cap for everyone. */
+/** Throw 429 while this address is locked out: checked before the request's body is even read. */
+function checkLockout(req: IncomingMessage): void {
+  const f = fails.get(clientAddress(req));
+  if (f && f.until > Date.now())
+    throw new HttpError(429, `Too many wrong passwords. Try again in ${Math.ceil((f.until - Date.now()) / 60000)} minutes.`);
+}
+
+/**
+ * One guess against the lockout: five wrong lock the address out, and a cap for everyone. The right answer still
+ * signs in while the cap is reached, so guesses from elsewhere cannot keep the owner out.
+ */
 function attempt(req: IncomingMessage, ok: () => boolean, wrong: string): void {
+  checkLockout(req);
   const ip = clientAddress(req);
   const f = fails.get(ip) ?? { count: 0, until: 0, level: 0 };
-  if (f.until > Date.now()) throw new HttpError(429, `Too many wrong passwords. Try again in ${Math.ceil((f.until - Date.now()) / 60000)} minutes.`);
   recent = recent.filter((t) => t > Date.now() - 60_000);
-  if (recent.length >= GLOBAL_PER_MINUTE) throw new HttpError(429, 'Too many wrong passwords on this server just now. Try again in a minute.');
   if (ok()) {
     fails.delete(ip);
     return;
   }
   f.count++;
-  recent.push(Date.now());
+  const capped = recent.length >= GLOBAL_PER_MINUTE;
+  if (!capped) recent.push(Date.now());
   console.warn(`[yaho] wrong sign-in from ${ip} (${f.count})`);
   if (fails.size >= MAX_TRACKED && !fails.has(ip)) fails.delete(fails.keys().next().value!);
   if (f.count >= 5) {
@@ -203,6 +237,7 @@ function attempt(req: IncomingMessage, ok: () => boolean, wrong: string): void {
     f.count = 0;
   }
   fails.set(ip, f);
+  if (capped) throw new HttpError(429, 'Too many wrong passwords on this server just now. Try again in a minute.');
   throw new HttpError(401, wrong);
 }
 
@@ -222,6 +257,7 @@ export async function sessionRoute(
   }
   if (!serverMode()) throw new HttpError(404, 'sign-in is only used by the server version');
   if (req.method === 'POST') {
+    checkLockout(req);
     const b = await body();
     checkPassword(req, b.password, b.code);
     const setup = needsSetup();
@@ -239,7 +275,12 @@ export async function sessionRoute(
  * Set up the authenticator, with a setup session: GET shows the secret to scan, POST with a code from it saves it and
  * makes the session a full one.
  */
-async function totpSetup(ctx: Ctx, req: IncomingMessage, res: ServerResponse, body: () => Promise<Record<string, unknown>>): Promise<unknown> {
+async function totpSetup(
+  ctx: Ctx,
+  req: IncomingMessage,
+  res: ServerResponse,
+  body: () => Promise<Record<string, unknown>>,
+): Promise<unknown> {
   if (sessionLevel(ctx, req, res) !== 'setup') throw new HttpError(401, 'sign in with the password first');
   pending ??= randomBytes(20);
   const key = pending;
@@ -249,9 +290,14 @@ async function totpSetup(ctx: Ctx, req: IncomingMessage, res: ServerResponse, bo
     return { secret: b32, uri: `otpauth://totp/${label}?secret=${b32}&issuer=Yaho&algorithm=SHA1&digits=6&period=30` };
   }
   if (req.method !== 'POST') throw new HttpError(405, 'method not allowed');
+  checkLockout(req);
   const code = (await body()).code;
   let step: number | null = null;
-  attempt(req, () => (step = codeStep(key, code, -1)) !== null, 'That code does not match. Check the time on your phone and try the next one.');
+  attempt(
+    req,
+    () => (step = codeStep(key, code, -1)) !== null,
+    'That code does not match. Check the time on your phone and try the next one.',
+  );
   writeFileSync(ctx.paths.totp, key.toString('hex'), { mode: 0o600 });
   secret = key;
   pending = null;

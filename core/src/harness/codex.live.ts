@@ -40,7 +40,9 @@ const proc = codex.start(
 );
 const code = await proc.done;
 const count = (k: string) => events.filter((e) => e.kind === k).length;
-console.log(`${kind} ${model}: exit ${code}; session ${count('session')}, text ${count('text')}, tool_use ${count('tool_use')}, tool_result ${count('tool_result')}, usage ${count('usage')}`);
+console.log(
+  `${kind} ${model}: exit ${code}; session ${count('session')}, text ${count('text')}, tool_use ${count('tool_use')}, tool_result ${count('tool_result')}, usage ${count('usage')}`,
+);
 console.log('result:', JSON.stringify(events.find((e) => e.kind === 'result')));
 for (const e of events.filter((x) => x.kind === 'stderr')) console.log('stderr:', (e as { text: string }).text.slice(0, 160));
 const file = join(work, 'hello.txt');

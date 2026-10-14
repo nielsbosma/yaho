@@ -1,14 +1,17 @@
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Ctx } from '../context.ts';
 import { Composio } from '../secrets/composio.ts';
 import { Dopbase } from '../secrets/dopbase.ts';
+import { searchHistory, showHistory } from '../history.ts';
 import { fileIdea, type Idea } from '../ideas.ts';
 import { nativeToolName } from '../mcp/config.ts';
+import { checkCommand } from '../guard/commands.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
-import type { Req, Router } from './http.ts';
-import { safeJoin, sendFile } from './server.ts';
+import { isLink, resolveUnder, UnsafePathError, writeFileUnder } from '../fsSafe.ts';
+import { UPLOAD_LIMIT, type Req, type Router } from './http.ts';
+import { inFolder, sendFile } from './server.ts';
 
 /** The agent behind a job token. Every agent route is scoped to it. */
 function me(req: Req): { agent: string; job: string } {
@@ -16,16 +19,20 @@ function me(req: Req): { agent: string; job: string } {
   return req.caller;
 }
 
+/** What an artifact is, as the agent names it: a short word such as report or image. */
+const KIND_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/i;
+
 export function parseDuration(d: string): number {
   const m = /^(\d+(?:\.\d+)?)\s*(s|m|h|d)?$/i.exec(d.trim());
   if (!m) throw new HttpError(400, `bad duration "${d}" (use e.g. 90s, 30m, 2h, 1d)`);
-  const n = Number(m[1]);
-  return n * { s: 1e3, m: 6e4, h: 36e5, d: 864e5 }[(m[2] ?? 's').toLowerCase() as 's']!;
+  const ms = Number(m[1]) * { s: 1e3, m: 6e4, h: 36e5, d: 864e5 }[(m[2] ?? 's').toLowerCase() as 's']!;
+  if (!(ms <= 3650 * 864e5)) throw new HttpError(400, `duration "${d}" is too long`);
+  return ms;
 }
 
 export function agentRoutes(ctx: Ctx, r: Router): void {
-  const on = (method: string, path: string, h: (req: Req, who: { agent: string; job: string }) => unknown) =>
-    r.on(method, `/api/agent${path}`, (req) => h(req, me(req)), { agent: true });
+  const on = (method: string, path: string, h: (req: Req, who: { agent: string; job: string }) => unknown, maxBody?: number) =>
+    r.on(method, `/api/agent${path}`, (req) => h(req, me(req)), { agent: true, maxBody });
 
   const assigned = (agent: string, project: string) => {
     if (!s.getAgent(ctx, agent).projects.includes(project)) throw new HttpError(403, `project ${project} is not assigned to you`);
@@ -78,6 +85,21 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     return ctx.sms.send(w.agent, w.job, await req.body());
   });
 
+  // ---- history: the agent's own past jobs ----
+  on('GET', '/history/search', (req, w) => {
+    const since = req.query.get('since');
+    return searchHistory(ctx, w.agent, req.query.get('q') ?? '', {
+      since: since ? new Date(Date.now() - parseDuration(since)).toISOString() : undefined,
+      limit: Number(req.query.get('limit')) || undefined,
+    });
+  });
+  on('GET', '/history/:job', (req, w) => showHistory(ctx, w.agent, req.params.job!));
+  // ---- the browser (yaho browser) ----
+  on('POST', '/browser', async (req, w) => {
+    if (!ctx.browser) throw new HttpError(400, 'the browser is not available in Yaho');
+    return ctx.browser.run(w.agent, w.job, await req.body());
+  });
+
   // ---- query (read-only, scoped) ----
   on('GET', '/query/:what', (req, w) => {
     const agent = s.getAgent(ctx, w.agent);
@@ -112,35 +134,64 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
   // ---- projects and artifacts ----
   on('GET', '/projects/:project/files', (req, w) => {
     assigned(w.agent, req.params.project!);
-    const dir = join(ctx.paths.project(req.params.project!), 'files');
-    return existsSync(dir) ? readdirSync(dir).map((f) => ({ name: f, size: statSync(join(dir, f)).size })) : [];
+    const root = ctx.paths.project(req.params.project!);
+    const dir = join(root, 'files');
+    try {
+      resolveUnder(root, 'files');
+    } catch {
+      return [];
+    }
+    if (!existsSync(dir)) return [];
+    // Symlinks are left out: their size would be read through the link.
+    return readdirSync(dir).flatMap((f) => {
+      const st = lstatSync(join(dir, f), { throwIfNoEntry: false });
+      return st?.isFile() ? [{ name: f, size: st.size }] : [];
+    });
   });
   on('GET', '/projects/:project/files/:file', (req, w) => {
     assigned(w.agent, req.params.project!);
-    sendFile(req.res, safeJoin(join(ctx.paths.project(req.params.project!), 'files'), req.params.file!));
+    const root = ctx.paths.project(req.params.project!);
+    sendFile(req.res, root, inFolder(root, 'files', req.params.file!));
   });
-  on('POST', '/projects/:project/artifacts', async (req, w) => {
-    const project = req.params.project!;
-    assigned(w.agent, project);
-    const kind = req.query.get('kind') || 'file';
-    const name = basename((req.query.get('name') ?? '').replaceAll('\\', '/'));
-    if (!name) throw new HttpError(400, 'name is required');
-    const dir = join(ctx.paths.project(project), 'artifacts');
-    mkdirSync(dir, { recursive: true });
-    let target = name;
-    for (let i = 2; existsSync(join(dir, target)); i++) target = name.replace(/(\.[^.]*)?$/, `-${i}$1`);
-    writeFileSync(join(dir, target), await req.bytes());
-    const a = s.addArtifact(ctx, { project, agent: w.agent, job: w.job, kind, file_path: target });
-    return { id: a.id, project, file: target, kind };
-  });
+  on(
+    'POST',
+    '/projects/:project/artifacts',
+    async (req, w) => {
+      const project = req.params.project!;
+      assigned(w.agent, project);
+      const kind = req.query.get('kind') || 'file';
+      if (!KIND_RE.test(kind)) throw new HttpError(400, 'kind must be a short word: letters, digits, - and _');
+      const name = basename((req.query.get('name') ?? '').replaceAll('\\', '/'));
+      if (!name || name === '.' || name === '..') throw new HttpError(400, 'name is required');
+      const root = ctx.paths.project(project);
+      const dir = join(root, 'artifacts');
+      let target = name;
+      for (let i = 2; existsSync(join(dir, target)) || isLink(join(dir, target)); i++) target = name.replace(/(\.[^.]*)?$/, `-${i}$1`);
+      const bytes = await req.bytes();
+      try {
+        writeFileUnder(root, inFolder(root, 'artifacts', target), bytes);
+      } catch (e) {
+        if (e instanceof UnsafePathError) throw new HttpError(400, 'the artifacts folder is not a plain folder in the project');
+        throw e;
+      }
+      const a = s.addArtifact(ctx, { project, agent: w.agent, job: w.job, kind, file_path: target });
+      return { id: a.id, project, file: target, kind };
+    },
+    UPLOAD_LIMIT,
+  );
 
   // ---- briefing ----
   on('GET', '/briefing', (_req, w) => ({ briefing: s.getAgent(ctx, w.agent).briefing }));
   on('PUT', '/briefing', async (req, w) => {
     const raw = (await req.bytes()).toString('utf8');
-    const briefing = req.raw.headers['content-type']?.includes('json')
-      ? String((JSON.parse(raw) as { briefing?: string }).briefing ?? '')
-      : raw;
+    let briefing = raw;
+    if (req.raw.headers['content-type']?.includes('json')) {
+      try {
+        briefing = String((JSON.parse(raw) as { briefing?: string } | null)?.briefing ?? '');
+      } catch {
+        throw new HttpError(400, 'could not parse the briefing as JSON');
+      }
+    }
     if (!briefing.trim()) throw new HttpError(400, 'refusing to save an empty briefing');
     s.setBriefing(ctx, w.agent, briefing, `agent (${w.job})`);
     return { saved: true, versions: s.briefingHistory(ctx, w.agent).length };
@@ -187,6 +238,11 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
   });
   on('POST', '/resources/:resource/tools/:tool', async (req, w) => {
     const res = toolResource(w.agent, req.params.resource!);
+    if (res.kind !== 'mcp') {
+      // Only the toolkit's own tools (GMAIL_SEND_EMAIL for gmail): the connected account is for that toolkit alone.
+      const prefix = `${res.config!.toolkit!.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_`;
+      if (!req.params.tool!.toUpperCase().startsWith(prefix)) throw new HttpError(403, `${req.params.tool} is not a tool of ${res.name}`);
+    }
     const args = await req.body<Record<string, unknown>>();
     if (res.kind === 'mcp') return hub().call(res.name, req.params.tool!, args);
     return new Composio(ctx).execute(req.params.tool!, res.config!.connected_account_id!, args);
@@ -239,6 +295,12 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
       this_job_usd: s.getJob(ctx, w.job).cost_usd,
     };
   });
+  /** Command Rules: the hook asks here before each shell command runs. */
+  on('POST', '/guard/command', async (req, w) => {
+    const { command } = await req.body<{ command?: string }>();
+    return checkCommand(ctx, w, String(command ?? ''));
+  });
+
   on('POST', '/sleep', async (req, w) => {
     const { duration } = await req.body<{ duration?: string }>();
     const until = ctx.runner!.sleep(w.job, parseDuration(String(duration ?? '')));

@@ -122,7 +122,10 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
     <>
       <div
         {...drop('')}
-        className={cn('mx-2 mt-5 flex items-center justify-between rounded-md px-2 pb-1', over === '' && 'bg-accent/10 ring-1 ring-accent/40')}
+        className={cn(
+          'mx-2 mt-5 flex items-center justify-between rounded-md px-2 pb-1',
+          over === '' && 'bg-accent/10 ring-1 ring-accent/40',
+        )}
       >
         <a href={href('agents')} className="text-xs font-semibold tracking-wide text-muted uppercase hover:text-ink">
           Agents
@@ -148,7 +151,11 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
           const open = opened.includes(f);
           const running = inside.some((a) => a.running);
           return (
-            <div key={f} {...drop(f)} className={cn('flex flex-col gap-0.5 rounded-lg', over === f && 'bg-accent/10 ring-1 ring-accent/40')}>
+            <div
+              key={f}
+              {...drop(f)}
+              className={cn('flex flex-col gap-0.5 rounded-lg', over === f && 'bg-accent/10 ring-1 ring-accent/40')}
+            >
               <button
                 type="button"
                 onClick={() => toggle(f)}
@@ -186,7 +193,11 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
       {folderMenu.element}
       {naming && <FolderDialog folder={naming.folder} onClose={() => setNaming(null)} />}
       {deleting && (
-        <DeleteFolderDialog folder={deleting} agents={agents?.filter((a) => a.folder === deleting).map((a) => a.name) ?? []} onClose={() => setDeleting(null)} />
+        <DeleteFolderDialog
+          folder={deleting}
+          agents={agents?.filter((a) => a.folder === deleting).map((a) => a.name) ?? []}
+          onClose={() => setDeleting(null)}
+        />
       )}
     </>
   );
@@ -267,7 +278,12 @@ function DeleteFolderDialog({ folder, agents, onClose }: { folder: string; agent
         {agents.length ? (
           <>
             <label className="flex cursor-pointer items-start gap-2.5">
-              <input type="checkbox" className="mt-0.5 size-4 accent-[var(--c-danger)]" checked={withAgents} onChange={(e) => setWithAgents(e.target.checked)} />
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-[var(--c-danger)]"
+                checked={withAgents}
+                onChange={(e) => setWithAgents(e.target.checked)}
+              />
               <span>
                 Delete all agents
                 <span className="block text-xs text-muted">{agents.join(', ')}</span>

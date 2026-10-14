@@ -42,7 +42,9 @@ describe('yaho idea', () => {
     const create = calls.find((c) => c[1] === 'create')!;
     expect(create).toContain('nielsbosma/yaho');
     expect(create.at(-1)).toContain('Suggested by the Yaho agent `idler`');
-    expect(await fileIdea(ctx, who, { title: 'existing idea', body: 'Again.' }, gh)).toEqual({ duplicate: 'https://github.com/x/y/issues/1' });
+    expect(await fileIdea(ctx, who, { title: 'existing idea', body: 'Again.' }, gh)).toEqual({
+      duplicate: 'https://github.com/x/y/issues/1',
+    });
     for (let i = 2; i < IDEAS_PER_DAY; i++) await fileIdea(ctx, who, { title: `Idea ${i}`, body: 'More.' }, gh);
     await expect(fileIdea(ctx, who, { title: 'One too many', body: 'Stop.' }, gh)).rejects.toThrow(/in the last day/);
   });

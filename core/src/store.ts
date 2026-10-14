@@ -1,14 +1,33 @@
+import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync, renameSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { Cron } from 'croner';
 import type { Ctx } from './context.ts';
 import type { Guardrails } from './config.ts';
 import { newId, now } from './db/index.ts';
 import { normalizeMcp, referencedKeys, type McpConfig } from './mcp/config.ts';
+import { validateRules } from './guard/commandRules.ts';
 
 // ---------- shapes (what the API and YAML speak) ----------
 
-export type TriggerSpec = { cron: string } | { inbox: true } | { delay: string; next_fire: string };
+export type TriggerSpec = { cron: string } | { inbox: true } | { delay: string; next_fire: string } | WebhookTrigger;
+
+/** How a webhook's deliveries are checked, besides the secret token in its URL. */
+export const WEBHOOK_VERIFY = ['none', 'github', 'stripe', 'svix', 'yaho'] as const;
+export type WebhookVerify = (typeof WEBHOOK_VERIFY)[number];
+
+/** A delivery to the webhook's URL starts a job. The URL token and signing secret are not part of the definition. */
+export interface WebhookTrigger {
+  webhook: string;
+  verify?: WebhookVerify;
+  /** Added to the prompt of each job the webhook starts. */
+  instructions?: string;
+  /** Deliveries per hour; more are refused. Default 60. */
+  limit?: number;
+  paused?: boolean;
+}
+
+export const WEBHOOK_LIMIT = 60;
 
 export interface Agent {
   name: string;
@@ -26,6 +45,8 @@ export interface Agent {
   email?: boolean;
   /** Text people from Yaho's Twilio number and get their replies. */
   sms?: boolean;
+  /** A browser of its own in each job (yaho browser). */
+  browser?: boolean;
 }
 
 export interface Project {
@@ -89,6 +110,8 @@ export interface Job {
   created: string;
   started: string | null;
   ended: string | null;
+  summary: string | null;
+  recap: string | null;
 }
 
 export const ACTIVE = ['queued', 'running'];
@@ -124,6 +147,14 @@ function agentFromRow(ctx: Ctx, r: Row): Agent {
   const triggers: TriggerSpec[] = (
     ctx.db.prepare("SELECT * FROM triggers WHERE agent = ? AND type IN ('cron','inbox') ORDER BY created").all(name) as Row[]
   ).map((t) => (t.type === 'cron' ? { cron: t.cron as string } : { inbox: true as const }));
+  for (const w of ctx.db.prepare('SELECT * FROM webhooks WHERE agent = ? ORDER BY created, name').all(name) as Row[])
+    triggers.push({
+      webhook: w.name as string,
+      ...(w.verify !== 'none' ? { verify: w.verify as WebhookVerify } : {}),
+      ...(w.instructions ? { instructions: w.instructions as string } : {}),
+      ...(w.hourly_limit !== WEBHOOK_LIMIT ? { limit: w.hourly_limit as number } : {}),
+      ...(w.paused ? { paused: true } : {}),
+    });
   return {
     name,
     enabled: !!r.enabled,
@@ -142,6 +173,7 @@ function agentFromRow(ctx: Ctx, r: Row): Agent {
     ),
     ...(r.email ? { email: true } : {}),
     ...(r.sms ? { sms: true } : {}),
+    ...(r.browser ? { browser: true } : {}),
   };
 }
 
@@ -187,15 +219,15 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
   const d = ctx.settings.defaults;
   const { db } = ctx;
   const ts = now();
-  if (opts.rename && opts.rename !== input.name) {
+  const rename = opts.rename && opts.rename !== input.name ? opts.rename : undefined;
+  if (rename) {
     if (agentExists(ctx, input.name)) throw new HttpError(409, `agent ${input.name} already exists`);
-    db.prepare('UPDATE agents SET name = ? WHERE name = ?').run(input.name, opts.rename);
-    db.prepare('UPDATE messages SET to_addr = ? WHERE to_addr = ?').run(`agent:${input.name}`, `agent:${opts.rename}`);
-    db.prepare('UPDATE messages SET from_addr = ? WHERE from_addr = ?').run(`agent:${input.name}`, `agent:${opts.rename}`);
-    const from = ctx.paths.agent(opts.rename);
-    if (existsSync(from)) renameSync(from, ctx.paths.agent(input.name));
+    if (!agentExists(ctx, rename)) throw new HttpError(404, `agent ${rename} not found`);
+    // Its running jobs work in the folder that moves.
+    if (db.prepare("SELECT 1 FROM jobs WHERE agent = ? AND status = 'running'").get(rename))
+      throw new HttpError(409, `${rename} has a running job: stop it before renaming`);
   }
-  const prev = db.prepare('SELECT * FROM agents WHERE name = ?').get(input.name) as Row | undefined;
+  const prev = db.prepare('SELECT * FROM agents WHERE name = ?').get(rename ?? input.name) as Row | undefined;
   const a: Agent = {
     name: input.name,
     enabled: input.enabled ?? (prev ? !!prev.enabled : true),
@@ -210,8 +242,15 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
     resources: input.resources ?? (prev ? agentFromRow(ctx, prev).resources : []),
     email: input.email ?? !!prev?.email,
     sms: input.sms ?? !!prev?.sms,
+    browser: input.browser ?? !!prev?.browser,
   };
   if (!ctx.settings.harnesses[a.harness]) throw new HttpError(400, `unknown harness ${a.harness}`);
+  if (a.guardrails.command_rules !== undefined)
+    try {
+      a.guardrails = { ...a.guardrails, command_rules: validateRules(a.guardrails.command_rules) };
+    } catch (e) {
+      throw new HttpError(400, (e as Error).message);
+    }
   for (const t of a.triggers) {
     if ('cron' in t) {
       try {
@@ -221,14 +260,30 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
       }
     }
   }
+  const hooks = a.triggers.filter((t): t is WebhookTrigger => 'webhook' in t);
+  for (const w of hooks) {
+    assertName('webhook', w.webhook);
+    if (hooks.filter((x) => x.webhook === w.webhook).length > 1) throw new HttpError(400, `two webhooks are named ${w.webhook}`);
+    if (w.verify && !WEBHOOK_VERIFY.includes(w.verify))
+      throw new HttpError(400, `webhook verify must be one of ${WEBHOOK_VERIFY.join(', ')}`);
+    if (w.limit !== undefined && !(Number.isInteger(w.limit) && w.limit >= 1 && w.limit <= 10_000))
+      throw new HttpError(400, 'webhook limit must be a whole number from 1 to 10000');
+  }
   db.exec('BEGIN');
   try {
+    if (rename) {
+      db.prepare('UPDATE agents SET name = ? WHERE name = ?').run(input.name, rename);
+      for (const col of ['to_addr', 'from_addr'])
+        db.prepare(`UPDATE messages SET ${col} = ? WHERE ${col} = ?`).run(`agent:${input.name}`, `agent:${rename}`);
+      for (const table of ['job_tokens', 'artifacts', 'job_search'])
+        db.prepare(`UPDATE ${table} SET agent = ? WHERE agent = ?`).run(input.name, rename);
+    }
     db.prepare(
-      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, sms, created, updated)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, sms, browser, created, updated)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(name) DO UPDATE SET enabled=excluded.enabled, briefing=excluded.briefing, harness=excluded.harness,
          models=excluded.models, budget_usd=excluded.budget_usd, max_parallel=excluded.max_parallel,
-         guardrails=excluded.guardrails, email=excluded.email, sms=excluded.sms, updated=excluded.updated`,
+         guardrails=excluded.guardrails, email=excluded.email, sms=excluded.sms, browser=excluded.browser, updated=excluded.updated`,
     ).run(
       a.name,
       a.enabled ? 1 : 0,
@@ -240,6 +295,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
       JSON.stringify(a.guardrails),
       a.email ? 1 : 0,
       a.sms ? 1 : 0,
+      a.browser ? 1 : 0,
       ts,
       ts,
     );
@@ -265,6 +321,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
         db.prepare("INSERT INTO triggers (id, agent, type, created) VALUES (?,?,'inbox',?)").run(newId('trg'), a.name, ts);
       }
     }
+    syncWebhooks(ctx, a.name, hooks, ts);
     db.prepare('DELETE FROM agent_projects WHERE agent = ?').run(a.name);
     for (const p of a.projects) {
       if (!db.prepare('SELECT 1 FROM projects WHERE name = ?').get(p)) throw new HttpError(400, `unknown project ${p}`);
@@ -280,6 +337,12 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
     db.exec('ROLLBACK');
     throw e;
   }
+  if (rename)
+    for (const [from, to] of [
+      [ctx.paths.agent(rename), ctx.paths.agent(a.name)],
+      [join(ctx.paths.root, 'codex', rename), join(ctx.paths.root, 'codex', a.name)],
+    ])
+      if (existsSync(from!)) renameSync(from!, to!);
   ensureAgentWorkspace(ctx, a.name);
   ctx.bus.emitEvent({ type: 'changed', entity: 'agents', name: a.name });
   return getAgent(ctx, a.name);
@@ -287,11 +350,57 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
 
 export function deleteAgent(ctx: Ctx, name: string): void {
   getAgent(ctx, name);
-  for (const j of ctx.db.prepare("SELECT id FROM jobs WHERE agent = ? AND status IN ('running','queued')").all(name) as Row[])
-    ctx.runner?.stop(j.id as string, 'stopped', 'agent deleted');
+  // Its running jobs are forgotten before their rows go: nothing they still print is recorded.
+  for (const j of ctx.db.prepare("SELECT id FROM jobs WHERE agent = ? AND status = 'running'").all(name) as Row[])
+    ctx.runner?.detach(j.id as string);
   ctx.db.prepare('DELETE FROM agents WHERE name = ?').run(name);
   ctx.bus.emitEvent({ type: 'changed', entity: 'agents', name });
+  ctx.runner?.pump();
 }
+
+/** Keep each webhook's token and secret across saves: rows are matched by name, new ones get their own. */
+function syncWebhooks(ctx: Ctx, agent: string, hooks: WebhookTrigger[], ts: string): void {
+  const { db } = ctx;
+  const keep = hooks.map((w) => w.webhook);
+  for (const r of db.prepare('SELECT name FROM webhooks WHERE agent = ?').all(agent) as Row[])
+    if (!keep.includes(r.name as string)) db.prepare('DELETE FROM webhooks WHERE agent = ? AND name = ?').run(agent, r.name as string);
+  for (const w of hooks) {
+    const verify = w.verify ?? 'none';
+    const prev = db.prepare('SELECT verify FROM webhooks WHERE agent = ? AND name = ?').get(agent, w.webhook) as Row | undefined;
+    if (prev) {
+      db.prepare('UPDATE webhooks SET verify = ?, instructions = ?, hourly_limit = ?, paused = ? WHERE agent = ? AND name = ?').run(
+        verify,
+        w.instructions ?? '',
+        w.limit ?? WEBHOOK_LIMIT,
+        w.paused ? 1 : 0,
+        agent,
+        w.webhook,
+      );
+      // Svix secrets have their own shape; a switch to or from it needs a fresh one.
+      if ((prev.verify === 'svix') !== (verify === 'svix'))
+        db.prepare('UPDATE webhooks SET secret = ? WHERE agent = ? AND name = ?').run(webhookSecret(verify), agent, w.webhook);
+    } else {
+      db.prepare(
+        'INSERT INTO webhooks (id, agent, name, token, verify, secret, instructions, hourly_limit, paused, created) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      ).run(
+        newId('whk'),
+        agent,
+        w.webhook,
+        webhookToken(),
+        verify,
+        webhookSecret(verify),
+        w.instructions ?? '',
+        w.limit ?? WEBHOOK_LIMIT,
+        w.paused ? 1 : 0,
+        ts,
+      );
+    }
+  }
+}
+
+export const webhookToken = () => randomBytes(24).toString('base64url');
+export const webhookSecret = (verify: string) =>
+  verify === 'svix' ? `whsec_${randomBytes(24).toString('base64')}` : randomBytes(32).toString('hex');
 
 export function ensureAgentWorkspace(ctx: Ctx, name: string): string {
   const dir = ctx.paths.agent(name);
@@ -335,7 +444,8 @@ export function createFolder(ctx: Ctx, name: unknown): string[] {
 export function renameFolder(ctx: Ctx, from: string, to: unknown): string[] {
   const n = folderName(to);
   if (!ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(from)) throw new HttpError(404, `folder ${from} not found`);
-  if (n !== from && ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(n)) throw new HttpError(409, `folder ${n} already exists`);
+  if (n !== from && ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(n))
+    throw new HttpError(409, `folder ${n} already exists`);
   ctx.db.prepare('UPDATE agent_folders SET name = ? WHERE name = ?').run(n, from);
   ctx.db.prepare('UPDATE agents SET folder = ? WHERE folder = ?').run(n, from);
   return listFolders(ctx);
@@ -463,14 +573,7 @@ export function saveResource(ctx: Ctx, input: Partial<Resource> & { name: string
       `INSERT INTO resources (name, briefing, kind, config, created, updated) VALUES (?,?,?,?,?,?)
        ON CONFLICT(name) DO UPDATE SET briefing=excluded.briefing, kind=excluded.kind, config=excluded.config, updated=excluded.updated`,
     )
-    .run(
-      input.name,
-      input.briefing ?? (prev?.briefing as string) ?? '',
-      kind,
-      JSON.stringify(config),
-      ts,
-      ts,
-    );
+    .run(input.name, input.briefing ?? (prev?.briefing as string) ?? '', kind, JSON.stringify(config), ts, ts);
   if (input.keys) {
     const keep = new Set(input.keys.map((k) => k.name));
     for (const k of input.keys) {
@@ -549,7 +652,7 @@ export function listMessages(ctx: Ctx, opts: { to?: string; involving?: string; 
     args.push(opts.involving, opts.involving);
   }
   if (opts.unread) where.push('read = 0');
-  const sql = `SELECT * FROM messages ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY read ASC, created DESC LIMIT ${opts.limit ?? 500}`;
+  const sql = `SELECT * FROM messages ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY read ASC, created DESC LIMIT ${limitOf(opts.limit, 500)}`;
   return (ctx.db.prepare(sql).all(...args) as Row[]).map(messageFromRow);
 }
 
@@ -710,6 +813,12 @@ export function getJob(ctx: Ctx, id: string): Job {
   return { ...r };
 }
 
+/** A LIMIT from a query string: a positive whole number, or the default. */
+const limitOf = (n: unknown, fallback: number): number => {
+  const v = Math.floor(Number(n));
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+};
+
 export function listJobs(ctx: Ctx, opts: { agent?: string; active?: boolean; limit?: number } = {}): Job[] {
   const where: string[] = [];
   const args: string[] = [];
@@ -720,7 +829,9 @@ export function listJobs(ctx: Ctx, opts: { agent?: string; active?: boolean; lim
   if (opts.active) where.push("status IN ('running','queued')");
   return (
     ctx.db
-      .prepare(`SELECT *, (SELECT COUNT(*) FROM messages m WHERE m.job = jobs.id) AS messages FROM jobs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created DESC LIMIT ${opts.limit ?? 200}`)
+      .prepare(
+        `SELECT *, (SELECT COUNT(*) FROM messages m WHERE m.job = jobs.id) AS messages FROM jobs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created DESC LIMIT ${limitOf(opts.limit, 200)}`,
+      )
       .all(...args) as unknown as Job[]
   ).map((j) => ({ ...j }));
 }
@@ -739,9 +850,14 @@ export function updateJob(ctx: Ctx, id: string, fields: Partial<Job>): Job {
 
 export function addJobEvent(ctx: Ctx, job: string, kind: string, data: unknown) {
   const created = now();
-  const r = ctx.db
-    .prepare('INSERT INTO job_events (job, kind, data, created) VALUES (?,?,?,?)')
-    .run(job, kind, JSON.stringify(data), created);
+  let r;
+  try {
+    r = ctx.db.prepare('INSERT INTO job_events (job, kind, data, created) VALUES (?,?,?,?)').run(job, kind, JSON.stringify(data), created);
+  } catch (e) {
+    // The job is gone (its agent was deleted): there is nothing to record it on.
+    if (/FOREIGN KEY/i.test((e as Error).message)) return;
+    throw e;
+  }
   ctx.bus.emitEvent({ type: 'job_event', job, event: { id: Number(r.lastInsertRowid), kind, data, created } });
 }
 
@@ -796,7 +912,7 @@ export function deleteArtifacts(ctx: Ctx, ids: string[]): number {
     const dir = join(ctx.paths.project(a.project as string), 'artifacts');
     const file = join(dir, a.file_path as string);
     // Only files inside the project's artifacts folder.
-    if (file.startsWith(dir)) rmSync(file, { force: true });
+    if (file.startsWith(dir + sep)) rmSync(file, { force: true });
     ctx.db.prepare('DELETE FROM artifacts WHERE id = ?').run(id);
     n++;
   }

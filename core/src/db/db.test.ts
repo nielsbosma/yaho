@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
@@ -28,6 +28,13 @@ describe('data directory', () => {
     expect(settings.server.port).toBe(4700);
     expect(token).toMatch(/^[0-9a-f]{48}$/);
     expect(apiToken()).toBe(token);
+    if (process.platform !== 'win32') {
+      const mode = (f: string) => statSync(f).mode & 0o777;
+      expect([mode(p.root), mode(p.settings), mode(p.token)]).toEqual([0o700, 0o600, 0o600]);
+      chmodSync(p.token, 0o644);
+      apiToken();
+      expect(mode(p.token)).toBe(0o600);
+    }
     db.close();
   });
 

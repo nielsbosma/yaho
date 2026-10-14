@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Ctx } from './context.ts';
 import { resolveModel } from './providers.ts';
-import { harnessFits, jobAccess, listModels } from './providerApi.ts';
+import { harnessFits, jobAccess, listModels, type JobAccess } from './providerApi.ts';
+import type { ProviderConfig } from './config.ts';
+import { checkToken } from './bridge.ts';
 import { codex } from './harness/codex.ts';
-import { asAgent } from './harness/asAgent.ts';
+import { asAgent, jobEnv } from './harness/asAgent.ts';
 import { resolveCommand } from './harness/claudeCode.ts';
 import { compareVersions } from './updates.ts';
 import type { HarnessEvent } from './harness/types.ts';
@@ -32,7 +34,14 @@ export interface ClaudeCheck {
 let last: ClaudeCheck | null = null;
 export const lastClaudeCheck = () => last;
 
-function run(cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, timeoutMs: number, input = ''): Promise<{ code: number | null; out: string; err: string }> {
+function run(
+  cmd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+  timeoutMs: number,
+  input = '',
+): Promise<{ code: number | null; out: string; err: string }> {
   return new Promise((resolve) => {
     let out = '';
     let err = '';
@@ -61,6 +70,42 @@ function run(cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, t
   });
 }
 
+/** What one check may spend on a key minted for it. */
+const CHECK_BUDGET_USD = 1;
+
+/**
+ * How a check's harness reaches the provider: as a job does, with a key minted and capped for the check where the
+ * provider can (never the master key), and a bridge token for this one provider and model (never the human's token).
+ */
+async function checkAccess(
+  ctx: Ctx,
+  provider: ProviderConfig,
+  model: string,
+  harness: string,
+): Promise<{ access: JobAccess; done(): void }> {
+  const bridge = checkToken(provider.id, [model]);
+  try {
+    const access = await jobAccess(ctx.settings, provider, {
+      models: [model],
+      remaining: CHECK_BUDGET_USD,
+      agent: 'check',
+      job: `check-${Date.now().toString(36)}`,
+      harness,
+      bridge: { apiUrl: ctx.apiUrl, token: bridge.token },
+    });
+    return {
+      access,
+      done: () => {
+        bridge.revoke();
+        void access.capped?.release().catch(() => undefined);
+      },
+    };
+  } catch (e) {
+    bridge.revoke();
+    throw e;
+  }
+}
+
 /** At least the minimum version. */
 const newer = (a: string, min: string) => compareVersions(a, min) >= 0;
 
@@ -71,9 +116,8 @@ const newer = (a: string, min: string) => compareVersions(a, min) >= 0;
 export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
   const cmd = ctx.settings.harnesses['claude-code']?.command ?? 'claude';
   const r: ClaudeCheck = { checked_at: new Date().toISOString(), installed: false };
-  const env: NodeJS.ProcessEnv = {};
-  const skip = /^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|YAHO_PASSWORD|YAHO_SERVER)$/;
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !skip.test(k)) env[k] = v;
+  const env: NodeJS.ProcessEnv = jobEnv();
+  let done: () => void = () => undefined;
   const dir = mkdtempSync(join(tmpdir(), 'yaho-check-'));
   // On the server the check runs as the agents' user, who must be able to work in it.
   if (process.env.YAHO_AGENT_UID) chmodSync(dir, 0o777);
@@ -96,15 +140,22 @@ export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
     const chosen = ctx.settings.defaults.models[0];
     const resolved = chosen ? resolveModel(ctx.settings, chosen) : undefined;
     const model = resolved?.model;
-    const access = resolved ? await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '', harness: 'claude-code', bridge: { apiUrl: ctx.apiUrl, token: ctx.apiToken } }).catch(() => null) : null;
-    if (!model || !access) {
+    if (!resolved || !model) {
       r.failed = 'provider';
       r.error = 'Set the model provider (URL, key and a default model) first.';
       return (last = r);
     }
+    let providerEnv: Record<string, string>;
+    try {
+      const a = await checkAccess(ctx, resolved.provider, model, 'claude-code');
+      providerEnv = a.access.env;
+      done = a.done;
+    } catch (e) {
+      r.failed = 'provider';
+      r.error = `Set the model provider (URL, key and a default model) first. (${(e as Error).message})`;
+      return (last = r);
+    }
     r.model = model;
-    // As jobs get it, but with the provider's own key, never a capped one minted for the check.
-    const { env: providerEnv } = access;
     Object.assign(env, {
       ...providerEnv,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
@@ -122,6 +173,7 @@ export async function checkClaude(ctx: Ctx): Promise<ClaudeCheck> {
     }
     return (last = r);
   } finally {
+    done();
     // Windows may still hold the folder a moment after Claude Code exits; a leftover temp folder does no harm.
     try {
       rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
@@ -145,8 +197,8 @@ export const lastCodexCheck = () => lastCodex;
 export async function checkCodex(ctx: Ctx): Promise<ClaudeCheck> {
   const cmd = ctx.settings.harnesses.codex?.command ?? 'codex';
   const r: ClaudeCheck = { checked_at: new Date().toISOString(), installed: false };
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/^(YAHO_PASSWORD|YAHO_SERVER)$/.test(k)) env[k] = v;
+  const env = jobEnv();
+  let done: () => void = () => undefined;
   const dir = mkdtempSync(join(tmpdir(), 'yaho-check-'));
   // On the server the check runs as the agents' user, who must be able to work in it.
   if (process.env.YAHO_AGENT_UID) chmodSync(dir, 0o777);
@@ -182,11 +234,20 @@ export async function checkCodex(ctx: Ctx): Promise<ClaudeCheck> {
     const gpt = (m: string) => /(^|\/)(gpt|o\d|codex)/i.test(m);
     let model = resolved.model;
     if (!gpt(model)) {
-      const fromDefaults = ctx.settings.defaults.models.map((m) => resolveModel(ctx.settings, m)).find((x) => x.provider.id === resolved.provider.id && gpt(x.model));
+      const fromDefaults = ctx.settings.defaults.models
+        .map((m) => resolveModel(ctx.settings, m))
+        .find((x) => x.provider.id === resolved.provider.id && gpt(x.model));
       model = fromDefaults?.model ?? (await listModels(ctx.settings, resolved.provider).catch(() => [] as string[])).find(gpt) ?? model;
     }
     r.model = model;
-    const access = await jobAccess(ctx.settings, resolved.provider, { models: [], remaining: 0, agent: '', job: '', harness: 'codex' });
+    let access: JobAccess;
+    try {
+      ({ access, done } = await checkAccess(ctx, resolved.provider, model, 'codex'));
+    } catch (e) {
+      r.failed = 'provider';
+      r.error = (e as Error).message;
+      return (lastCodex = r);
+    }
     const events: HarnessEvent[] = [];
     const proc = codex.start(
       {
@@ -212,6 +273,7 @@ export async function checkCodex(ctx: Ctx): Promise<ClaudeCheck> {
     }
     return (lastCodex = r);
   } finally {
+    done();
     try {
       rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     } catch {

@@ -42,7 +42,10 @@ export function composioRoutes(ctx: Ctx, r: Router): void {
     // Only this Yaho's own connections, and none a resource still uses.
     const conn = await c().connection(id);
     if (conn.user_id !== c().userId) throw new HttpError(403, 'that connection belongs to another Composio user');
-    const users = s.listResources(ctx).filter((x) => x.kind === 'composio' && x.config?.connected_account_id === id).map((x) => x.name);
+    const users = s
+      .listResources(ctx)
+      .filter((x) => x.kind === 'composio' && x.config?.connected_account_id === id)
+      .map((x) => x.name);
     if (users.length) throw new HttpError(409, `still used by ${users.join(', ')}: delete those resources first`);
     await c().disconnect(id);
     ctx.bus.emitEvent({ type: 'changed', entity: 'resources', name: id });

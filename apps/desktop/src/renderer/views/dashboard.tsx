@@ -42,7 +42,8 @@ const TRIGGERS: Record<string, string> = {
   followup: 'Follow Up',
 };
 
-const seconds = (s: number) => (!s ? '–' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`);
+const seconds = (s: number) =>
+  !s ? '–' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`;
 const shortDay = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 export function DashboardView() {
@@ -86,7 +87,12 @@ function Body({ s }: { s: Stats }) {
         <Kpi label="Success Rate" value={done ? `${Math.round((t.finished / done) * 100)}%` : '–'} note={`${t.failed} failed`} />
         <Kpi label="Avg Job" value={seconds(t.avg_seconds)} note={`${money(t.avg_cost_usd)} each`} />
         <Kpi label="Messages" value={String(t.messages)} note={t.unread ? `${t.unread} unread` : 'all read'} to={href('inbox')} />
-        <Kpi label="Artifacts" value={String(t.artifacts)} note={`${t.active_agents} of ${t.agents} agents active`} to={href('artifacts')} />
+        <Kpi
+          label="Artifacts"
+          value={String(t.artifacts)}
+          note={`${t.active_agents} of ${t.agents} agents active`}
+          to={href('artifacts')}
+        />
       </div>
 
       <Section title="Next 24 Hours">
@@ -104,7 +110,11 @@ function Body({ s }: { s: Stats }) {
         </Section>
         <Section title="Spend per Day">
           <Card className="p-4">
-            <Bars data={s.daily.map((d) => ({ label: d.day, value: d.cost_usd }))} tip={(d) => `${shortDay(d.label)}: ${money(d.value)}`} money />
+            <Bars
+              data={s.daily.map((d) => ({ label: d.day, value: d.cost_usd }))}
+              tip={(d) => `${shortDay(d.label)}: ${money(d.value)}`}
+              money
+            />
           </Card>
         </Section>
       </div>
@@ -122,7 +132,13 @@ function Body({ s }: { s: Stats }) {
         <Section title="How Jobs Start">
           <Card className="space-y-3 p-4">
             {s.by_trigger.map((x) => (
-              <Meter key={x.trigger} title={TRIGGERS[x.trigger] ?? x.trigger} value={x.jobs} max={s.by_trigger[0]!.jobs} label={String(x.jobs)} />
+              <Meter
+                key={x.trigger}
+                title={TRIGGERS[x.trigger] ?? x.trigger}
+                value={x.jobs}
+                max={s.by_trigger[0]!.jobs}
+                label={String(x.jobs)}
+              />
             ))}
             {!s.by_trigger.length && <p className="text-sm text-muted">No jobs in this period.</p>}
           </Card>
@@ -140,7 +156,13 @@ function Body({ s }: { s: Stats }) {
           />
         </Section>
         <Section title="Artifacts by Kind">
-          <TopMeters rows={s.artifact_kinds} value={(k) => k.count} title={(k) => k.kind} label={(k) => String(k.count)} empty="No artifacts in this period." />
+          <TopMeters
+            rows={s.artifact_kinds}
+            value={(k) => k.count}
+            title={(k) => k.kind}
+            label={(k) => String(k.count)}
+            empty="No artifacts in this period."
+          />
         </Section>
         <Section title="Recent Failures">
           <Card className="divide-y divide-line">
@@ -164,7 +186,21 @@ function Body({ s }: { s: Stats }) {
 /** Change against the period before, as a fraction; null when there is nothing to compare with. */
 const trend = (now: number, before: number) => (before ? (now - before) / before : null);
 
-function Kpi({ label, value, note, trend, invert, to }: { label: string; value: string; note?: string; trend?: number | null; invert?: boolean; to?: string }) {
+function Kpi({
+  label,
+  value,
+  note,
+  trend,
+  invert,
+  to,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  trend?: number | null;
+  invert?: boolean;
+  to?: string;
+}) {
   const up = (trend ?? 0) > 0;
   const good = invert ? !up : up;
   const body = (
@@ -232,7 +268,9 @@ function Bars({ data, tip, money: isMoney }: { data: Bar[]; tip: (b: Bar) => str
           return (
             <g key={d.label} onMouseEnter={() => setHover(i)}>
               <rect x={i * step} y={0} width={step} height={H} fill={hover === i ? 'var(--c-hover)' : 'transparent'} />
-              {d.value > 0 && <rect x={x} y={y(d.value)} width={bw} height={H - y(d.value)} rx={Math.min(3, bw / 3)} fill="var(--c-accent)" />}
+              {d.value > 0 && (
+                <rect x={x} y={y(d.value)} width={bw} height={H - y(d.value)} rx={Math.min(3, bw / 3)} fill="var(--c-accent)" />
+              )}
               {!!d.part && <rect x={x} y={y(d.part)} width={bw} height={H - y(d.part)} rx={Math.min(3, bw / 3)} fill="var(--c-danger)" />}
             </g>
           );
@@ -321,7 +359,11 @@ export function ScheduleTimeline() {
   const s = sched.data;
   if (!s) return null;
   if (!s.runs.length)
-    return <Card className="p-6 text-center text-sm text-muted">No scheduled runs in the next 24 hours. Agents with a cron trigger show up here.</Card>;
+    return (
+      <Card className="p-6 text-center text-sm text-muted">
+        No scheduled runs in the next 24 hours. Agents with a cron trigger show up here.
+      </Card>
+    );
 
   const from = new Date(s.from).getTime();
   const span = new Date(s.to).getTime() - from;
@@ -363,7 +405,12 @@ export function ScheduleTimeline() {
           <span className="font-medium text-ink tabular-nums">{new Set(live.map((r) => r.agent)).size}</span> agents
         </span>
         {byAgent.size > TOP && (
-          <Input className="ml-auto h-7 w-48 text-xs" placeholder="Filter agents" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <Input
+            className="ml-auto h-7 w-48 text-xs"
+            placeholder="Filter agents"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
         )}
       </div>
       <div className="px-4 pt-3">
@@ -374,7 +421,11 @@ export function ScheduleTimeline() {
             {ticks
               .filter((k) => pct(k.t) > 7)
               .map((k) => (
-                <span key={k.t} className={cn('absolute -translate-x-1/2 tabular-nums', k.midnight && 'font-medium text-ink')} style={{ left: `${pct(k.t)}%` }}>
+                <span
+                  key={k.t}
+                  className={cn('absolute -translate-x-1/2 tabular-nums', k.midnight && 'font-medium text-ink')}
+                  style={{ left: `${pct(k.t)}%` }}
+                >
                   {k.midnight ? new Date(k.t).toLocaleDateString(undefined, { weekday: 'short' }) : clock(new Date(k.t))}
                 </span>
               ))}
@@ -422,7 +473,11 @@ export function ScheduleTimeline() {
                       title={tip}
                       className={cn(
                         'absolute inset-y-0.5 min-w-1.5 rounded-sm',
-                        !r.enabled ? 'border border-dashed border-line-strong bg-transparent' : r.type === 'delay' ? 'bg-accent/50' : 'bg-accent',
+                        !r.enabled
+                          ? 'border border-dashed border-line-strong bg-transparent'
+                          : r.type === 'delay'
+                            ? 'bg-accent/50'
+                            : 'bg-accent',
                       )}
                       style={{ left: `${pct(at.getTime())}%`, width: `${((dur * 1000) / span) * 100}%` }}
                     />
@@ -456,8 +511,17 @@ function AgentTable({ rows }: { rows: Stats['by_agent'] }) {
     <Card className="overflow-hidden">
       {rows.length > TOP && (
         <div className="flex items-center gap-3 border-b border-line px-4 py-2 text-sm text-muted">
-          {q ? `${matching.length} of ${rows.length} agents` : all ? `All ${rows.length} agents` : `Top ${TOP} of ${rows.length} agents by spend`}
-          <Input className="ml-auto h-7 w-48 text-xs" placeholder="Filter agents" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          {q
+            ? `${matching.length} of ${rows.length} agents`
+            : all
+              ? `All ${rows.length} agents`
+              : `Top ${TOP} of ${rows.length} agents by spend`}
+          <Input
+            className="ml-auto h-7 w-48 text-xs"
+            placeholder="Filter agents"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
         </div>
       )}
       <div className={cn(all && !q && rows.length > 25 && 'max-h-[520px] overflow-y-auto')}>
@@ -513,7 +577,19 @@ function AgentTable({ rows }: { rows: Stats['by_agent'] }) {
 }
 
 /** A meter list capped at a few rows, with the rest summed in one line. */
-function TopMeters<T>({ rows, value, title, label, empty }: { rows: T[]; value: (r: T) => number; title: (r: T) => string; label: (r: T) => string; empty: string }) {
+function TopMeters<T>({
+  rows,
+  value,
+  title,
+  label,
+  empty,
+}: {
+  rows: T[];
+  value: (r: T) => number;
+  title: (r: T) => string;
+  label: (r: T) => string;
+  empty: string;
+}) {
   const shown = rows.slice(0, 6);
   const rest = rows.slice(6);
   const max = rows[0] ? value(rows[0]) : 0;

@@ -82,12 +82,12 @@ function Main() {
     const onJob = (e: Event) => {
       setChatFocus(null);
       setChatJob((e as CustomEvent<string>).detail);
-      toggleAssistant(true);
+      setAssistant(true);
     };
     const onFocus = (e: Event) => {
       setChatJob(null);
       setChatFocus((e as CustomEvent<ChatFocus>).detail);
-      toggleAssistant(true);
+      setAssistant(true);
     };
     window.addEventListener('yaho:chat-job', onJob);
     window.addEventListener('yaho:chat-focus', onFocus);
@@ -95,8 +95,11 @@ function Main() {
       window.removeEventListener('yaho:chat-job', onJob);
       window.removeEventListener('yaho:chat-focus', onFocus);
     };
-  });
-  const state = useApi<AppState>('/api/state', (e) => e.type === 'message' || e.type === 'job' || (e.type === 'changed' && e.entity === 'settings'));
+  }, []);
+  const state = useApi<AppState>(
+    '/api/state',
+    (e) => e.type === 'message' || e.type === 'job' || (e.type === 'changed' && e.entity === 'settings'),
+  );
 
   useEffect(
     () =>

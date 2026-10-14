@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { CommandRule } from './guard/commandRules.ts';
 import YAML from 'yaml';
 
 /** Global settings, stored as settings.yaml in the data directory. */
@@ -24,11 +25,19 @@ export interface Settings {
   /** Agents' ideas for Yaho itself, filed as GitHub issues with the gh CLI (yaho idea). */
   ideas?: { enabled?: boolean; repo?: string };
   /**
-   * Slack: the inbox as DMs from the person's own Slack app, over Socket Mode. owner is the Slack user who first opened
-   * the app; since is when that happened (messages from then on are posted). post: every message, or only those that
+   * Slack: the inbox as DMs from the person's own Slack app, over Socket Mode. owner is the Slack user who sent the one-time
+   * link_code (team_id is the workspace it belongs to); since is when that happened (messages from then on are posted). post: every message, or only those that
    * expect a response.
    */
-  slack?: { bot_token?: string; app_token?: string; owner?: string; since?: string; post?: 'all' | 'expects_response' };
+  slack?: {
+    bot_token?: string;
+    app_token?: string;
+    owner?: string;
+    since?: string;
+    post?: 'all' | 'expects_response';
+    link_code?: string;
+    team_id?: string;
+  };
   /**
    * WhatsApp: the inbox as messages from the person's own WhatsApp Business number, over the Cloud API (a webhook, so
    * Yaho must be reachable from the internet). number is the person's own WhatsApp number; since is when they first
@@ -53,13 +62,27 @@ export interface Settings {
    * Resend's inbound webhook (so Yaho must be reachable from the internet). accept_new: also take emails that are not
    * replies to one an agent sent.
    */
-  resend?: { api_key?: string; webhook_secret?: string; domain?: string; accept_new?: boolean };
+  resend?: {
+    api_key?: string;
+    webhook_secret?: string;
+    domain?: string;
+    accept_new?: boolean;
+    allow?: string | string[];
+    participants_only?: boolean;
+  };
   /**
    * SMS through Twilio: agents with sms on share one Twilio number, and texts to it come back through Twilio's webhook
    * (so Yaho must be reachable from the internet), to the agent that last texted that phone. new_agent: the agent that
    * gets texts from phones no agent has texted; unset, those are dropped.
    */
-  twilio?: { account_sid?: string; auth_token?: string; number?: string; new_agent?: string };
+  twilio?: {
+    account_sid?: string;
+    auth_token?: string;
+    number?: string;
+    new_agent?: string;
+    allow?: string | string[];
+    public_url?: string;
+  };
   /**
    * Telegram: the inbox as messages from the person's own bot, over long polling (no webhook, so it also works on the
    * desktop). owner is the chat that opened the bot's link with link_code; since is when that happened. owner, since,
@@ -68,6 +91,28 @@ export interface Settings {
   telegram?: { bot_token?: string; owner?: string; since?: string; link_code?: string; bot?: string; post?: 'all' | 'expects_response' };
   /** Run harnesses in their sandbox (writes only to the agent's workspace). Unset: on in the server version, off on the desktop. */
   sandbox?: boolean;
+  /**
+   * Command Rules: shell commands are checked before they run; Block refuses, Ask waits for the human's approval in the
+   * inbox. Off unless enabled. rules unset means the default list.
+   */
+  command_rules?: { enabled?: boolean; rules?: CommandRule[] };
+  /** Past jobs: recaps by the agent's last model when a job ends, for yaho history search (default on). */
+  history?: { recaps?: boolean };
+  /**
+   * A browser for agents with browser on (yaho browser). provider: local (Chrome, Edge or Chromium on this machine;
+   * executable overrides which, headless false shows its window on the desktop) or a cloud browser over CDP: Browserbase
+   * (api_key, project_id), Steel (api_key) or any CDP endpoint (cdp_url). allowed_sites (Guard Rails): the sites its
+   * tabs may open; empty means any.
+   */
+  browser?: {
+    provider?: 'local' | 'browserbase' | 'steel' | 'cdp';
+    executable?: string;
+    headless?: boolean;
+    api_key?: string;
+    project_id?: string;
+    cdp_url?: string;
+    allowed_sites?: string[];
+  };
   /** The in-app chat. Model defaults to the first default model. */
   assistant?: { model?: string };
   /** When the first-run setup was finished (or skipped). Until then the app shows it. */
@@ -114,6 +159,8 @@ export interface Guardrails {
   hop_limit?: number;
   /** Skip scheduled runs while the human has unread messages from this agent. */
   wait_for_inbox?: boolean;
+  /** Command Rules for this agent alone, checked with the global ones (Allow here lets it run what others must ask for). */
+  command_rules?: CommandRule[];
 }
 
 export const defaultSettings = (): Settings => ({
@@ -165,12 +212,26 @@ function merge<T>(base: T, over: unknown): T {
   return out as T;
 }
 
+/**
+ * The data folder, readable by its owner only. Not when agents run as their own user (the server version): they pass
+ * through it to their workspaces, and the image sets its rights.
+ */
+export function privateDir(dir: string): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (!process.env.YAHO_AGENT_UID) chmodSync(dir, 0o700);
+}
+
+/** Write a file only its owner can read (the token, settings), and tighten one written before with wider rights. */
+export function writePrivate(file: string, data: string): void {
+  writeFileSync(file, data, { mode: 0o600 });
+  chmodSync(file, 0o600);
+}
+
 export function loadSettings(): Settings {
   const p = paths();
-  mkdirSync(p.root, { recursive: true });
-  if (!existsSync(p.settings)) {
-    writeFileSync(p.settings, YAML.stringify(defaultSettings()));
-  }
+  privateDir(p.root);
+  if (!existsSync(p.settings)) writePrivate(p.settings, YAML.stringify(defaultSettings()));
+  else chmodSync(p.settings, 0o600);
   const raw = migrateSettingsShape((YAML.parse(readFileSync(p.settings, 'utf8')) ?? {}) as Record<string, unknown>);
   return merge(defaultSettings(), raw);
 }
@@ -191,8 +252,9 @@ export interface SecretSlot {
 const keyPart = (id: string) => id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
 export function secretSlots(s: Settings): SecretSlot[] {
-  const section = (name: 'composio' | 'slack' | 'whatsapp' | 'resend' | 'twilio' | 'telegram') => (x: Settings, create?: boolean) =>
-    (create ? (x[name] ??= {}) : x[name]) as Record<string, unknown> | undefined;
+  const section =
+    (name: 'composio' | 'slack' | 'whatsapp' | 'resend' | 'twilio' | 'telegram' | 'browser') => (x: Settings, create?: boolean) =>
+      (create ? (x[name] ??= {}) : x[name]) as Record<string, unknown> | undefined;
   return [
     ...s.providers.flatMap((p) =>
       (['api_key', 'master_key'] as const).map((field) => ({
@@ -210,6 +272,8 @@ export function secretSlots(s: Settings): SecretSlot[] {
     { path: 'resend.api_key', key: 'RESEND_API_KEY', field: 'api_key', holder: section('resend') },
     { path: 'resend.webhook_secret', key: 'RESEND_WEBHOOK_SECRET', field: 'webhook_secret', holder: section('resend') },
     { path: 'twilio.auth_token', key: 'TWILIO_AUTH_TOKEN', field: 'auth_token', holder: section('twilio') },
+    { path: 'browser.api_key', key: 'BROWSER_API_KEY', field: 'api_key', holder: section('browser') },
+    { path: 'browser.cdp_url', key: 'BROWSER_CDP_URL', field: 'cdp_url', holder: section('browser') },
     { path: 'telegram.bot_token', key: 'TELEGRAM_BOT_TOKEN', field: 'bot_token', holder: section('telegram') },
   ];
 }
@@ -220,13 +284,14 @@ export const secretsStored = new Set<string>();
 export function saveSettings(s: Settings): void {
   const out = structuredClone(s);
   for (const slot of secretSlots(out)) if (secretsStored.has(slot.path)) delete slot.holder(out)?.[slot.field];
-  writeFileSync(paths().settings, YAML.stringify(out));
+  writePrivate(paths().settings, YAML.stringify(out));
 }
 
 /** The API token every caller (UI, CLI admin use) presents. Created once per data directory. */
 export function apiToken(): string {
   const p = paths();
-  mkdirSync(p.root, { recursive: true });
-  if (!existsSync(p.token)) writeFileSync(p.token, randomBytes(24).toString('hex'));
+  privateDir(p.root);
+  if (!existsSync(p.token)) writePrivate(p.token, randomBytes(24).toString('hex'));
+  else chmodSync(p.token, 0o600);
   return readFileSync(p.token, 'utf8').trim();
 }

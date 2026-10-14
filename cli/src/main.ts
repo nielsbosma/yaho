@@ -17,6 +17,8 @@ const HELP = `yaho - talk to the Yaho orchestrator from inside a job
   yaho inbox mark-read <id> [--unread]  mark handled (or back to unread)
   yaho send --to human|agent:<name> [--type question|instruction|info] [--title T] [--body B] [--reply-to ID] < msg.yaml
   yaho query agents|projects|resources|jobs
+  yaho history search <words> [--since 30d] [--limit 10]   find your past jobs
+  yaho history show <job>               one past job: trigger, summary, recap, what you said
   yaho project files <project> [<file> [--out <path>]]
   yaho artifact add <project> <file> [--kind <kind>]
   yaho briefing show
@@ -34,6 +36,21 @@ const HELP = `yaho - talk to the Yaho orchestrator from inside a job
   yaho email reply <message-id> [--to ...] [--cc ...] [--body B] < body.txt
   yaho sms send --to +46701234567 [--body B] < text.txt
   yaho sms reply <message-id> [--body B] < text.txt
+  yaho browser open <url>               the browser (when it is on for you): open a page in this tab
+  yaho browser snapshot                 the page as roles and names, with a [ref=eN] on what you can act on
+  yaho browser click|hover <ref>        e.g. yaho browser click e12
+  yaho browser type <ref> "text" [--submit] [--append]
+  yaho browser press <key>              Enter, Tab, Escape, ArrowDown, a character, ...
+  yaho browser select <ref> <option>    pick a dropdown option by value or label
+  yaho browser scroll [down|up|top|bottom|<ref>] [px]
+  yaho browser back|forward|reload
+  yaho browser wait ["text"|seconds] [--selector css] [--gone] [--timeout s]
+  yaho browser text                     the page's visible text
+  yaho browser eval <js> (or < script.js)
+  yaho browser screenshot [file.png] [--full] [--ref eN]
+  yaho browser pdf [file.pdf]
+  yaho browser tabs | tab <n> | tab new [url] | tab close [n]
+  yaho browser close
   yaho budget
   yaho sleep <duration>                 e.g. 30m, 2h, 1d; ends this job now
   yaho finish [--summary "..."]         ends this job now
@@ -54,7 +71,10 @@ interface Reply {
 }
 
 /** One request to the core, over its socket when there is one, else over HTTP. */
-function request(path: string, init: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array<ArrayBuffer> } = {}): Promise<Reply> {
+function request(
+  path: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array<ArrayBuffer> } = {},
+): Promise<Reply> {
   if (!socket)
     return fetch(`${apiUrl}${path}`, init).then(async (r) => ({
       status: r.status,
@@ -67,7 +87,12 @@ function request(path: string, init: { method?: string; headers?: Record<string,
       const parts: Buffer[] = [];
       res.on('data', (d: Buffer) => parts.push(d));
       res.on('end', () =>
-        resolve({ status: res.statusCode ?? 0, ok: (res.statusCode ?? 0) < 300, type: String(res.headers['content-type'] ?? ''), body: Buffer.concat(parts) }),
+        resolve({
+          status: res.statusCode ?? 0,
+          ok: (res.statusCode ?? 0) < 300,
+          type: String(res.headers['content-type'] ?? ''),
+          body: Buffer.concat(parts),
+        }),
       );
       res.on('error', reject);
     });
@@ -76,7 +101,14 @@ function request(path: string, init: { method?: string; headers?: Record<string,
   });
 }
 
-async function call(method: string, path: string, body?: unknown, raw?: Buffer | string, contentType?: string, json = false): Promise<unknown> {
+async function call(
+  method: string,
+  path: string,
+  body?: unknown,
+  raw?: Buffer | string,
+  contentType?: string,
+  json = false,
+): Promise<unknown> {
   if (!apiUrl || !token) throw new CliError('YAHO_API_URL and YAHO_JOB_TOKEN are not set: yaho only works inside a Yaho job');
   const res = await request(`/api/agent${path}`, {
     method,
@@ -109,7 +141,30 @@ function readStdin(): string {
 
 const out = (v: unknown): void => void process.stdout.write(typeof v === 'string' ? (v.endsWith('\n') ? v : `${v}\n`) : YAML.stringify(v));
 
+async function browser(argv: string[]): Promise<void> {
+  const { positionals, values } = parseArgs({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      full: { type: 'boolean' },
+      submit: { type: 'boolean' },
+      append: { type: 'boolean' },
+      gone: { type: 'boolean' },
+      ref: { type: 'string' },
+      text: { type: 'string' },
+      selector: { type: 'string' },
+      timeout: { type: 'string' },
+    },
+  });
+  const [cmd, ...args] = positionals;
+  if (!cmd) throw new CliError(`missing the browser command\n\n${HELP}`);
+  const stdin = (cmd === 'type' && args.length < 2) || (cmd === 'eval' && !args.length) ? readStdin() : undefined;
+  const r = (await call('POST', '/browser', { cmd, args, flags: values, stdin, cwd: process.cwd() })) as { text?: string };
+  out(r?.text ?? '');
+}
+
 async function main(argv: string[]): Promise<void> {
+  if (argv[0] === 'browser') return browser(argv.slice(1));
   const { positionals: p, values: f } = parseArgs({
     args: argv,
     allowPositionals: true,
@@ -127,6 +182,8 @@ async function main(argv: string[]): Promise<void> {
       search: { type: 'string' },
       subject: { type: 'string' },
       cc: { type: 'string' },
+      since: { type: 'string' },
+      limit: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -156,6 +213,15 @@ async function main(argv: string[]): Promise<void> {
     }
     case 'query':
       return out(await call('GET', `/query/${need(sub, 'what to query: agents, projects, resources or jobs')}`));
+    case 'history':
+      if (sub === 'search') {
+        const q = new URLSearchParams({ q: need(p.slice(2).join(' '), 'words to search for') });
+        if (f.since) q.set('since', f.since);
+        if (f.limit) q.set('limit', f.limit);
+        return out(await call('GET', `/history/search?${q}`));
+      }
+      if (sub === 'show') return out(await call('GET', `/history/${encodeURIComponent(need(a1, 'job id'))}`));
+      break;
     case 'project':
       if (sub === 'files') {
         const project = need(a1, 'project name');
@@ -244,7 +310,12 @@ async function main(argv: string[]): Promise<void> {
     }
     case 'idea': {
       const body = readStdin().trim() || f.body;
-      return out(await call('POST', '/idea', { title: need(f.title, '--title "..."'), body: need(body, 'the idea as Markdown on stdin (or --body)') }));
+      return out(
+        await call('POST', '/idea', {
+          title: need(f.title, '--title "..."'),
+          body: need(body, 'the idea as Markdown on stdin (or --body)'),
+        }),
+      );
     }
     case 'email': {
       if (sub !== 'send' && sub !== 'reply') break;
@@ -254,7 +325,15 @@ async function main(argv: string[]): Promise<void> {
         need(f.to, '--to a@b.com');
         need(f.subject, '--subject "..."');
       }
-      return out(await call('POST', '/email', { to: f.to, cc: f.cc, subject: f.subject, body: need(body, 'the body on stdin (or --body)'), reply_to }));
+      return out(
+        await call('POST', '/email', {
+          to: f.to,
+          cc: f.cc,
+          subject: f.subject,
+          body: need(body, 'the body on stdin (or --body)'),
+          reply_to,
+        }),
+      );
     }
     case 'sms': {
       if (sub !== 'send' && sub !== 'reply') break;

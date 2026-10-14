@@ -1,7 +1,8 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Ctx } from '../context.ts';
 import { now } from '../db/index.ts';
+import { emailAllowed, eq, errorText, RateLimit, serial } from '../mirror/util.ts';
 import * as s from '../store.ts';
 import { HttpError } from '../store.ts';
 
@@ -12,6 +13,26 @@ const API = 'https://api.resend.com';
 export const DAILY_LIMIT = 50;
 /** How far a webhook's timestamp may be from now, against replays. */
 const TOLERANCE_S = 300;
+/** Inbound emails taken per sender and per agent in an hour; more are dropped, so a stranger cannot start job after job. */
+export const INBOUND_PER_SENDER = 20;
+export const INBOUND_PER_AGENT = 100;
+const HOUR = 3600_000;
+/** HTML read for the text of an email without a text part; the rest is left out. */
+const HTML_MAX = 200_000;
+const MESSAGE_ID = /^<[^<>\s]+>$/;
+
+/**
+ * settings.resend, with allow (the only addresses or domains that may write in; empty: any) and participants_only
+ * (a reply to a thread must come from an address already in it).
+ */
+type ResendSettings = NonNullable<Ctx['settings']['resend']>;
+
+/** A Message-ID as stored: <id@host>, or null when it is not one. */
+function messageId(v: unknown): string | null {
+  const t = String(v ?? '').trim();
+  const id = /^[^<>\s]+@[^<>\s]+$/.test(t) ? `<${t}>` : t;
+  return MESSAGE_ID.test(id) ? id : null;
+}
 
 export interface OutgoingEmail {
   from: string;
@@ -67,6 +88,7 @@ const list = (v: unknown): string[] => (Array.isArray(v) ? v : typeof v === 'str
 /** Plain text from an HTML email, for senders that send no text part. */
 export function htmlToText(html: string): string {
   return html
+    .slice(0, HTML_MAX)
     .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|li|tr|h\d|blockquote)>/gi, '\n')
@@ -98,12 +120,6 @@ export function stripQuoted(text: string): string {
   return kept || t.trim();
 }
 
-const eq = (a: string, b: string) => {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-};
-
 /** Resend signs webhooks the Svix way: HMAC-SHA256 of "<id>.<timestamp>.<body>" with the base64 secret after whsec_. */
 export function verifyWebhook(secret: string, headers: IncomingMessage['headers'], body: Buffer, at = Date.now()): boolean {
   const id = String(headers['svix-id'] ?? '');
@@ -128,13 +144,15 @@ export class EmailBridge {
   api: ResendApi | null = null;
   status: EmailStatus = { configured: false, connected: false };
   connect: (key: string) => ResendApi;
+  private bySender = new RateLimit(INBOUND_PER_SENDER, HOUR);
+  private byAgent = new RateLimit(INBOUND_PER_AGENT, HOUR);
 
   constructor(ctx: Ctx, connect?: (key: string) => ResendApi) {
     this.ctx = ctx;
     this.connect = connect ?? realApi;
   }
 
-  get settings() {
+  get settings(): ResendSettings {
     return this.ctx.settings.resend ?? {};
   }
 
@@ -149,6 +167,11 @@ export class EmailBridge {
   private setStatus(next: Partial<EmailStatus>) {
     this.status = { ...this.status, ...next };
     this.ctx.bus.emitEvent({ type: 'changed', entity: 'resend' });
+  }
+
+  fail(err: unknown) {
+    console.error(`[resend] ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+    this.setStatus({ error: errorText(err) });
   }
 
   private ignore(why: string) {
@@ -172,7 +195,7 @@ export class EmailBridge {
         error: d ? undefined : `${this.domain} is not a domain in this Resend account`,
       });
     } catch (err) {
-      this.setStatus({ connected: false, error: (err as Error).message });
+      this.setStatus({ connected: false, error: errorText(err) });
     }
   }
 
@@ -203,6 +226,18 @@ export class EmailBridge {
       throw new HttpError(403, 'email is not turned on for you; the human turns it on in your settings');
     const text = String(input.body ?? '').trim();
     if (!text) throw new HttpError(400, 'the email needs a body');
+    // One send per agent at a time, so concurrent sends cannot all pass the daily check.
+    const api = this.api;
+    return serial(`email:${agent}`, () => this.sendNow(api, agent, job, input, text));
+  }
+
+  private async sendNow(
+    api: ResendApi,
+    agent: string,
+    job: string | null,
+    input: { to?: string | string[]; cc?: string | string[]; subject?: string; reply_to?: string },
+    text: string,
+  ): Promise<{ id: string; to: string[]; subject: string; from: string }> {
     const sent = Number(
       (
         this.ctx.db
@@ -242,14 +277,17 @@ export class EmailBridge {
     if (own) throw new HttpError(400, `${own} is a Yaho address; use yaho send to reach other agents`);
 
     const from = this.addressOf(agent);
-    const resendId = await this.api.send({
+    // Our own Message-ID, kept, so a reply sent to the plain address still finds its thread by In-Reply-To.
+    const ownId = `<${randomBytes(12).toString('hex')}@${this.domain}>`;
+    headers['Message-ID'] = ownId;
+    const resendId = await api.send({
       from: `${agent} <${from}>`,
       to,
       ...(cc.length ? { cc } : {}),
       reply_to: `${agent}+${token}@${this.domain}`,
       subject,
       text,
-      ...(Object.keys(headers).length ? { headers } : {}),
+      headers,
     });
     if (!input.reply_to)
       this.ctx.db.prepare('INSERT INTO email_threads (token, agent, subject, created) VALUES (?,?,?,?)').run(token, agent, subject, now());
@@ -266,7 +304,7 @@ export class EmailBridge {
     });
     this.ctx.db
       .prepare('INSERT INTO emails (message, thread, direction, addresses, resend_id, message_id, created) VALUES (?,?,?,?,?,?,?)')
-      .run(msg.id, token, 'out', [...to, ...cc].join(', '), resendId, null, now());
+      .run(msg.id, token, 'out', [...to, ...cc].join(', '), resendId, ownId, now());
     return { id: msg.id, to, subject, from };
   }
 
@@ -293,6 +331,8 @@ export class EmailBridge {
       h['x-autorespond']
     )
       return this.ignore(`automatic email from ${sender}`);
+    if (!emailAllowed(this.settings.allow, sender)) return this.ignore(`from ${sender}: not on the allowed senders`);
+    if (!this.bySender.take(sender)) return this.ignore(`from ${sender}: more than ${INBOUND_PER_SENDER} emails in an hour`);
 
     const refs = [h['in-reply-to'], h.references].join(' ').match(/<[^<>\s]+>/g) ?? [];
     const seen = new Set<string>();
@@ -323,11 +363,19 @@ export class EmailBridge {
             )
             .get(agent, ...refs) as Row | undefined
         )?.thread as string | undefined;
+      if (token && this.settings.participants_only && !this.participant(token, sender)) {
+        this.ignore(`from ${sender} to ${rcpt}: not part of that email thread`);
+        continue;
+      }
+      if (!token && !this.settings.accept_new) {
+        this.ignore(`from ${sender} to ${rcpt}: not a reply to an email the agent sent`);
+        continue;
+      }
+      if (!this.byAgent.take(agent)) {
+        this.ignore(`from ${sender}: ${agent} got more than ${INBOUND_PER_AGENT} emails in an hour`);
+        continue;
+      }
       if (!token) {
-        if (!this.settings.accept_new) {
-          this.ignore(`from ${sender} to ${rcpt}: not a reply to an email the agent sent`);
-          continue;
-        }
         token = randomBytes(5).toString('hex');
         this.ctx.db
           .prepare('INSERT INTO email_threads (token, agent, subject, created) VALUES (?,?,?,?)')
@@ -350,8 +398,14 @@ export class EmailBridge {
       });
       this.ctx.db
         .prepare('INSERT INTO emails (message, thread, direction, addresses, resend_id, message_id, created) VALUES (?,?,?,?,?,?,?)')
-        .run(msg.id, token, 'in', sender, resendId, email.message_id ?? h['message-id'] ?? null, now());
+        .run(msg.id, token, 'in', sender, resendId, messageId(email.message_id ?? h['message-id']), now());
     }
+  }
+
+  /** Whether an address already wrote in, or was written to, in a thread. */
+  private participant(token: string, sender: string): boolean {
+    const rows = this.ctx.db.prepare('SELECT addresses FROM emails WHERE thread = ?').all(token) as Row[];
+    return rows.some((r) => list(String(r.addresses)).includes(sender));
   }
 }
 
@@ -372,10 +426,7 @@ export async function handleResendWebhook(ctx: Ctx, raw: IncomingMessage, res: S
   } catch {
     return;
   }
-  await bridge.webhook(body).catch((err) => {
-    console.error(`[resend] ${(err as Error).stack ?? err}`);
-    bridge.status = { ...bridge.status, error: (err as Error).message };
-  });
+  await bridge.webhook(body).catch((err) => bridge.fail(err));
 }
 
 /** The real Resend API over fetch. */

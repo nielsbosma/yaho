@@ -16,6 +16,21 @@ emit({
   message: { content: [{ type: 'text', text: resume ? `resumed ${resume}` : `prompt has ${prompt.length} chars` }] },
 });
 
+// PreToolUse hooks for Bash from --settings, run like Claude Code does: exit 2 refuses the call, stderr is the reason.
+const settings = args.includes('--settings') ? JSON.parse(args[args.indexOf('--settings') + 1]) : {};
+const bashHooks = (settings.hooks?.PreToolUse ?? []).filter((h) => new RegExp(`^(${h.matcher})$`).test('Bash')).flatMap((h) => h.hooks);
+const refused = (command) => {
+  for (const h of bashHooks) {
+    const r = spawnSync(h.command, {
+      shell: true,
+      encoding: 'utf8',
+      input: JSON.stringify({ cwd: process.cwd(), tool_name: 'Bash', tool_input: { command } }),
+    });
+    if (r.status === 2) return r.stderr;
+  }
+  return null;
+};
+
 const file = resume && existsSync('steps-resume.json') ? 'steps-resume.json' : 'steps.json';
 const steps = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
 let n = 0;
@@ -26,7 +41,17 @@ for (const step of steps) {
     continue;
   }
   emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command: step.cmd } }] } });
-  const r = spawnSync(step.cmd, { shell: true, encoding: 'utf8', input: step.stdin ?? '', env: { ...process.env, FAKE_MCP_CONFIG: mcpConfig } });
+  const no = refused(step.cmd);
+  if (no !== null) {
+    emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: no, is_error: true }] } });
+    continue;
+  }
+  const r = spawnSync(step.cmd, {
+    shell: true,
+    encoding: 'utf8',
+    input: step.stdin ?? '',
+    env: { ...process.env, FAKE_MCP_CONFIG: mcpConfig },
+  });
   const output = `${r.stdout ?? ''}${r.stderr ?? ''}`;
   emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: output, is_error: r.status !== 0 }] } });
 }

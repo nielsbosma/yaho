@@ -5,7 +5,9 @@ import { argv } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 export function totp(key, ahead = 0) {
-  const bits = [...key.replace(/\s/g, '').toUpperCase()].map((c) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c).toString(2).padStart(5, '0')).join('');
+  const bits = [...key.replace(/\s/g, '').toUpperCase()]
+    .map((c) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c).toString(2).padStart(5, '0'))
+    .join('');
   const secret = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
   const msg = Buffer.alloc(8);
   msg.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000) + ahead));

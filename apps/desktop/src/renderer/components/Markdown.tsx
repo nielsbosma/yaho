@@ -28,10 +28,14 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
 
 /** The text of a fenced block, and its language and label (```copy Connection note). */
 function fence(node: unknown): { lang: string; label: string; text: string } {
-  const code = (node as { children?: Array<{ properties?: { className?: string[] }; data?: { meta?: string }; children?: Array<{ value?: string }> }> })
-    .children?.[0];
+  const code = (
+    node as { children?: Array<{ properties?: { className?: string[] }; data?: { meta?: string }; children?: Array<{ value?: string }> }> }
+  ).children?.[0];
   const lang = (code?.properties?.className ?? []).find((c) => c.startsWith('language-'))?.slice(9) ?? '';
-  const text = (code?.children ?? []).map((c) => c.value ?? '').join('').replace(/\n$/, '');
+  const text = (code?.children ?? [])
+    .map((c) => c.value ?? '')
+    .join('')
+    .replace(/\n$/, '');
   return { lang, label: code?.data?.meta?.trim() ?? '', text };
 }
 

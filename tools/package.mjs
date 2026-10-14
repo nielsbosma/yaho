@@ -136,7 +136,12 @@ const config = {
     entitlementsInherit: join(repo, 'tools/entitlements.mac.plist'),
     notarize: !!process.env.APPLE_API_KEY_ID,
   },
-  linux: { target: dirOnly ? 'dir' : 'AppImage', icon: join(repo, 'assets/logo/mark-1024.png'), executableName: 'yaho', category: 'Development' },
+  linux: {
+    target: dirOnly ? 'dir' : 'AppImage',
+    icon: join(repo, 'assets/logo/mark-1024.png'),
+    executableName: 'yaho',
+    category: 'Development',
+  },
 };
 writeFileSync(join(desktop, 'build/electron-builder.json'), JSON.stringify(config, null, 2));
 const builder = join(desktop, 'node_modules/electron-builder/cli.js');
@@ -192,9 +197,13 @@ function writeNpmPackages() {
   if (process.platform === 'darwin') {
     const macDir = readdirSync(release).find((d) => d.startsWith('mac') && existsSync(join(release, d, 'Yaho.app')));
     if (!macDir) throw new Error('no Yaho.app in the release folder');
-    execFileSync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', join(release, macDir, 'Yaho.app'), join(appPkg, 'Yaho.app.zip')], {
-      stdio: 'inherit',
-    });
+    execFileSync(
+      'ditto',
+      ['-c', '-k', '--sequesterRsrc', '--keepParent', join(release, macDir, 'Yaho.app'), join(appPkg, 'Yaho.app.zip')],
+      {
+        stdio: 'inherit',
+      },
+    );
     manifest = { zip: 'Yaho.app.zip' };
   } else {
     const unpacked = readdirSync(release).find((d) => d.endsWith('-unpacked'));

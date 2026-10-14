@@ -62,12 +62,42 @@
 }
 
 /* Color themes: the accent for light (l, lh) and dark (d, dh). Forest, the default, is the fallback above. */
-:root[data-palette='ocean'] { --pal-l: #2867a8; --pal-lh: #1f5489; --pal-d: #6aa6e8; --pal-dh: #8bbcf0; }
-:root[data-palette='indigo'] { --pal-l: #4f52c4; --pal-lh: #4144a6; --pal-d: #9a9cf2; --pal-dh: #b3b5f6; }
-:root[data-palette='plum'] { --pal-l: #8a3f86; --pal-lh: #723470; --pal-d: #d38ccf; --pal-dh: #e0a7dd; }
-:root[data-palette='rose'] { --pal-l: #b23b58; --pal-lh: #96314a; --pal-d: #ec8aa0; --pal-dh: #f2a6b7; }
-:root[data-palette='amber'] { --pal-l: #96570b; --pal-lh: #7d4809; --pal-d: #e3a654; --pal-dh: #ecbb78; }
-:root[data-palette='slate'] { --pal-l: #4a5560; --pal-lh: #3b444d; --pal-d: #a9b6c2; --pal-dh: #c1ccd6; }
+:root[data-palette='ocean'] {
+  --pal-l: #2867a8;
+  --pal-lh: #1f5489;
+  --pal-d: #6aa6e8;
+  --pal-dh: #8bbcf0;
+}
+:root[data-palette='indigo'] {
+  --pal-l: #4f52c4;
+  --pal-lh: #4144a6;
+  --pal-d: #9a9cf2;
+  --pal-dh: #b3b5f6;
+}
+:root[data-palette='plum'] {
+  --pal-l: #8a3f86;
+  --pal-lh: #723470;
+  --pal-d: #d38ccf;
+  --pal-dh: #e0a7dd;
+}
+:root[data-palette='rose'] {
+  --pal-l: #b23b58;
+  --pal-lh: #96314a;
+  --pal-d: #ec8aa0;
+  --pal-dh: #f2a6b7;
+}
+:root[data-palette='amber'] {
+  --pal-l: #96570b;
+  --pal-lh: #7d4809;
+  --pal-d: #e3a654;
+  --pal-dh: #ecbb78;
+}
+:root[data-palette='slate'] {
+  --pal-l: #4a5560;
+  --pal-lh: #3b444d;
+  --pal-d: #a9b6c2;
+  --pal-dh: #c1ccd6;
+}
 
 @theme inline {
   --color-bg: var(--c-bg);

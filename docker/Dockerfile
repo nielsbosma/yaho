@@ -4,13 +4,18 @@
 # Two-factor sign-in (optional): add -e YAHO_TOTP=1 and signing in asks for the password and a code from an
 # authenticator app, set up at the first sign-in. Lost the phone: add -e YAHO_TOTP_RESET=1, sign in with the password
 # and set it up again, then start without it.
+# Behind a reverse proxy that terminates HTTPS (Sliplane, Caddy, nginx): add -e YAHO_TRUST_PROXY=1, so sign-in
+# lockouts go by the client's address in X-Forwarded-For and the session cookie is Secure. Leave it unset when the
+# port is reached directly, as above: anyone could then set that header and dodge the lockout.
 # Everything Yaho keeps is in the /data volume, the agents' home included (Claude Code's sessions, gh and git sign-ins:
 # docker exec -it -u yaho-agent <container> gh auth login).
 
 # ---- Dopbase, from its pinned tag (it publishes no binary for every platform we build) ----
 FROM rust:1-bookworm AS dopbase
 ARG DOPBASE_VERSION=0.1.9
+ARG DOPBASE_COMMIT=e3e528f0ac652a7d706dc2995ada6b21dda1b5ff
 RUN git clone --depth 1 --branch "${DOPBASE_VERSION}" https://github.com/dopbase/dopbase.git /src \
+ && test "$(git -C /src rev-parse HEAD)" = "${DOPBASE_COMMIT}" \
  && mkdir -p /src/dist \
  && printf '<!doctype html><title>Dopbase</title><p>Dopbase bundled with Yaho (API only).</p>\n' > /src/dist/index.html
 WORKDIR /src/app
@@ -29,10 +34,10 @@ FROM node:22-bookworm-slim
 ARG CLAUDE_CODE_VERSION=2.1.296
 ARG CODEX_VERSION=0.162.1
 # Tools agents use: git, gh, Python, curl, jq, ripgrep. bubblewrap and socat are Claude Code's sandbox (Sandbox Mode,
-# on by default here; the container needs user namespaces for it, or turn it off in Settings → Guard Rails). tini passes
-# signals and reaps child processes.
+# on by default here; the container needs user namespaces for it, or turn it off in Settings → Guard Rails). Chromium
+# and its fonts are the agents' browser (yaho browser). tini passes signals and reaps child processes.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends bubblewrap ca-certificates curl git jq ripgrep python3 python3-pip python3-venv socat tini \
+ && apt-get install -y --no-install-recommends bubblewrap ca-certificates chromium curl fonts-liberation fonts-noto-color-emoji git jq ripgrep python3 python3-pip python3-venv socat tini \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
  && apt-get update && apt-get install -y --no-install-recommends gh \
@@ -56,10 +61,10 @@ ENV YAHO_SERVER=1 \
     YAHO_WEB_ROOT=/opt/yaho/renderer \
     YAHO_CLI_MAIN=/opt/yaho/cli/main.mjs \
     YAHO_DOPBASE_BIN=/opt/yaho/dopbase/dopbase \
-    YAHO_TRUST_PROXY=1 \
     YAHO_AGENT_UID=1001 \
     YAHO_AGENT_GID=1001 \
     YAHO_AGENT_HOME=/data/home \
+    YAHO_BROWSER=/usr/bin/chromium \
     HOME=/data/home \
     CLAUDE_CONFIG_DIR=/data/home/.claude \
     XDG_CACHE_HOME=/tmp/cache \

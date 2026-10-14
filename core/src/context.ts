@@ -18,6 +18,7 @@ export interface Ctx {
   whatsapp?: import('./whatsapp/bridge.ts').WhatsAppBridge;
   email?: import('./email/resend.ts').EmailBridge;
   sms?: import('./sms/twilio.ts').SmsBridge;
+  browser?: import('./browser/index.ts').BrowserManager;
   telegram?: import('./telegram/bridge.ts').TelegramBridge;
   /** How to run the yaho CLI with the core's own Node (set with the shims), for `yaho mcp serve`. */
   cli?: { command: string; args: string[]; env: Record<string, string> };
@@ -29,8 +30,9 @@ export interface Ctx {
   runner?: {
     enqueue(agent: string, trigger: string, opts?: { detail?: string; hop?: number; sessionId?: string | null; force?: boolean }): unknown;
     pump(): void;
-    stop(jobId: string, status: string, reason?: string, extra?: { summary?: string; resumeAt?: string }): void;
+    stop(jobId: string, status: string, reason?: string, extra?: { summary?: string; resumeAt?: string; grace?: number }): void;
     continueJob(jobId: string): void;
+    detach(jobId: string): void;
     sleep(jobId: string, ms: number): string;
   };
 }

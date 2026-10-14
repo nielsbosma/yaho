@@ -11,6 +11,17 @@ if (cmd !== 'serve') {
   console.error(`unknown command ${cmd}; usage: serve [--host H] [--port P] [--data-dir D] [--web-root W]`);
   process.exit(2);
 }
+// A stray error in a listener or a promise should not take every running job down with the core: log it and carry on,
+// unless they keep coming (then something is wrong for good, and a restart is the better state).
+const recent: number[] = [];
+process.on('unhandledRejection', (e) => console.error('[yaho] unhandled rejection:', e));
+process.on('uncaughtException', (e) => {
+  console.error('[yaho] uncaught exception:', e);
+  const t = Date.now();
+  recent.push(t);
+  while (recent[0]! < t - 60_000) recent.shift();
+  if (recent.length > 10) process.exit(1);
+});
 serve({
   host: values.host,
   port: values.port ? Number(values.port) : undefined,
