@@ -13,7 +13,7 @@ import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
 import { ago, Badge, Card, Empty, ErrorNote, money, PageHeader, Section, StatusBadge, Tabs } from '../components/ui/display.tsx';
 import { Field, Input, Select, Switch, Textarea } from '../components/ui/form.tsx';
-import { api, useApi, type Agent, type Artifact, type Job, type Project, type Resource, type TriggerSpec, type WebhookTrigger } from '../lib/api.ts';
+import { api, useApi, type Agent, type Artifact, type Project, type Resource, type TriggerSpec, type WebhookTrigger } from '../lib/api.ts';
 import type { AppState } from '../App.tsx';
 import { go, href } from '../lib/router.ts';
 import { AgentInbox } from './inbox.tsx';

@@ -544,17 +544,22 @@ function ServerAccess() {
   const [code, setCode] = useState('');
   const [totp, setTotp] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     void fetch('/api/session')
       .then((r) => r.json())
       .then((s: { totp?: boolean }) => setTotp(!!s.totp))
-      .catch(() => {});
+      .catch((e) => setError(`Could not read the session: ${(e as Error).message}`));
   }, []);
-  const [error, setError] = useState<string | null>(null);
   const signOut = async (everywhere: boolean) => {
-    if (everywhere) await api('/api/session/revoke-all', { method: 'POST' });
-    await fetch('/api/session', { method: 'DELETE' });
-    location.reload();
+    setError(null);
+    try {
+      if (everywhere) await api('/api/session/revoke-all', { method: 'POST' });
+      await fetch('/api/session', { method: 'DELETE' });
+      location.reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
   return (
     <Section title="Server Access">
