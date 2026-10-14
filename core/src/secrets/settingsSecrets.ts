@@ -125,12 +125,11 @@ export function applySettingsUpdate(current: Settings, next: Settings & { secret
   const before = new Map(secretSlots(current).map((slot) => [slot.path, get(current, slot)]));
   const dopbaseToken = current.dopbase.token;
   // What the core manages itself never comes from the UI: an old Settings page would otherwise undo Sign Out
-  // Everywhere (session_epoch), the setup being done, or the claimed Slack owner.
+  // Everywhere (session_epoch), the setup being done, or the linked Slack owner.
   const kept = {
     epoch: current.server.session_epoch,
     onboarded: current.onboarded_at,
-    owner: current.slack?.owner,
-    since: current.slack?.since,
+    slack: current.slack as (Settings['slack'] & { link_code?: string; team_id?: string }) | undefined,
     whatsapp: current.whatsapp,
     telegram: current.telegram,
   };
@@ -148,12 +147,16 @@ export function applySettingsUpdate(current: Settings, next: Settings & { secret
   if (kept.epoch === undefined) delete current.server.session_epoch;
   if (kept.onboarded === undefined) delete current.onboarded_at;
   else current.onboarded_at = kept.onboarded;
-  if (current.slack || kept.owner) {
-    current.slack = { ...current.slack };
-    if (kept.owner === undefined) delete current.slack.owner;
-    else current.slack.owner = kept.owner;
-    if (kept.since === undefined) delete current.slack.since;
-    else current.slack.since = kept.since;
+  // Slack's link to its owner and the owner's workspace. The bridge checks the workspace when it connects, so new
+  // tokens for another workspace start the link over; with no workspace known yet, any new bot token does.
+  if (current.slack || kept.slack) {
+    const sl = (current.slack = { ...current.slack }) as NonNullable<typeof kept.slack>;
+    const relink = !kept.slack?.team_id && !!sl.bot_token && sl.bot_token !== kept.slack?.bot_token;
+    for (const f of ['owner', 'since', 'link_code', 'team_id'] as const) {
+      const v = relink ? undefined : kept.slack?.[f];
+      if (v === undefined) delete sl[f];
+      else sl[f] = v;
+    }
   }
   // WhatsApp's link to the person's number, its window and its webhook token; a new number starts the link over.
   if (current.whatsapp || kept.whatsapp) {
