@@ -84,7 +84,13 @@ describe('expects_response', () => {
 describe('choices', () => {
   it('are always text, even when an agent sends numbers', async () => {
     const { sendMessage, getMessage } = await import('./store.ts');
-    const m = sendMessage(ctx, { from: 'agent:a', to: 'human', type: 'question', title: 'Pick', choices: [1, 2, 3] as unknown as string[] });
+    const m = sendMessage(ctx, {
+      from: 'agent:a',
+      to: 'human',
+      type: 'question',
+      title: 'Pick',
+      choices: [1, 2, 3] as unknown as string[],
+    });
     expect(getMessage(ctx, m.id).choices).toEqual(['1', '2', '3']);
   });
 });

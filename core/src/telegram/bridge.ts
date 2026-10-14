@@ -367,7 +367,8 @@ function realApi(token: string): TelegramApi {
         signal: signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS),
       });
       const body = (await r.json().catch(() => ({}))) as Row;
-      if (!body.ok) throw new TelegramError(String(body.description ?? `HTTP ${r.status}`), (body.error_code as number | undefined) ?? r.status);
+      if (!body.ok)
+        throw new TelegramError(String(body.description ?? `HTTP ${r.status}`), (body.error_code as number | undefined) ?? r.status);
       return body.result as T;
     },
   };

@@ -7,7 +7,14 @@ const field =
   'w-full rounded-lg border border-line bg-panel px-3 text-sm text-ink placeholder:text-muted/70 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50 disabled:opacity-60';
 
 /** Single-line inputs hold names, keys, URLs and tokens: no spell check, and Grammarly stays out. */
-const plain = { spellCheck: false, autoCorrect: 'off', autoCapitalize: 'off', 'data-gramm': 'false', 'data-gramm_editor': 'false', 'data-enable-grammarly': 'false' } as const;
+const plain = {
+  spellCheck: false,
+  autoCorrect: 'off',
+  autoCapitalize: 'off',
+  'data-gramm': 'false',
+  'data-gramm_editor': 'false',
+  'data-enable-grammarly': 'false',
+} as const;
 
 /** A text input. A password input gets an eye button that shows or hides what was typed. */
 export function Input({ className, type, ...props }: InputHTMLAttributes<HTMLInputElement>) {

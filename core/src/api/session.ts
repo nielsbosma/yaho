@@ -49,7 +49,9 @@ export function loadTotp(ctx: Ctx): void {
   delete process.env.YAHO_TOTP_RESET;
   if (reset && existsSync(ctx.paths.totp)) {
     rmSync(ctx.paths.totp);
-    console.warn('[yaho] YAHO_TOTP_RESET=1: the authenticator was removed. Sign in with the password to set it up again, then remove YAHO_TOTP_RESET.');
+    console.warn(
+      '[yaho] YAHO_TOTP_RESET=1: the authenticator was removed. Sign in with the password to set it up again, then remove YAHO_TOTP_RESET.',
+    );
   }
   if (enabled && existsSync(ctx.paths.totp)) secret = Buffer.from(readFileSync(ctx.paths.totp, 'utf8').trim(), 'hex');
 }
@@ -62,7 +64,9 @@ const eq = (a: string, b: string) => {
 
 function key(ctx: Ctx): Buffer {
   const epoch = ctx.settings.server.session_epoch ?? 0;
-  return createHmac('sha256', ctx.apiToken).update(`${password}\n${epoch}\n${secret?.toString('hex') ?? ''}`).digest();
+  return createHmac('sha256', ctx.apiToken)
+    .update(`${password}\n${epoch}\n${secret?.toString('hex') ?? ''}`)
+    .digest();
 }
 
 const sign = (ctx: Ctx, payload: string) => createHmac('sha256', key(ctx)).update(payload).digest('base64url');
@@ -84,7 +88,10 @@ function cookies(req: IncomingMessage): Record<string, string> {
 /** Behind Sliplane or Caddy (YAHO_TRUST_PROXY=1) the request arrives as HTTP; the proxy says it was HTTPS. */
 const isHttps = (req: IncomingMessage) =>
   !!(req.socket as { encrypted?: boolean }).encrypted ||
-  (process.env.YAHO_TRUST_PROXY === '1' && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0]!.trim() === 'https');
+  (process.env.YAHO_TRUST_PROXY === '1' &&
+    String(req.headers['x-forwarded-proto'] ?? '')
+      .split(',')[0]!
+      .trim() === 'https');
 
 function setCookie(req: IncomingMessage, res: ServerResponse, value: string, maxAge: number): void {
   const parts = [`${COOKIE}=${value}`, 'Path=/', 'HttpOnly', 'SameSite=Strict', `Max-Age=${maxAge}`];
@@ -170,7 +177,11 @@ const MAX_TRACKED = 10_000;
  */
 function clientAddress(req: IncomingMessage): string {
   if (process.env.YAHO_TRUST_PROXY === '1') {
-    const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').map((x) => x.trim()).filter(Boolean).at(-1);
+    const fwd = String(req.headers['x-forwarded-for'] ?? '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .at(-1);
     if (fwd) return fwd;
   }
   return req.socket.remoteAddress ?? 'unknown';
@@ -181,20 +192,25 @@ function clientAddress(req: IncomingMessage): string {
  * 401 when wrong; which of the two was wrong is not said.
  */
 function checkPassword(req: IncomingMessage, given: unknown, code?: unknown): void {
-  attempt(req, () => {
-    if (!(typeof given === 'string' && eq(given, configured()))) return false;
-    if (!secret) return true;
-    const s = codeStep(secret, code, lastStep);
-    if (s === null) return false;
-    lastStep = s;
-    return true;
-  }, secret ? 'Wrong password or code.' : 'Wrong password.');
+  attempt(
+    req,
+    () => {
+      if (!(typeof given === 'string' && eq(given, configured()))) return false;
+      if (!secret) return true;
+      const s = codeStep(secret, code, lastStep);
+      if (s === null) return false;
+      lastStep = s;
+      return true;
+    },
+    secret ? 'Wrong password or code.' : 'Wrong password.',
+  );
 }
 
 /** Throw 429 while this address is locked out: checked before the request's body is even read. */
 function checkLockout(req: IncomingMessage): void {
   const f = fails.get(clientAddress(req));
-  if (f && f.until > Date.now()) throw new HttpError(429, `Too many wrong passwords. Try again in ${Math.ceil((f.until - Date.now()) / 60000)} minutes.`);
+  if (f && f.until > Date.now())
+    throw new HttpError(429, `Too many wrong passwords. Try again in ${Math.ceil((f.until - Date.now()) / 60000)} minutes.`);
 }
 
 /**
@@ -259,7 +275,12 @@ export async function sessionRoute(
  * Set up the authenticator, with a setup session: GET shows the secret to scan, POST with a code from it saves it and
  * makes the session a full one.
  */
-async function totpSetup(ctx: Ctx, req: IncomingMessage, res: ServerResponse, body: () => Promise<Record<string, unknown>>): Promise<unknown> {
+async function totpSetup(
+  ctx: Ctx,
+  req: IncomingMessage,
+  res: ServerResponse,
+  body: () => Promise<Record<string, unknown>>,
+): Promise<unknown> {
   if (sessionLevel(ctx, req, res) !== 'setup') throw new HttpError(401, 'sign in with the password first');
   pending ??= randomBytes(20);
   const key = pending;
@@ -272,7 +293,11 @@ async function totpSetup(ctx: Ctx, req: IncomingMessage, res: ServerResponse, bo
   checkLockout(req);
   const code = (await body()).code;
   let step: number | null = null;
-  attempt(req, () => (step = codeStep(key, code, -1)) !== null, 'That code does not match. Check the time on your phone and try the next one.');
+  attempt(
+    req,
+    () => (step = codeStep(key, code, -1)) !== null,
+    'That code does not match. Check the time on your phone and try the next one.',
+  );
   writeFileSync(ctx.paths.totp, key.toString('hex'), { mode: 0o600 });
   secret = key;
   pending = null;

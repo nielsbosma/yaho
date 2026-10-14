@@ -151,7 +151,9 @@ export class BrowserSession {
         /* stale or unreadable cookies: start signed out */
       }
     }
-    const { targetInfos } = await cdp.send<{ targetInfos: Array<{ targetId: string; type: string; browserContextId?: string }> }>('Target.getTargets');
+    const { targetInfos } = await cdp.send<{ targetInfos: Array<{ targetId: string; type: string; browserContextId?: string }> }>(
+      'Target.getTargets',
+    );
     const pages = targetInfos.filter((t) => t.type === 'page' && (!this.launched.context || t.browserContextId === this.launched.context));
     if (pages.length) for (const p of pages) await this.attach(p.targetId);
     else await this.newTab('about:blank');
@@ -169,7 +171,9 @@ export class BrowserSession {
     const { cdp } = this;
     await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, sessionId).catch(() => undefined);
     // Frames in another process and workers are targets of their own, held until they are filtered too.
-    await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId).catch(() => undefined);
+    await cdp
+      .send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId)
+      .catch(() => undefined);
   }
 
   /** A frame or worker of one of the job's tabs. */

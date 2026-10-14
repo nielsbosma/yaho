@@ -98,7 +98,11 @@ export class JobRunner {
   private refreshSpend(maxAgeMs = 2000): void {
     if (Date.now() - this.spendCache.at < maxAgeMs) return;
     const rows = this.ctx.db.prepare('SELECT agent, COALESCE(SUM(cost_usd),0) s FROM jobs GROUP BY agent').all() as Row[];
-    this.spendCache = { at: Date.now(), total: rows.reduce((a, r) => a + Number(r.s), 0), agents: new Map(rows.map((r) => [r.agent as string, Number(r.s)])) };
+    this.spendCache = {
+      at: Date.now(),
+      total: rows.reduce((a, r) => a + Number(r.s), 0),
+      agents: new Map(rows.map((r) => [r.agent as string, Number(r.s)])),
+    };
   }
 
   private spent(agent?: string): number {
@@ -177,7 +181,15 @@ export class JobRunner {
         }
         // The rest of the budget is held by the agent's running jobs: wait for one to end.
         if (mine.length && this.available(agent) < 0.01) continue;
-        const r: Running = { job: job.id, agent: agent.name, session: job.session_id, proc: null, baseCost: job.cost_usd, cost: job.cost_usd, usage: new Map() };
+        const r: Running = {
+          job: job.id,
+          agent: agent.name,
+          session: job.session_id,
+          proc: null,
+          baseCost: job.cost_usd,
+          cost: job.cost_usd,
+          usage: new Map(),
+        };
         this.running.set(job.id, r);
         updateJob(this.ctx, job.id, { status: 'running', started: job.started ?? now(), reason: null });
         this.start(agent, job, r).catch((e) => {
@@ -221,7 +233,8 @@ export class JobRunner {
     if (!harnessCfg || !adapter) throw new Error(`harness ${agent.harness} is not available`);
     const sandbox = sandboxOn(settings);
     const unsandboxable = sandbox ? sandboxProblem(agent.harness) : null;
-    if (unsandboxable) throw new Error(`Sandbox Mode is on, but ${unsandboxable}. Turn it off in Settings → Guard Rails to run without it.`);
+    if (unsandboxable)
+      throw new Error(`Sandbox Mode is on, but ${unsandboxable}. Turn it off in Settings → Guard Rails to run without it.`);
     const model = agent.models[0] ?? settings.defaults.models[0];
     if (!model) throw new Error('the agent has no allowed models');
     const ses = this.session(agent, job);
@@ -238,7 +251,9 @@ export class JobRunner {
       .prepare('INSERT INTO job_tokens (token, job, agent, expires, provider) VALUES (?,?,?,?,?)')
       .run(token, job.id, agent.name, new Date(Date.now() + 7 * 864e5).toISOString(), provider.id);
     if (!harnessFits(provider, agent.harness))
-      throw new Error(`${agent.harness} cannot use ${provider.id}: Codex needs a provider with OpenAI's Responses API (OpenAI, LiteLLM, Opper, OpenRouter)`);
+      throw new Error(
+        `${agent.harness} cannot use ${provider.id}: Codex needs a provider with OpenAI's Responses API (OpenAI, LiteLLM, Opper, OpenRouter)`,
+      );
     const access = await jobAccess(settings, provider, {
       models: agent.models.map((m) => resolveModel(settings, m).model),
       remaining,
@@ -308,7 +323,9 @@ export class JobRunner {
         resumeSessionId: ses.harnessId,
         transcriptPath: transcript,
         maxBudgetUsd: remaining,
-        sandbox: sandbox ? { guard: sandboxGuardCommand(ctx.paths.bin), socket: ctx.paths.socket, denyRead: coreFiles(ctx.paths) } : undefined,
+        sandbox: sandbox
+          ? { guard: sandboxGuardCommand(ctx.paths.bin), socket: ctx.paths.socket, denyRead: coreFiles(ctx.paths) }
+          : undefined,
         commandGuard: commandRulesOn(settings) ? hookCommand(ctx.paths.bin, COMMAND_GUARD) : undefined,
       },
       (e) => this.onEvent(r, ses.id, e),

@@ -149,7 +149,8 @@ export function tools(ctx: Ctx): Record<string, Tool> {
       run: (a) => addProjectFile(ctx, String(a.project), String(a.path), a.name ? String(a.name) : undefined),
     },
     list_folder: {
-      description: 'List a folder on this computer by its full path (names, sizes, subfolders; one level). Use it to see what a folder holds before reading or copying.',
+      description:
+        'List a folder on this computer by its full path (names, sizes, subfolders; one level). Use it to see what a folder holds before reading or copying.',
       parameters: obj({ path: str('full path, e.g. D:\\Workspaces\\Jobs') }, ['path']),
       run: (a) => listLocalFolder(ctx, String(a.path)),
     },
@@ -160,7 +161,9 @@ export function tools(ctx: Ctx): Record<string, Tool> {
         {
           agent: str('agent name'),
           path: str('full path of the file or folder'),
-          dest: str('where in the workspace, relative to its root: e.g. scripts/ or agent.db (default: same name at the root; a folder copies its contents into the root)'),
+          dest: str(
+            'where in the workspace, relative to its root: e.g. scripts/ or agent.db (default: same name at the root; a folder copies its contents into the root)',
+          ),
         },
         ['agent', 'path'],
       ),
@@ -169,11 +172,14 @@ export function tools(ctx: Ctx): Record<string, Tool> {
     write_agent_file: {
       description:
         "Create or overwrite a text file in an agent's workspace, e.g. a script adapted to Yaho (keys from environment variables, the database at agent.db) or a memory/ note. Read the original first and write the whole file.",
-      parameters: obj({ agent: str('agent name'), path: str('path relative to the workspace root, e.g. scripts/run.py'), content: str('the full file content') }, [
-        'agent',
-        'path',
-        'content',
-      ]),
+      parameters: obj(
+        {
+          agent: str('agent name'),
+          path: str('path relative to the workspace root, e.g. scripts/run.py'),
+          content: str('the full file content'),
+        },
+        ['agent', 'path', 'content'],
+      ),
       run: (a) => writeAgentFile(ctx, String(a.agent), String(a.path), String(a.content)),
     },
     save_project: {
@@ -270,7 +276,10 @@ export function tools(ctx: Ctx): Record<string, Tool> {
       description:
         'Put agents in a sidebar folder (creating the folder if it does not exist), or take them out with folder: null. Folders are not part of an agent definition; this is the only way to change them.',
       parameters: obj(
-        { agents: { type: 'array', items: { type: 'string' } }, folder: { type: ['string', 'null'], description: 'folder name, or null for no folder' } },
+        {
+          agents: { type: 'array', items: { type: 'string' } },
+          folder: { type: ['string', 'null'], description: 'folder name, or null for no folder' },
+        },
         ['agents'],
       ),
       run: (a) => {
@@ -299,7 +308,8 @@ export function tools(ctx: Ctx): Record<string, Tool> {
         const f = String(a.folder);
         let out: string[];
         if (a.delete === true) {
-          if (a.delete_agents === true && a.confirmed !== true) throw new HttpError(400, 'ask the human to confirm deleting the agents first');
+          if (a.delete_agents === true && a.confirmed !== true)
+            throw new HttpError(400, 'ask the human to confirm deleting the agents first');
           out = s.deleteFolder(ctx, f, { agents: a.delete_agents === true });
         } else if (a.rename_to) out = s.renameFolder(ctx, f, a.rename_to);
         else throw new HttpError(400, 'pass rename_to or delete: true');
@@ -514,7 +524,7 @@ function projectFocus(ctx: Ctx, name: string): string {
   return [
     '',
     `## This chat is about the project "${p.name}" (${p.title})`,
-    'The human opened it from that project\'s page. Questions are about this project unless they say otherwise: what it is',
+    "The human opened it from that project's page. Questions are about this project unless they say otherwise: what it is",
     'for, which agents work on it, what they made, how to improve its briefing. When they ask for a change, make it with',
     'save_project (or save_agent to assign agents) and say what changed. When explaining, you may answer at more length',
     'than one or two sentences.',
@@ -538,13 +548,21 @@ function focusPrompt(ctx: Ctx, focus: ChatFocus | undefined): string {
     const ses = j.session_id
       ? (ctx.db.prepare('SELECT summary FROM sessions WHERE id = ?').get(j.session_id) as { summary?: string } | undefined)
       : undefined;
-    return { id: j.id, created: j.created, trigger: j.trigger_type, status: j.status, reason: j.reason, cost_usd: j.cost_usd, summary: ses?.summary };
+    return {
+      id: j.id,
+      created: j.created,
+      trigger: j.trigger_type,
+      status: j.status,
+      reason: j.reason,
+      cost_usd: j.cost_usd,
+      summary: ses?.summary,
+    };
   });
   const fence = '```';
   return [
     '',
     `## This chat is about the agent "${a.name}"`,
-    'The human opened it from that agent\'s page. Questions are about this agent unless they say otherwise: how it works,',
+    "The human opened it from that agent's page. Questions are about this agent unless they say otherwise: how it works,",
     'why it did something, how to improve it. When they ask for a change, make it with save_agent (the whole definition,',
     'with your edits) and say what changed. When explaining, you may answer at more length than one or two sentences.',
     '',
@@ -559,7 +577,11 @@ function focusPrompt(ctx: Ctx, focus: ChatFocus | undefined): string {
 }
 
 /** One assistant turn: call the model, run its tools, repeat until it answers. */
-export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus): Promise<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }> {
+export async function chat(
+  ctx: Ctx,
+  history: ChatMessage[],
+  focus?: ChatFocus,
+): Promise<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }> {
   const chosen = ctx.settings.assistant?.model ?? ctx.settings.defaults.models[0];
   if (!chosen) throw new HttpError(503, 'choose a default model in Settings first');
   const { provider, model } = resolveModel(ctx.settings, chosen);
@@ -568,7 +590,10 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
     type: 'function' as const,
     function: { name, description: x.description, parameters: x.parameters },
   }));
-  const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM + focusPrompt(ctx, focus) }, ...history.filter((m) => m.role !== 'system')];
+  const messages: ChatMessage[] = [
+    { role: 'system', content: SYSTEM + focusPrompt(ctx, focus) },
+    ...history.filter((m) => m.role !== 'system'),
+  ];
   const steps: Step[] = [];
   const out: { navigate?: string[] } = {};
 
@@ -602,7 +627,9 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
         if (!tool) throw new Error(`unknown tool ${call.function.name}`);
         const required = (tool.parameters as { required?: string[] }).required ?? [];
         if (required.length && !Object.keys(args).length)
-          throw new Error(`the call had no arguments (needs ${required.join(', ')}); it may have been cut off. Send it again, shorter if it was long.`);
+          throw new Error(
+            `the call had no arguments (needs ${required.join(', ')}); it may have been cut off. Send it again, shorter if it was long.`,
+          );
         result = await tool.run(args, out);
       } catch (e) {
         ok = false;
@@ -631,7 +658,9 @@ export async function chat(ctx: Ctx, history: ChatMessage[], focus?: ChatFocus):
   // Out of rounds while still calling tools: say so, instead of leaving a tool result as the last word.
   if (!answered) {
     const failed = steps.filter((x) => !x.ok).at(-1);
-    const why = failed ? ` The last thing that failed: ${failed.tool.replace(/_/g, ' ')}: ${(failed.result as { error?: string })?.error ?? 'unknown error'}.` : '';
+    const why = failed
+      ? ` The last thing that failed: ${failed.tool.replace(/_/g, ' ')}: ${(failed.result as { error?: string })?.error ?? 'unknown error'}.`
+      : '';
     messages.push({
       role: 'assistant',
       content: `I stopped after ${ROUNDS} steps without finishing.${why} Ask again, perhaps for a smaller change at a time.`,

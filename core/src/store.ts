@@ -260,7 +260,8 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
   for (const w of hooks) {
     assertName('webhook', w.webhook);
     if (hooks.filter((x) => x.webhook === w.webhook).length > 1) throw new HttpError(400, `two webhooks are named ${w.webhook}`);
-    if (w.verify && !WEBHOOK_VERIFY.includes(w.verify)) throw new HttpError(400, `webhook verify must be one of ${WEBHOOK_VERIFY.join(', ')}`);
+    if (w.verify && !WEBHOOK_VERIFY.includes(w.verify))
+      throw new HttpError(400, `webhook verify must be one of ${WEBHOOK_VERIFY.join(', ')}`);
     if (w.limit !== undefined && !(Number.isInteger(w.limit) && w.limit >= 1 && w.limit <= 10_000))
       throw new HttpError(400, 'webhook limit must be a whole number from 1 to 10000');
   }
@@ -439,7 +440,8 @@ export function createFolder(ctx: Ctx, name: unknown): string[] {
 export function renameFolder(ctx: Ctx, from: string, to: unknown): string[] {
   const n = folderName(to);
   if (!ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(from)) throw new HttpError(404, `folder ${from} not found`);
-  if (n !== from && ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(n)) throw new HttpError(409, `folder ${n} already exists`);
+  if (n !== from && ctx.db.prepare('SELECT 1 FROM agent_folders WHERE name = ?').get(n))
+    throw new HttpError(409, `folder ${n} already exists`);
   ctx.db.prepare('UPDATE agent_folders SET name = ? WHERE name = ?').run(n, from);
   ctx.db.prepare('UPDATE agents SET folder = ? WHERE folder = ?').run(n, from);
   return listFolders(ctx);
@@ -818,7 +820,9 @@ export function listJobs(ctx: Ctx, opts: { agent?: string; active?: boolean; lim
   if (opts.active) where.push("status IN ('running','queued')");
   return (
     ctx.db
-      .prepare(`SELECT *, (SELECT COUNT(*) FROM messages m WHERE m.job = jobs.id) AS messages FROM jobs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created DESC LIMIT ${limitOf(opts.limit, 200)}`)
+      .prepare(
+        `SELECT *, (SELECT COUNT(*) FROM messages m WHERE m.job = jobs.id) AS messages FROM jobs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created DESC LIMIT ${limitOf(opts.limit, 200)}`,
+      )
       .all(...args) as unknown as Job[]
   ).map((j) => ({ ...j }));
 }

@@ -96,7 +96,10 @@ function Main() {
       window.removeEventListener('yaho:chat-focus', onFocus);
     };
   }, []);
-  const state = useApi<AppState>('/api/state', (e) => e.type === 'message' || e.type === 'job' || (e.type === 'changed' && e.entity === 'settings'));
+  const state = useApi<AppState>(
+    '/api/state',
+    (e) => e.type === 'message' || e.type === 'job' || (e.type === 'changed' && e.entity === 'settings'),
+  );
 
   useEffect(
     () =>

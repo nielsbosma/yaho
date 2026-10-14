@@ -180,7 +180,9 @@ describe.skipIf(!findBrowser({} as never))('a real browser', () => {
       // Not only pages: a script's own requests too.
       await run('open', [base]);
       const other = base.replace('127.0.0.1', 'localhost');
-      expect(await run('eval', [`fetch('${other}/second', { mode: 'no-cors' }).then(() => 'reached', () => 'refused')`])).toMatch(/refused[\s\S]*Blocked/);
+      expect(await run('eval', [`fetch('${other}/second', { mode: 'no-cors' }).then(() => 'reached', () => 'refused')`])).toMatch(
+        /refused[\s\S]*Blocked/,
+      );
       expect(await run('eval', [`fetch('${base}/second').then(() => 'reached', () => 'refused')`])).toMatch(/reached/);
     } finally {
       ctx.settings.browser = {};
@@ -209,16 +211,22 @@ describe.skipIf(!findBrowser({} as never))('a real browser', () => {
 
   it('gives each job its own tabs and cookies in a shared CDP browser', async () => {
     const profile = mkdtempSync(join(tmpdir(), 'yaho-cdp-'));
-    const chrome = spawn(findBrowser({} as never)!, ['--headless=new', '--no-sandbox', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], {
-      stdio: 'ignore',
-    });
+    const chrome = spawn(
+      findBrowser({} as never)!,
+      ['--headless=new', '--no-sandbox', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
+      {
+        stdio: 'ignore',
+      },
+    );
     try {
       const file = join(profile, 'DevToolsActivePort');
       for (let i = 0; i < 100 && !existsSync(file); i++) await new Promise((r) => setTimeout(r, 100));
       const [port, path] = readFileSync(file, 'utf8').trim().split('\n');
       ctx.settings.browser = { provider: 'cdp', cdp_url: `ws://127.0.0.1:${port}${path}` };
       saveAgent(ctx, { name: 'other', browser: true, triggers: [] });
-      ctx.db.prepare("INSERT INTO jobs (id, agent, trigger_type, status, created) VALUES ('job_b', 'other', 'manual', 'running', ?)").run(new Date().toISOString());
+      ctx.db
+        .prepare("INSERT INTO jobs (id, agent, trigger_type, status, created) VALUES ('job_b', 'other', 'manual', 'running', ?)")
+        .run(new Date().toISOString());
       await run('open', [base]);
       await run('eval', ["document.cookie = 'who=surfer'; document.cookie"]);
       const b = (cmd: string, args: string[] = []) => ctx.browser!.run('other', 'job_b', { cmd, args }).then((r) => r.text);

@@ -39,7 +39,6 @@ export interface ClaudeCheck {
   failed?: 'install' | 'version' | 'provider' | 'harness';
 }
 
-
 const STEPS = ['Welcome', 'Models', 'Claude Code', 'Budget', 'Connections', 'Finish'] as const;
 
 /** Send changed settings; secret fields that are not given keep their stored value. */
@@ -216,7 +215,11 @@ function ModelsStep({ settings }: { settings: SetupSettings }) {
             onClick={() => pick(p.kind)}
             className={cn(
               'flex gap-3 rounded-xl border p-3 text-left text-sm',
-              !p.available ? 'border-line opacity-60' : p.kind === kind ? 'border-accent bg-accent/5 ring-1 ring-accent/40' : 'cursor-pointer border-line hover:border-accent/50',
+              !p.available
+                ? 'border-line opacity-60'
+                : p.kind === kind
+                  ? 'border-accent bg-accent/5 ring-1 ring-accent/40'
+                  : 'cursor-pointer border-line hover:border-accent/50',
             )}
           >
             {p.kind in BRAND_LOGOS ? (
@@ -241,7 +244,10 @@ function ModelsStep({ settings }: { settings: SetupSettings }) {
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:4000" />
         </Field>
       )}
-      <Field label={`${info?.label ?? 'API'} Key`} hint={keyStored ? 'A key is stored. Type a new one to replace it.' : 'Kept in the secrets store; agents never see it.'}>
+      <Field
+        label={`${info?.label ?? 'API'} Key`}
+        hint={keyStored ? 'A key is stored. Type a new one to replace it.' : 'Kept in the secrets store; agents never see it.'}
+      >
         <Input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={keyStored ? 'Value set' : ''} />
       </Field>
       <div className="flex items-center gap-3">
@@ -309,7 +315,13 @@ export function ClaudeCheckPanel({ auto = true, harness = 'claude-code' }: { aut
       {c?.error && (
         <div className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-xs">
           <div className="mb-1 font-medium text-danger">
-            {c.failed === 'provider' ? 'The model provider did not answer' : c.failed === 'install' ? 'Not installed' : c.failed === 'version' ? 'Too old' : `${name} failed`}
+            {c.failed === 'provider'
+              ? 'The model provider did not answer'
+              : c.failed === 'install'
+                ? 'Not installed'
+                : c.failed === 'version'
+                  ? 'Too old'
+                  : `${name} failed`}
           </div>
           <pre className="font-mono break-words whitespace-pre-wrap text-ink/80">{c.error}</pre>
         </div>
@@ -375,35 +387,48 @@ function ConnectionsStep({ settings }: { settings: SetupSettings }) {
           <BrandLogo brand="slack" size="sm" />
           Slack
         </div>
-        <p className="mt-1 text-xs text-muted">Get your inbox as Slack messages and answer from there. Set it up in Settings → Integrations; it takes about five minutes.</p>
+        <p className="mt-1 text-xs text-muted">
+          Get your inbox as Slack messages and answer from there. Set it up in Settings → Integrations; it takes about five minutes.
+        </p>
       </div>
       <div className="rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
           <BrandLogo brand="telegram" size="sm" />
           Telegram
         </div>
-        <p className="mt-1 text-xs text-muted">The same in a chat with your own Telegram bot. Set it up in Settings → Integrations; it takes two minutes.</p>
+        <p className="mt-1 text-xs text-muted">
+          The same in a chat with your own Telegram bot. Set it up in Settings → Integrations; it takes two minutes.
+        </p>
       </div>
       <div className="rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
           <BrandLogo brand="whatsapp" size="sm" />
           WhatsApp
         </div>
-        <p className="mt-1 text-xs text-muted">The same on WhatsApp, through your own WhatsApp Business number. Set it up in Settings → Integrations; it needs the server version of Yaho, reachable from the internet.</p>
+        <p className="mt-1 text-xs text-muted">
+          The same on WhatsApp, through your own WhatsApp Business number. Set it up in Settings → Integrations; it needs the server version
+          of Yaho, reachable from the internet.
+        </p>
       </div>
       <div className="rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
           <BrandLogo brand="resend" size="sm" />
           Email
         </div>
-        <p className="mt-1 text-xs text-muted">Give agents their own email address on your domain through Resend, so they can email people and act on the replies. Set it up in Settings → Integrations; it needs the server version of Yaho, reachable from the internet.</p>
+        <p className="mt-1 text-xs text-muted">
+          Give agents their own email address on your domain through Resend, so they can email people and act on the replies. Set it up in
+          Settings → Integrations; it needs the server version of Yaho, reachable from the internet.
+        </p>
       </div>
       <div className="rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
           <BrandLogo brand="twilio" size="sm" />
           SMS
         </div>
-        <p className="mt-1 text-xs text-muted">Let agents text people from a Twilio number and act on the replies. Set it up in Settings → Integrations; it needs the server version of Yaho, reachable from the internet.</p>
+        <p className="mt-1 text-xs text-muted">
+          Let agents text people from a Twilio number and act on the replies. Set it up in Settings → Integrations; it needs the server
+          version of Yaho, reachable from the internet.
+        </p>
       </div>
       <div className="space-y-3 rounded-xl border border-line p-4">
         <div className="flex items-center gap-2 font-medium">
@@ -411,10 +436,22 @@ function ConnectionsStep({ settings }: { settings: SetupSettings }) {
           Composio
         </div>
         <p className="text-xs text-muted">Gives agents access to Gmail, Google Calendar, GitHub and hundreds of other apps.</p>
-        <Field label="Composio API Key" hint={settings.secrets_set?.['composio.api_key'] ? 'A key is stored. Type a new one to replace it.' : 'From composio.dev → Settings → API Keys.'}>
+        <Field
+          label="Composio API Key"
+          hint={
+            settings.secrets_set?.['composio.api_key']
+              ? 'A key is stored. Type a new one to replace it.'
+              : 'From composio.dev → Settings → API Keys.'
+          }
+        >
           <div className="flex gap-2">
             <div className="flex-1">
-              <Input type="password" value={composio} onChange={(e) => setComposio(e.target.value)} placeholder={settings.secrets_set?.['composio.api_key'] ? 'Value set' : ''} />
+              <Input
+                type="password"
+                value={composio}
+                onChange={(e) => setComposio(e.target.value)}
+                placeholder={settings.secrets_set?.['composio.api_key'] ? 'Value set' : ''}
+              />
             </div>
             <Button
               disabled={!composio}
@@ -450,11 +487,15 @@ function FinishStep() {
             </Button>
           )}
           {result && (
-            <Status state={result.error ? 'fail' : 'ok'}>{result.error ?? `Made ${result.files.length} shortcut${result.files.length === 1 ? '' : 's'}`}</Status>
+            <Status state={result.error ? 'fail' : 'ok'}>
+              {result.error ?? `Made ${result.files.length} shortcut${result.files.length === 1 ? '' : 's'}`}
+            </Status>
           )}
         </div>
       )}
-      {platform.os === 'darwin' && <p className="text-xs text-muted">Yaho is in your Applications folder, so Launchpad and Spotlight find it.</p>}
+      {platform.os === 'darwin' && (
+        <p className="text-xs text-muted">Yaho is in your Applications folder, so Launchpad and Spotlight find it.</p>
+      )}
       <p className="text-xs text-muted">
         From a terminal, <code>yaho</code> opens this window and <code>yaho doctor</code> checks the install.
       </p>

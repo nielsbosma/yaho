@@ -99,7 +99,9 @@ function origin(base: string | null): string | null {
 export function fontRoutes(r: Router): void {
   // Fonts load through CSS url(), which cannot send a token; they are public files, so these routes are open.
   r.on('GET', '/api/fonts/anthropic.css', (req: Req) => {
-    const host = /^[\w.-]+(:\d{1,5})?$|^\[[\da-f:.]+\](:\d{1,5})?$/i.test(req.raw.headers.host ?? '') ? `http://${req.raw.headers.host}` : '';
+    const host = /^[\w.-]+(:\d{1,5})?$|^\[[\da-f:.]+\](:\d{1,5})?$/i.test(req.raw.headers.host ?? '')
+      ? `http://${req.raw.headers.host}`
+      : '';
     req.res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'max-age=3600' });
     req.res.end(css(origin(req.query.get('base')) ?? host));
   });

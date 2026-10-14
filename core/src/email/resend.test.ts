@@ -150,7 +150,12 @@ describe('EmailBridge', () => {
     // So does a reply to our own Message-ID; a bad one is not stored.
     await bridge.receive(
       'in_3',
-      mail({ from: 'anna@example.com', to: ['scout@agents.test'], text: 'And another', headers: { 'In-Reply-To': firstId, 'Message-ID': '<a> <b>' } }),
+      mail({
+        from: 'anna@example.com',
+        to: ['scout@agents.test'],
+        text: 'And another',
+        headers: { 'In-Reply-To': firstId, 'Message-ID': '<a> <b>' },
+      }),
     );
     expect(thread(ctx, out.id)).toHaveLength(5);
     expect(ctx.db.prepare("SELECT message_id FROM emails WHERE resend_id = 'in_3'").get()).toEqual({ message_id: null });

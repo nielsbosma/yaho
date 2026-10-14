@@ -109,7 +109,10 @@ describe('budgets', () => {
   it('survives deleting an agent while its job runs', async () => {
     await api('/api/agents', { body: { name: 'doomed', budget_usd: 1 } });
     mkdirSync(join(dir, 'agents', 'doomed'), { recursive: true });
-    writeFileSync(join(dir, 'agents', 'doomed', 'steps.json'), JSON.stringify([{ sleep_ms: 800 }, { cmd: 'echo late' }, { sleep_ms: 5000 }]));
+    writeFileSync(
+      join(dir, 'agents', 'doomed', 'steps.json'),
+      JSON.stringify([{ sleep_ms: 800 }, { cmd: 'echo late' }, { sleep_ms: 5000 }]),
+    );
     const job = await api<Job>('/api/agents/doomed/run', { method: 'POST' });
     await until(job.id, (j) => j.status === 'running');
     await new Promise((r) => setTimeout(r, 300));

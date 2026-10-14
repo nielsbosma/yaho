@@ -27,7 +27,9 @@ beforeAll(async () => {
   const t = new Date().toISOString();
   ctx.db.prepare("INSERT INTO jobs (id, agent, trigger_type, status, created) VALUES ('job_f', 'maker', 'manual', 'finished', ?)").run(t);
   jobToken = 'jt_files_test';
-  ctx.db.prepare("INSERT INTO job_tokens (token, job, agent, expires) VALUES (?, 'job_f', 'maker', ?)").run(jobToken, '2999-01-01T00:00:00Z');
+  ctx.db
+    .prepare("INSERT INTO job_tokens (token, job, agent, expires) VALUES (?, 'job_f', 'maker', ?)")
+    .run(jobToken, '2999-01-01T00:00:00Z');
 });
 afterAll(async () => {
   await close();
@@ -119,7 +121,9 @@ describe('serving files agents made', () => {
     expect((await api('/api/agents/%E0%A4%A/workspace')).status).toBe(400);
     expect((await api('/api/jobs?limit=abc')).status).toBe(200);
     expect((await api('/api/jobs?limit=99999999')).status).toBe(200);
-    expect((await api('/api/agent/projects/site/artifacts?name=z.txt&kind=%3Cb%3E', { method: 'POST', body: 'z' }, jobToken)).status).toBe(400);
+    expect((await api('/api/agent/projects/site/artifacts?name=z.txt&kind=%3Cb%3E', { method: 'POST', body: 'z' }, jobToken)).status).toBe(
+      400,
+    );
     expect((await api('/api/agent/briefing', { method: 'PUT', body: '{not json' }, jobToken)).status).toBe(400);
     expect((await api('/api/agent/sleep', { method: 'POST', body: JSON.stringify({ duration: '1e300d' }) }, jobToken)).status).toBe(400);
     const css = await (await fetch(`${ctx.apiUrl}/api/fonts/anthropic.css?base=${encodeURIComponent("x');}*{color:red")}`)).text();

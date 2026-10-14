@@ -63,12 +63,14 @@ function ProjectList() {
             columns={[
               { label: 'Project', className: 'whitespace-nowrap', cell: (p) => <span className="font-medium">{p.title}</span> },
               { label: 'Name', className: 'whitespace-nowrap', cell: (p) => <code className="text-xs text-muted">{p.name}</code> },
-              { label: 'Briefing', className: 'w-full max-w-0', cell: (p) => <span className="block truncate text-muted">{plainText(p.briefing) || '—'}</span> },
+              {
+                label: 'Briefing',
+                className: 'w-full max-w-0',
+                cell: (p) => <span className="block truncate text-muted">{plainText(p.briefing) || '—'}</span>,
+              },
               {
                 label: 'Agents',
-                cell: (p) => (
-                  <AgentChips agents={p.agents} />
-                ),
+                cell: (p) => <AgentChips agents={p.agents} />,
               },
             ]}
           />
@@ -258,7 +260,9 @@ function ProjectDetail({ name }: { name: string }) {
                     type="button"
                     className="cursor-pointer truncate hover:text-accent"
                     onClick={() =>
-                      openExternalFile(`/api/projects/${name}/files/${encodeURIComponent(f.path)}`).catch((e) => setError((e as Error).message))
+                      openExternalFile(`/api/projects/${name}/files/${encodeURIComponent(f.path)}`).catch((e) =>
+                        setError((e as Error).message),
+                      )
                     }
                   >
                     {f.path}

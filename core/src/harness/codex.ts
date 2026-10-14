@@ -32,7 +32,12 @@ export function codexOverride(cwd: string): string | null {
     if (dir !== home) {
       if (existsSync(join(dir, '.codex', 'hooks.json'))) return join(dir, '.codex', 'hooks.json');
       const config = join(dir, '.codex', 'config.toml');
-      if (existsSync(config) && /\b(hooks|features|sandbox\w*|approval\w*|permissions|profiles?|model_providers?|shell_environment_policy|notify)\b/.test(readFileSync(config, 'utf8')))
+      if (
+        existsSync(config) &&
+        /\b(hooks|features|sandbox\w*|approval\w*|permissions|profiles?|model_providers?|shell_environment_policy|notify)\b/.test(
+          readFileSync(config, 'utf8'),
+        )
+      )
         return config;
     }
     if (dirname(dir) === dir) return null;
@@ -63,7 +68,13 @@ export const codex: HarnessAdapter = {
       // Command Rules: Codex runs the same PreToolUse hook as Claude Code (it calls its shell tool Bash). The hook is
       // Yaho's own, so it needs no trust review.
       ...(run.commandGuard
-        ? ['-c', 'features.hooks=true', '-c', `hooks.PreToolUse=[{matcher="Bash",hooks=[{type="command",command=${toml(run.commandGuard)}}]}]`, '--dangerously-bypass-hook-trust']
+        ? [
+            '-c',
+            'features.hooks=true',
+            '-c',
+            `hooks.PreToolUse=[{matcher="Bash",hooks=[{type="command",command=${toml(run.commandGuard)}}]}]`,
+            '--dangerously-bypass-hook-trust',
+          ]
         : []),
       '--ignore-user-config',
       '-m',
@@ -75,7 +86,12 @@ export const codex: HarnessAdapter = {
       '-c',
       `developer_instructions=${toml(run.systemPrompt)}`,
     ];
-    const args = [...(run.args ?? []), 'exec', ...(run.resumeSessionId ? ['resume', ...common, run.resumeSessionId] : [...common, '-C', run.cwd]), '-'];
+    const args = [
+      ...(run.args ?? []),
+      'exec',
+      ...(run.resumeSessionId ? ['resume', ...common, run.resumeSessionId] : [...common, '-C', run.cwd]),
+      '-',
+    ];
     if (run.env.CODEX_HOME) mkdirSync(run.env.CODEX_HOME, { recursive: true });
     const [command, prefix] = direct(resolveCommand(run.command, run.env));
     const child = spawn(...asAgent(command, [...prefix, ...args]), {
@@ -109,20 +125,34 @@ export const codex: HarnessAdapter = {
           onEvent({ kind: 'session', sessionId: String(m.thread_id) });
           break;
         case 'item.started':
-          if (item?.type === 'command_execution') onEvent({ kind: 'tool_use', id: String(item.id), name: 'shell', input: { command: item.command } });
-          if (item?.type === 'mcp_tool_call') onEvent({ kind: 'tool_use', id: String(item.id), name: String(item.tool ?? 'tool'), input: item.arguments });
+          if (item?.type === 'command_execution')
+            onEvent({ kind: 'tool_use', id: String(item.id), name: 'shell', input: { command: item.command } });
+          if (item?.type === 'mcp_tool_call')
+            onEvent({ kind: 'tool_use', id: String(item.id), name: String(item.tool ?? 'tool'), input: item.arguments });
           break;
         case 'item.completed':
           if (item?.type === 'agent_message' && item.text) {
             lastMessage = String(item.text);
             onEvent({ kind: 'text', text: lastMessage });
           } else if (item?.type === 'command_execution')
-            onEvent({ kind: 'tool_result', id: String(item.id), output: clip(String(item.aggregated_output ?? '')), is_error: item.exit_code !== 0 });
-          else if (item?.type === 'file_change') onEvent({ kind: 'tool_use', id: String(item.id), name: 'apply_patch', input: item.changes });
+            onEvent({
+              kind: 'tool_result',
+              id: String(item.id),
+              output: clip(String(item.aggregated_output ?? '')),
+              is_error: item.exit_code !== 0,
+            });
+          else if (item?.type === 'file_change')
+            onEvent({ kind: 'tool_use', id: String(item.id), name: 'apply_patch', input: item.changes });
           else if (item?.type === 'mcp_tool_call')
-            onEvent({ kind: 'tool_result', id: String(item.id), output: clip(JSON.stringify(item.result ?? item.error ?? '')), is_error: !!item.error });
+            onEvent({
+              kind: 'tool_result',
+              id: String(item.id),
+              output: clip(JSON.stringify(item.result ?? item.error ?? '')),
+              is_error: !!item.error,
+            });
           // Codex reports missing model metadata as an "error" item; it carries on, so it is a note, not a failure.
-          else if (item?.type === 'error' && !/dangerously-bypass-hook-trust/.test(String(item.message))) onEvent({ kind: 'stderr', text: String(item.message) });
+          else if (item?.type === 'error' && !/dangerously-bypass-hook-trust/.test(String(item.message)))
+            onEvent({ kind: 'stderr', text: String(item.message) });
           break;
         case 'turn.completed': {
           const u = m.usage as Record<string, number> | undefined;
@@ -151,7 +181,8 @@ export const codex: HarnessAdapter = {
     });
     createInterface({ input: child.stderr }).on('line', (text) => {
       // Codex says it reads the prompt from stdin, and warns about helper links; neither matters to the job.
-      if (text.trim() && !/^Reading (additional )?(input|prompt) from stdin|could not create PATH aliases/.test(text)) onEvent({ kind: 'stderr', text });
+      if (text.trim() && !/^Reading (additional )?(input|prompt) from stdin|could not create PATH aliases/.test(text))
+        onEvent({ kind: 'stderr', text });
     });
 
     const done = new Promise<number | null>((resolve) => {

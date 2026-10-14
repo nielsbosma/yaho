@@ -29,7 +29,15 @@ export interface Settings {
    * link_code (team_id is the workspace it belongs to); since is when that happened (messages from then on are posted). post: every message, or only those that
    * expect a response.
    */
-  slack?: { bot_token?: string; app_token?: string; owner?: string; since?: string; post?: 'all' | 'expects_response'; link_code?: string; team_id?: string };
+  slack?: {
+    bot_token?: string;
+    app_token?: string;
+    owner?: string;
+    since?: string;
+    post?: 'all' | 'expects_response';
+    link_code?: string;
+    team_id?: string;
+  };
   /**
    * WhatsApp: the inbox as messages from the person's own WhatsApp Business number, over the Cloud API (a webhook, so
    * Yaho must be reachable from the internet). number is the person's own WhatsApp number; since is when they first
@@ -54,13 +62,27 @@ export interface Settings {
    * Resend's inbound webhook (so Yaho must be reachable from the internet). accept_new: also take emails that are not
    * replies to one an agent sent.
    */
-  resend?: { api_key?: string; webhook_secret?: string; domain?: string; accept_new?: boolean; allow?: string | string[]; participants_only?: boolean };
+  resend?: {
+    api_key?: string;
+    webhook_secret?: string;
+    domain?: string;
+    accept_new?: boolean;
+    allow?: string | string[];
+    participants_only?: boolean;
+  };
   /**
    * SMS through Twilio: agents with sms on share one Twilio number, and texts to it come back through Twilio's webhook
    * (so Yaho must be reachable from the internet), to the agent that last texted that phone. new_agent: the agent that
    * gets texts from phones no agent has texted; unset, those are dropped.
    */
-  twilio?: { account_sid?: string; auth_token?: string; number?: string; new_agent?: string; allow?: string | string[]; public_url?: string };
+  twilio?: {
+    account_sid?: string;
+    auth_token?: string;
+    number?: string;
+    new_agent?: string;
+    allow?: string | string[];
+    public_url?: string;
+  };
   /**
    * Telegram: the inbox as messages from the person's own bot, over long polling (no webhook, so it also works on the
    * desktop). owner is the chat that opened the bot's link with link_code; since is when that happened. owner, since,

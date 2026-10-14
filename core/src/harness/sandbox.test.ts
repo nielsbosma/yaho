@@ -56,7 +56,8 @@ describe('the sandbox guard', () => {
     expect(s.hooks.PreToolUse[0]!.hooks[0]!.command).toBe('guard-cmd');
     expect(s.sandbox.filesystem.denyRead).toContain(token);
     expect(s.permissions.deny).toContain(`Read(/${token})`);
-    if (process.platform === 'darwin') expect(s.sandbox.network).toEqual({ allowedDomains: ['*'], allowUnixSockets: ['/data/bin/yaho.sock'] });
+    if (process.platform === 'darwin')
+      expect(s.sandbox.network).toEqual({ allowedDomains: ['*'], allowUnixSockets: ['/data/bin/yaho.sock'] });
   });
 });
 
@@ -69,7 +70,9 @@ describe('workspace settings for Codex', () => {
     expect(codexOverride(ws)).toBeNull();
     writeFileSync(join(ws, '.codex', 'config.toml'), '[features]\nhooks = false\n');
     expect(codexOverride(join(ws, 'sub'))).toBe(join(ws, '.codex', 'config.toml'));
-    expect(() => codex.start({ cwd: ws, env: {}, command: 'codex', model: 'm', systemPrompt: '', prompt: '' }, () => undefined)).toThrow(/did not start/);
+    expect(() => codex.start({ cwd: ws, env: {}, command: 'codex', model: 'm', systemPrompt: '', prompt: '' }, () => undefined)).toThrow(
+      /did not start/,
+    );
   });
 });
 

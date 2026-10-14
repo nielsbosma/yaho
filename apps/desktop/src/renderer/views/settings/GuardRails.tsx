@@ -83,8 +83,9 @@ function CommandRules({
             <span className="block text-xs text-muted">
               Every shell command an agent runs is checked against these rules first. Block refuses it. Ask pauses the job and asks you in
               the inbox (Allow once, Always allow or Deny); the job resumes with your answer. Allow lets a command through that an Ask rule
-              would hold. Block always wins. Patterns use * as a wildcard and match the whole command; write /…/ for a regular expression. The rules catch mistakes, not a determined agent: a command can be written in ways no rule
-              foresees, so keep Sandbox Mode on as well.
+              would hold. Block always wins. Patterns use * as a wildcard and match the whole command; write /…/ for a regular expression.
+              The rules catch mistakes, not a determined agent: a command can be written in ways no rule foresees, so keep Sandbox Mode on
+              as well.
             </span>
           </span>
         </label>

@@ -75,4 +75,3 @@ export function writeFileUnder(root: string, p: string, data: string | Uint8Arra
     closeSync(fd);
   }
 }
-

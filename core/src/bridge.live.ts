@@ -17,13 +17,17 @@ const env = Object.fromEntries(
 const kind = process.argv[3] ?? 'berget';
 const model = process.argv[2] ?? 'moonshotai/Kimi-K3';
 const dir = mkdtempSync(join(tmpdir(), 'yaho-bridge-'));
-writeFileSync(join(dir, 'settings.yaml'), YAML.stringify({ providers: [{ id: kind, kind, api_key: env[`${kind.toUpperCase()}_API_KEY`] }] }));
+writeFileSync(
+  join(dir, 'settings.yaml'),
+  YAML.stringify({ providers: [{ id: kind, kind, api_key: env[`${kind.toUpperCase()}_API_KEY`] }] }),
+);
 process.env.YAHO_NO_DOPBASE = '1';
 const { ctx, close } = await serve({ dataDir: dir, port: 0, host: '127.0.0.1', embedded: true });
 
 const work = mkdtempSync(join(tmpdir(), 'yaho-bridge-work-'));
 const childEnv: Record<string, string> = {};
-for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_.*)$/.test(k)) childEnv[k] = v;
+for (const [k, v] of Object.entries(process.env))
+  if (v !== undefined && !/^(CLAUDECODE.*|CLAUDE_CODE_ENTRYPOINT|ANTHROPIC_.*)$/.test(k)) childEnv[k] = v;
 Object.assign(childEnv, {
   ANTHROPIC_BASE_URL: `${ctx.apiUrl}/bridge/${kind}`,
   ANTHROPIC_AUTH_TOKEN: checkToken(kind, [model], 3600_000).token,
@@ -37,7 +41,11 @@ process.env.YAHO_DEBUG = '1';
 const prompt = 'Create a file named hello.txt in the current folder containing exactly the text: bridged. Then reply DONE.';
 // Not spawnSync: the core answers in this same process, so it must keep running while Claude Code works.
 const r = await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
-  const child = spawn('claude', ['-p', JSON.stringify(prompt), '--model', model, '--output-format', 'json', '--permission-mode', 'acceptEdits'], { cwd: work, env: childEnv, shell: true });
+  const child = spawn(
+    'claude',
+    ['-p', JSON.stringify(prompt), '--model', model, '--output-format', 'json', '--permission-mode', 'acceptEdits'],
+    { cwd: work, env: childEnv, shell: true },
+  );
   let stdout = '';
   let stderr = '';
   child.stdout.on('data', (d) => (stdout += d));

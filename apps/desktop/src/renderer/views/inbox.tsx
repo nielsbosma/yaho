@@ -146,9 +146,7 @@ export function InboxView({ route }: ViewProps) {
       </div>
       {/* The space above the message, beside the window controls, moves the window like a title bar. */}
       <div aria-hidden className="titlebar-strip app-drag absolute top-0 right-0 z-10" style={{ left: listWidth }} />
-      <div className="titlebar-below min-w-0 flex-1 overflow-y-auto">
-        {selected && <Thread id={selected} />}
-      </div>
+      <div className="titlebar-below min-w-0 flex-1 overflow-y-auto">{selected && <Thread id={selected} />}</div>
       <Compose open={compose} onClose={() => setCompose(false)} />
       <Dialog
         open={deletingAll}
@@ -171,8 +169,8 @@ export function InboxView({ route }: ViewProps) {
         }
       >
         <p className="text-sm text-muted">
-          Every message your agents sent you is deleted{inbox.data?.length ? ` (${inbox.data.length})` : ''}, here and in Slack. Messages you sent
-          to agents stay in their inboxes.
+          Every message your agents sent you is deleted{inbox.data?.length ? ` (${inbox.data.length})` : ''}, here and in Slack. Messages
+          you sent to agents stay in their inboxes.
         </p>
       </Dialog>
       {menu.element}

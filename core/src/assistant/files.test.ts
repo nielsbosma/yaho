@@ -31,7 +31,11 @@ afterAll(async () => {
 
 describe('agent workspace files', () => {
   it('copies folders without caches, renames single files, writes files, and stays inside the workspace', async () => {
-    expect(listLocalFolder(ctx, src).map((e) => e.name).sort()).toEqual(['lib', 'old.db', 'run.py']);
+    expect(
+      listLocalFolder(ctx, src)
+        .map((e) => e.name)
+        .sort(),
+    ).toEqual(['lib', 'old.db', 'run.py']);
     const root = ctx.paths.agent('a');
 
     expect((await copyToAgentWorkspace(ctx, 'a', src, 'scripts')).files).toBe(3);

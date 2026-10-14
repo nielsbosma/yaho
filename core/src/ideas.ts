@@ -15,10 +15,7 @@ export interface Idea {
   body: string;
 }
 
-export type IdeaResult =
-  | { filed: string }
-  | { duplicate: string }
-  | { sent_to_human: string; reason: string };
+export type IdeaResult = { filed: string } | { duplicate: string } | { sent_to_human: string; reason: string };
 
 type Gh = (args: string[]) => Promise<string>;
 const gh: Gh = async (args) => (await run(...withoutCaps('gh', args), { timeout: 30_000, windowsHide: true })).stdout;
@@ -36,11 +33,10 @@ export async function fileIdea(ctx: Ctx, who: { agent: string; job: string }, id
   const repo = cfg.repo || IDEAS_REPO;
 
   const today = ctx.db
-    .prepare(
-      "SELECT COUNT(*) n FROM job_events e JOIN jobs j ON j.id = e.job WHERE e.kind = 'idea' AND j.agent = ? AND e.created >= ?",
-    )
+    .prepare("SELECT COUNT(*) n FROM job_events e JOIN jobs j ON j.id = e.job WHERE e.kind = 'idea' AND j.agent = ? AND e.created >= ?")
     .get(who.agent, new Date(Date.now() - 86_400_000).toISOString()) as { n: number };
-  if (today.n >= IDEAS_PER_DAY) throw new HttpError(429, `you filed ${IDEAS_PER_DAY} ideas in the last day; keep the rest in memory/ for later`);
+  if (today.n >= IDEAS_PER_DAY)
+    throw new HttpError(429, `you filed ${IDEAS_PER_DAY} ideas in the last day; keep the rest in memory/ for later`);
 
   const full = `${body}\n\n---\n_Suggested by the Yaho agent \`${who.agent}\` (job \`${who.job}\`)._`;
   const record = (result: IdeaResult) => {

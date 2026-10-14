@@ -44,7 +44,9 @@ export async function loadSecrets(ctx: Ctx): Promise<{ moved: string[]; error?: 
         await dop.deleteProjectValue(SETTINGS_PROJECT, old);
         stored[now] = stored[old];
       }
-    const inFile = migrateSettingsShape((YAML.parse(readFileSync(ctx.paths.settings, 'utf8')) ?? {}) as Record<string, unknown>) as unknown as Settings;
+    const inFile = migrateSettingsShape(
+      (YAML.parse(readFileSync(ctx.paths.settings, 'utf8')) ?? {}) as Record<string, unknown>,
+    ) as unknown as Settings;
     inFile.providers ??= [];
     const moved: string[] = [];
     for (const slot of secretSlots(ctx.settings)) {

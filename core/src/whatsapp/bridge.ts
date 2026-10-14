@@ -96,7 +96,8 @@ export class WhatsAppBridge extends InboxMirror<WhatsAppStatus, WhatsAppSettings
     this.api = null;
     this.verifyToken();
     const { access_token, phone_number_id, app_secret } = this.settings;
-    if (!access_token || !phone_number_id || !app_secret) return this.setStatus({ configured: false, connected: false, error: undefined, number: undefined });
+    if (!access_token || !phone_number_id || !app_secret)
+      return this.setStatus({ configured: false, connected: false, error: undefined, number: undefined });
     this.setStatus({ configured: true, connected: false, error: undefined });
     try {
       const api = this.connect(access_token, phone_number_id);
@@ -173,7 +174,9 @@ export class WhatsAppBridge extends InboxMirror<WhatsAppStatus, WhatsAppSettings
 
   /** Answered or read shows as a reaction on the message's buttons (a business cannot edit a sent message). */
   async refresh(id: string): Promise<void> {
-    const post = this.postsFor(id).filter((p) => p.actions).at(-1);
+    const post = this.postsFor(id)
+      .filter((p) => p.actions)
+      .at(-1);
     if (!post || !this.api || !this.windowOpen()) return;
     let m: Message;
     try {
@@ -291,11 +294,16 @@ export class WhatsAppBridge extends InboxMirror<WhatsAppStatus, WhatsAppSettings
     this.save({ since: new Date().toISOString() });
     this.setStatus({});
     const unread = s.unreadCount(this.ctx);
-    const body = '*Yaho is connected.* New messages from your agents arrive here. Answer with the buttons, or swipe to reply. Send /help for commands.';
+    const body =
+      '*Yaho is connected.* New messages from your agents arrive here. Answer with the buttons, or swipe to reply. Send /help for commands.';
     if (!unread) return this.text(body);
     await this.send({
       type: 'interactive',
-      interactive: { type: 'button', body: { text: body }, action: { buttons: [{ type: 'reply', reply: { id: 'backlog:', title: `Post ${Math.min(unread, 999)} Unread` } }] } },
+      interactive: {
+        type: 'button',
+        body: { text: body },
+        action: { buttons: [{ type: 'reply', reply: { id: 'backlog:', title: `Post ${Math.min(unread, 999)} Unread` } }] },
+      },
     });
   }
 
@@ -328,13 +336,21 @@ export class WhatsAppBridge extends InboxMirror<WhatsAppStatus, WhatsAppSettings
  * The webhook Meta calls, open like /api/health: GET is the subscription handshake (the verify token), POST a delivery
  * signed with the app secret (X-Hub-Signature-256). Deliveries are acknowledged at once and handled after.
  */
-export async function handleWhatsAppWebhook(ctx: Ctx, raw: IncomingMessage, res: ServerResponse, query: URLSearchParams, read: () => Promise<Buffer>): Promise<void> {
+export async function handleWhatsAppWebhook(
+  ctx: Ctx,
+  raw: IncomingMessage,
+  res: ServerResponse,
+  query: URLSearchParams,
+  read: () => Promise<Buffer>,
+): Promise<void> {
   const bridge = ctx.whatsapp;
-  const plain = (status: number, body = '') => void res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }).end(body);
+  const plain = (status: number, body = '') =>
+    void res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }).end(body);
   if (!bridge) return plain(404);
   if (raw.method === 'GET') {
     const token = query.get('hub.verify_token') ?? '';
-    if (query.get('hub.mode') === 'subscribe' && bridge.settings.verify_token && eq(token, bridge.settings.verify_token)) return plain(200, query.get('hub.challenge') ?? '');
+    if (query.get('hub.mode') === 'subscribe' && bridge.settings.verify_token && eq(token, bridge.settings.verify_token))
+      return plain(200, query.get('hub.challenge') ?? '');
     return plain(403);
   }
   if (raw.method !== 'POST') return plain(405);

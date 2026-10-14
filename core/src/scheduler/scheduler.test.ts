@@ -137,7 +137,7 @@ describe('scheduler', () => {
     expect((await settle('sleepy', 1))[0]).toMatchObject({ trigger_type: 'manual', status: 'finished' });
   });
 
-  it('wait_for_inbox skips scheduled runs until the human has read the agent\'s messages', async () => {
+  it("wait_for_inbox skips scheduled runs until the human has read the agent's messages", async () => {
     await agent('patient', { triggers: [{ cron: '0 3 * * *' }], guardrails: { wait_for_inbox: true } });
     script('patient', [{ cmd: 'yaho finish' }]);
     const m = sendMessage(ctx, { from: 'agent:patient', to: 'human', body: 'report' });
@@ -164,7 +164,9 @@ describe('scheduler', () => {
     expect(thread.map((j) => j.id)).toEqual([first.id, follow.id]);
     expect(thread[1]).toMatchObject({ trigger_type: 'followup', trigger_detail: 'Why that title?', status: 'finished' });
     expect(thread[1]!.texts[0]).toMatch(/^resumed fake-/);
-    const prompt = (await api<Array<{ kind: string; data: { user?: string } }>>(`/api/jobs/${follow.id}/events`)).find((e) => e.kind === 'prompt');
+    const prompt = (await api<Array<{ kind: string; data: { user?: string } }>>(`/api/jobs/${follow.id}/events`)).find(
+      (e) => e.kind === 'prompt',
+    );
     expect(prompt?.data.user).toContain('## Follow-up from the human\nWhy that title?');
   });
 

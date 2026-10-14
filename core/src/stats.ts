@@ -32,7 +32,7 @@ export interface Stats {
 }
 
 const FAILED = "status IN ('failed','budget_exhausted','stopped')";
-const DURATION = "(julianday(ended) - julianday(started)) * 86400";
+const DURATION = '(julianday(ended) - julianday(started)) * 86400';
 
 /** Activity over the last `days` days, bucketed in local time. */
 export function stats(db: DatabaseSync, days: number, now = new Date()): Stats {
@@ -106,9 +106,10 @@ export function stats(db: DatabaseSync, days: number, now = new Date()): Stats {
          FROM jobs WHERE created >= ? GROUP BY 1 ORDER BY cost DESC`,
       since,
     ).map((r) => ({ model: String(r.model), jobs: n(r.jobs), cost_usd: n(r.cost) })),
-    by_trigger: all('SELECT trigger_type t, COUNT(*) jobs FROM jobs WHERE created >= ? GROUP BY 1 ORDER BY jobs DESC', since).map(
-      (r) => ({ trigger: String(r.t), jobs: n(r.jobs) }),
-    ),
+    by_trigger: all('SELECT trigger_type t, COUNT(*) jobs FROM jobs WHERE created >= ? GROUP BY 1 ORDER BY jobs DESC', since).map((r) => ({
+      trigger: String(r.t),
+      jobs: n(r.jobs),
+    })),
     by_status: all('SELECT status, COUNT(*) jobs FROM jobs WHERE created >= ? GROUP BY 1 ORDER BY jobs DESC', since).map((r) => ({
       status: String(r.status),
       jobs: n(r.jobs),

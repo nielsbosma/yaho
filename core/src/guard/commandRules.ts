@@ -377,7 +377,10 @@ const SINKS = new Set([...SHELLS, 'eval', 'source', '.']);
  * plain words come before the command (timeout's duration, chroot's folder).
  */
 const WRAPPERS: Record<string, { short?: string; long?: string[]; skip?: number }> = {
-  sudo: { short: 'CDghpRrtTUu', long: ['chdir', 'close-from', 'group', 'host', 'prompt', 'chroot', 'role', 'type', 'command-timeout', 'other-user', 'user'] },
+  sudo: {
+    short: 'CDghpRrtTUu',
+    long: ['chdir', 'close-from', 'group', 'host', 'prompt', 'chroot', 'role', 'type', 'command-timeout', 'other-user', 'user'],
+  },
   doas: { short: 'Cu' },
   env: { short: 'uCS', long: ['unset', 'chdir', 'split-string'] },
   timeout: { short: 'sk', long: ['signal', 'kill-after'], skip: 1 },
@@ -390,7 +393,10 @@ const WRAPPERS: Record<string, { short?: string; long?: string[]; skip?: number 
   builtin: {},
   exec: { short: 'a' },
   stdbuf: { short: 'ioe', long: ['input', 'output', 'error'] },
-  xargs: { short: 'adEILnPs', long: ['arg-file', 'delimiter', 'eof', 'max-lines', 'max-args', 'max-procs', 'max-chars', 'process-slot-var'] },
+  xargs: {
+    short: 'adEILnPs',
+    long: ['arg-file', 'delimiter', 'eof', 'max-lines', 'max-args', 'max-procs', 'max-chars', 'process-slot-var'],
+  },
   busybox: {},
   chroot: { long: ['userspec', 'groups'], skip: 1 },
   unbuffer: {},
@@ -441,7 +447,11 @@ function shellCommand(argv: string[]): string | null {
     if (a === '--command' || a.startsWith('--command=')) return a.includes('=') ? a.slice(10) : (argv[i + 1] ?? null);
     if (a === '--') return c ? (argv[i + 1] ?? null) : null;
     // Options that take the next word: bash's -o and rc files, su's shell and groups.
-    if (/^[-+]o$/.test(a) || ['--rcfile', '--init-file'].includes(a) || (su && ['-s', '--shell', '-g', '--group', '-G', '--supp-group'].includes(a))) {
+    if (
+      /^[-+]o$/.test(a) ||
+      ['--rcfile', '--init-file'].includes(a) ||
+      (su && ['-s', '--shell', '-g', '--group', '-G', '--supp-group'].includes(a))
+    ) {
       i++;
       continue;
     }
@@ -524,7 +534,12 @@ function parse(line: string, depth: number): Parsed {
           for (let i = 1; i < argv.length; i++)
             if (/^-(exec|execdir|ok|okdir)$/.test(argv[i]!)) {
               const end = argv.findIndex((a, k) => k > i && (a === ';' || a === '+'));
-              nested(argv.slice(i + 1, end < 0 ? undefined : end).map(quote).join(' '));
+              nested(
+                argv
+                  .slice(i + 1, end < 0 ? undefined : end)
+                  .map(quote)
+                  .join(' '),
+              );
             }
         } else if (name === 'git') {
           const g = gitCommand(argv);
@@ -591,7 +606,10 @@ export function decide(line: string, rules: CommandRule[]): CommandDecision {
   const exact = exactRule(line).pattern;
   const lineAllowed = allows.some((c) => c.r.pattern === exact);
   const parts = commandParts(line);
-  const whole: CommandPart = { texts: [line.trim().replace(/\s+/g, ' ')], of: parts.flatMap((p) => (p.allow !== undefined ? [p.allow] : [])) };
+  const whole: CommandPart = {
+    texts: [line.trim().replace(/\s+/g, ' ')],
+    of: parts.flatMap((p) => (p.allow !== undefined ? [p.allow] : [])),
+  };
   const covered = (p: CommandPart) =>
     p.allow !== undefined ? allows.some((a) => a.re.test(p.allow!)) : !!p.of?.length && p.of.every((t) => allows.some((a) => a.re.test(t)));
   let ask: CommandDecision | null = null;

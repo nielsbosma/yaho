@@ -116,7 +116,9 @@ function linuxSandboxWorks(exe: string): boolean {
   // Ubuntu 23.10 and later: AppArmor allows them only for programs with a profile.
   if (read('/proc/sys/kernel/apparmor_restrict_unprivileged_userns') === '1') return false;
   // Containers often block them with seccomp, which no file shows: try one the way Chromium does.
-  return spawnSync('unshare', ['--user', '--map-root-user', '--pid', '--net', '--fork', 'true'], { stdio: 'ignore', timeout: 5000 }).status === 0;
+  return (
+    spawnSync('unshare', ['--user', '--map-root-user', '--pid', '--net', '--fork', 'true'], { stdio: 'ignore', timeout: 5000 }).status === 0
+  );
 }
 let noSandbox: boolean | undefined;
 const appArgs = (exe: string, args: string[]) => {
@@ -194,28 +196,33 @@ export async function launcher(cmd: string | undefined, args: string[]): Promise
       } catch {
         /* no settings yet */
       }
-      const r = spawnSync(npm, ['install', '-g', `@bosmainteractive/yaho@${channel}`], { stdio: 'inherit', shell: process.platform === 'win32' });
+      const r = spawnSync(npm, ['install', '-g', `@bosmainteractive/yaho@${channel}`], {
+        stdio: 'inherit',
+        shell: process.platform === 'win32',
+      });
       return r.status ?? 1;
     }
     case 'doctor': {
       console.log(`yaho ${version()} (${process.platform}-${process.arch}, Node ${process.versions.node})`);
       // The server version (Docker) has no desktop app to find.
       let ok = process.env.YAHO_SERVER === '1' ? true : check('app', () => findApp());
-      ok = check('Node 22.17 or later', () => {
-        const [maj, min] = process.versions.node.split('.').map(Number);
-        if (maj! < 22 || (maj === 22 && min! < 17)) throw new Error(`Node ${process.versions.node} is too old`);
-        return process.versions.node;
-      }) && ok;
+      ok =
+        check('Node 22.17 or later', () => {
+          const [maj, min] = process.versions.node.split('.').map(Number);
+          if (maj! < 22 || (maj === 22 && min! < 17)) throw new Error(`Node ${process.versions.node} is too old`);
+          return process.versions.node;
+        }) && ok;
       check('Codex (for agents that use it)', () => {
         const r = spawnSync('codex', ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' });
         if (r.status !== 0) throw new Error('codex was not found on PATH; install it with: npm i -g @openai/codex');
         return r.stdout.trim();
       });
-      ok = check('Claude Code', () => {
-        const r = spawnSync('claude', ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' });
-        if (r.status !== 0) throw new Error('claude was not found on PATH; install Claude Code first');
-        return r.stdout.trim();
-      }) && ok;
+      ok =
+        check('Claude Code', () => {
+          const r = spawnSync('claude', ['--version'], { encoding: 'utf8', shell: process.platform === 'win32' });
+          if (r.status !== 0) throw new Error('claude was not found on PATH; install Claude Code first');
+          return r.stdout.trim();
+        }) && ok;
       const p = paths();
       console.log(`  ok    data folder: ${p.root}`);
       // The core writes server.yaml with its URL while it runs.

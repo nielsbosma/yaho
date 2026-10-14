@@ -13,9 +13,19 @@ export interface ProviderInfo {
 }
 
 export const PROVIDERS: ProviderInfo[] = [
-  { kind: 'litellm', label: 'LiteLLM', available: true, description: 'Your LiteLLM proxy, in front of any model. Budgets are enforced per job.' },
+  {
+    kind: 'litellm',
+    label: 'LiteLLM',
+    available: true,
+    description: 'Your LiteLLM proxy, in front of any model. Budgets are enforced per job.',
+  },
   { kind: 'anthropic', label: 'Anthropic', available: true, description: 'Claude models with an Anthropic API key.' },
-  { kind: 'openrouter', label: 'OpenRouter', available: true, description: 'Claude models through your OpenRouter key; more models in the chat.' },
+  {
+    kind: 'openrouter',
+    label: 'OpenRouter',
+    available: true,
+    description: 'Claude models through your OpenRouter key; more models in the chat.',
+  },
   { kind: 'opper', label: 'Opper.AI', available: true, description: 'Hundreds of models through Opper, hosted in the EU.' },
   { kind: 'openai', label: 'OpenAI', available: true, description: 'GPT models with an OpenAI API key.' },
   { kind: 'berget', label: 'Berget.AI', available: true, description: 'Open models hosted in the EU by Berget.' },

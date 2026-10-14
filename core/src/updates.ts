@@ -5,7 +5,8 @@ import { withoutCaps } from './harness/asAgent.ts';
 export const PACKAGE = '@bosmainteractive/yaho';
 const SIX_HOURS = 6 * 3600_000;
 /** The server version updates by pulling the new image; Sliplane does that on a redeploy. */
-const SERVER_UPDATE = 'On Sliplane: redeploy the service. With Docker: docker compose pull && docker compose up -d (or docker pull ghcr.io/nielsbosma/yaho:latest and start the container again).';
+const SERVER_UPDATE =
+  'On Sliplane: redeploy the service. With Docker: docker compose pull && docker compose up -d (or docker pull ghcr.io/nielsbosma/yaho:latest and start the container again).';
 
 export interface UpdateState {
   current: string;
@@ -83,7 +84,9 @@ export class Updates {
     // The channel goes to a shell on Windows (npm is a .cmd there): only the two known names.
     const channel = this.ctx.settings.updates?.channel === 'next' ? 'next' : 'latest';
     try {
-      const res = await fetch(`https://registry.npmjs.org/${PACKAGE.replace('/', '%2f')}`, { headers: { Accept: 'application/vnd.npm.install-v1+json' } });
+      const res = await fetch(`https://registry.npmjs.org/${PACKAGE.replace('/', '%2f')}`, {
+        headers: { Accept: 'application/vnd.npm.install-v1+json' },
+      });
       if (!res.ok) throw new Error(`npm answered ${res.status}`);
       const tags = ((await res.json()) as { 'dist-tags'?: Record<string, string> })['dist-tags'] ?? {};
       const latest = tags[channel] ?? tags.latest;
@@ -111,7 +114,10 @@ export class Updates {
     Object.assign(this.state, { status: 'installing', error: undefined });
     this.emit();
     let output = '';
-    const child = spawn(...withoutCaps('npm', ['install', '-g', `${PACKAGE}@${channel}`]), { shell: process.platform === 'win32', windowsHide: true });
+    const child = spawn(...withoutCaps('npm', ['install', '-g', `${PACKAGE}@${channel}`]), {
+      shell: process.platform === 'win32',
+      windowsHide: true,
+    });
     child.stdout.on('data', (d) => (output += d));
     child.stderr.on('data', (d) => (output += d));
     child.on('error', (e) => (output += e.message));

@@ -51,7 +51,10 @@ export function toMrkdwn(md: string): string {
     }
     out.push(inline(line));
   }
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return out
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** A hard cut moves back to before an entity (&amp;) or a <link|text> it would split. */
@@ -86,13 +89,15 @@ export function messageBlocks(m: Message, state: PostState = {}): { text: string
   const body = m.body ? toMrkdwn(m.body) : '';
   const parts = chunks([title, body].filter(Boolean).join('\n'));
   for (const p of parts.slice(0, MAX_SECTIONS)) blocks.push({ type: 'section', text: { type: 'mrkdwn', text: p } });
-  if (parts.length > MAX_SECTIONS) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: '_The rest of this message is in Yaho._' }] });
+  if (parts.length > MAX_SECTIONS)
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: '_The rest of this message is in Yaho._' }] });
 
   // Steps: Open links as buttons, Copy values as code blocks.
   // Slack refuses a button whose url is not http(s); such links are shown as text.
   const links = (m.steps ?? []).flatMap((s) => ('open' in s && s.open ? [s.open] : []));
   const opens = links.filter((u) => /^https?:\/\//i.test(u));
-  for (const u of links.filter((x) => !opens.includes(x))) blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `Open: \`${escape(u)}\`` } });
+  for (const u of links.filter((x) => !opens.includes(x)))
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `Open: \`${escape(u)}\`` } });
   for (const s of m.steps ?? [])
     if ('copy' in s && s.copy) blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '```' + fit(escape(s.copy)) + '```' } });
   if (opens.length)
@@ -107,7 +112,10 @@ export function messageBlocks(m: Message, state: PostState = {}): { text: string
     });
 
   if (m.artifacts?.length)
-    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `${m.artifacts.length} artifact${m.artifacts.length === 1 ? '' : 's'} in Yaho` }] });
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `${m.artifacts.length} artifact${m.artifacts.length === 1 ? '' : 's'} in Yaho` }],
+    });
 
   const done = state.answer !== undefined;
   if (done || (m.read && !m.expects_response)) {
@@ -133,10 +141,21 @@ export function messageBlocks(m: Message, state: PostState = {}): { text: string
         }),
       );
       if (m.type !== 'question' || !m.choices?.length)
-        elements.push({ type: 'button', action_id: 'yaho_done', style: 'primary', text: { type: 'plain_text', text: 'Done' }, value: m.id });
+        elements.push({
+          type: 'button',
+          action_id: 'yaho_done',
+          style: 'primary',
+          text: { type: 'plain_text', text: 'Done' },
+          value: m.id,
+        });
     }
     elements.push({ type: 'button', action_id: 'yaho_reply', text: { type: 'plain_text', text: 'Reply' }, value: m.id });
-    elements.push({ type: 'button', action_id: 'yaho_read', text: { type: 'plain_text', text: m.read ? 'Mark Unread' : 'Mark Read' }, value: m.id });
+    elements.push({
+      type: 'button',
+      action_id: 'yaho_read',
+      text: { type: 'plain_text', text: m.read ? 'Mark Unread' : 'Mark Read' },
+      value: m.id,
+    });
     elements.push({
       type: 'overflow',
       action_id: 'yaho_more',

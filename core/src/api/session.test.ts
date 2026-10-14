@@ -62,7 +62,11 @@ describe('server sign-in', () => {
     const setup = cookieOf(res);
     // A setup session can only set up the authenticator.
     expect((await at('/api/agents', { headers: { Cookie: setup } })).status).toBe(401);
-    expect(await (await at('/api/session', { headers: { Cookie: setup } })).json()).toMatchObject({ signed_in: false, totp: false, totp_setup: true });
+    expect(await (await at('/api/session', { headers: { Cookie: setup } })).json()).toMatchObject({
+      signed_in: false,
+      totp: false,
+      totp_setup: true,
+    });
     expect((await at('/api/session/totp')).status).toBe(401);
     const shown = await (await at('/api/session/totp', { headers: { Cookie: setup } })).json();
     expect(shown.uri).toMatch(/^otpauth:\/\/totp\/Yaho%3A.*secret=[A-Z2-7]{32}&issuer=Yaho/);
@@ -142,7 +146,10 @@ describe('server sign-in', () => {
     process.env.YAHO_TRUST_PROXY = '1';
     try {
       const from = (n: number, password: string, c?: string) =>
-        at('/api/session', { ...json({ password, code: c }), headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `10.0.0.${n}` } });
+        at('/api/session', {
+          ...json({ password, code: c }),
+          headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `10.0.0.${n}` },
+        });
       for (let i = 0; i < 30; i++) await from(10 + (i % 10), 'not the password');
       expect((await from(99, 'not the password')).status).toBe(429);
       expect((await from(98, PASSWORD, code())).status).toBe(200);

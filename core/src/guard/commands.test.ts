@@ -173,7 +173,9 @@ describe('Command Rules', () => {
     steps('steps-resume.json', [{ cmd: 'yaho finish' }]);
     await api('/api/messages', { body: { to: 'agent:gamma', reply_to: q.id, body: 'yes... actually no' } });
     const r = await until(jobs, (js) => js.some((j) => j.trigger_detail?.includes('They answered: yes... actually no') && ended(j)));
-    expect(r.find((j) => j.trigger_detail?.includes('They answered'))!.trigger_detail).toContain('the human denied `git reset --hard HEAD`');
+    expect(r.find((j) => j.trigger_detail?.includes('They answered'))!.trigger_detail).toContain(
+      'the human denied `git reset --hard HEAD`',
+    );
     expect(ctx.db.prepare('SELECT status FROM command_approvals WHERE message = ?').get(q.id)).toEqual({ status: 'denied' });
   });
 

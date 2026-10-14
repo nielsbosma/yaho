@@ -250,7 +250,11 @@ function JobDetail({ id }: { id: string }) {
               </Button>
             )}
             {!live && j.session_id && (
-              <Button variant={canContinue ? 'secondary' : 'primary'} onClick={() => chatAboutJob(j.id)} title="Ask the agent follow-up questions">
+              <Button
+                variant={canContinue ? 'secondary' : 'primary'}
+                onClick={() => chatAboutJob(j.id)}
+                title="Ask the agent follow-up questions"
+              >
                 <MessageSquare /> Continue in Chat
               </Button>
             )}

@@ -181,4 +181,3 @@ export const claudeCode: HarnessAdapter = {
     return { pid: child.pid, done, kill: () => killTree(child.pid) };
   },
 };
-

@@ -26,7 +26,9 @@ describe('the store', () => {
     saveAgent(ctx, { name: 'old' });
     saveProject(ctx, { name: 'p' });
     const t = new Date().toISOString();
-    ctx.db.prepare("INSERT INTO jobs (id, agent, trigger_type, status, created, ended) VALUES ('j1','old','manual','finished',?,?)").run(t, t);
+    ctx.db
+      .prepare("INSERT INTO jobs (id, agent, trigger_type, status, created, ended) VALUES ('j1','old','manual','finished',?,?)")
+      .run(t, t);
     indexJob(ctx, 'j1');
     addArtifact(ctx, { project: 'p', agent: 'old', job: 'j1', kind: 'file', file_path: 'a.txt' });
     mkdirSync(join(ctx.paths.root, 'codex', 'old'), { recursive: true });

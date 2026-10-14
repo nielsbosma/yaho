@@ -35,7 +35,20 @@ describe('toTelegram', () => {
   });
 
   it('shows only http(s) step links as links', () => {
-    const base = { id: 'm', from: 'agent:a', to: 'human', type: 'info' as const, title: '', body: '', reply_to: null, hop: 0, job: null, created: '', read: false, expects_response: false };
+    const base = {
+      id: 'm',
+      from: 'agent:a',
+      to: 'human',
+      type: 'info' as const,
+      title: '',
+      body: '',
+      reply_to: null,
+      hop: 0,
+      job: null,
+      created: '',
+      read: false,
+      expects_response: false,
+    };
     const text = messageText({ ...base, steps: [{ open: 'javascript:alert(1)' }, { open: 'https://ok.io' }] } as never);
     expect(text).toContain('<code>javascript:alert(1)</code>');
     expect(text).toContain('<a href="https://ok.io">');

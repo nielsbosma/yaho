@@ -55,11 +55,18 @@ export function UpdateBanner() {
           : `Yaho ${s.latest} is available. You have ${s.current}.`;
 
   return (
-    <div role="status" className="titlebar-clear flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-accent/30 bg-accent/10 py-2 pl-4 text-sm">
+    <div
+      role="status"
+      className="titlebar-clear flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-accent/30 bg-accent/10 py-2 pl-4 text-sm"
+    >
       <Sparkles className="size-4 shrink-0 text-accent" />
       <span className="min-w-0 flex-1">{error ?? text}</span>
       {s.notes_url && s.status !== 'done' && (
-        <button type="button" className="cursor-pointer text-accent underline-offset-2 hover:underline" onClick={() => platform.openExternal(s.notes_url!)}>
+        <button
+          type="button"
+          className="cursor-pointer text-accent underline-offset-2 hover:underline"
+          onClick={() => platform.openExternal(s.notes_url!)}
+        >
           What's New
         </button>
       )}

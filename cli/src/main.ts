@@ -66,7 +66,10 @@ interface Reply {
 }
 
 /** One request to the core, over its socket when there is one, else over HTTP. */
-function request(path: string, init: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array<ArrayBuffer> } = {}): Promise<Reply> {
+function request(
+  path: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array<ArrayBuffer> } = {},
+): Promise<Reply> {
   if (!socket)
     return fetch(`${apiUrl}${path}`, init).then(async (r) => ({
       status: r.status,
@@ -79,7 +82,12 @@ function request(path: string, init: { method?: string; headers?: Record<string,
       const parts: Buffer[] = [];
       res.on('data', (d: Buffer) => parts.push(d));
       res.on('end', () =>
-        resolve({ status: res.statusCode ?? 0, ok: (res.statusCode ?? 0) < 300, type: String(res.headers['content-type'] ?? ''), body: Buffer.concat(parts) }),
+        resolve({
+          status: res.statusCode ?? 0,
+          ok: (res.statusCode ?? 0) < 300,
+          type: String(res.headers['content-type'] ?? ''),
+          body: Buffer.concat(parts),
+        }),
       );
       res.on('error', reject);
     });
@@ -255,7 +263,12 @@ async function main(argv: string[]): Promise<void> {
     }
     case 'idea': {
       const body = readStdin().trim() || f.body;
-      return out(await call('POST', '/idea', { title: need(f.title, '--title "..."'), body: need(body, 'the idea as Markdown on stdin (or --body)') }));
+      return out(
+        await call('POST', '/idea', {
+          title: need(f.title, '--title "..."'),
+          body: need(body, 'the idea as Markdown on stdin (or --body)'),
+        }),
+      );
     }
     case 'email': {
       if (sub !== 'send' && sub !== 'reply') break;
@@ -265,7 +278,15 @@ async function main(argv: string[]): Promise<void> {
         need(f.to, '--to a@b.com');
         need(f.subject, '--subject "..."');
       }
-      return out(await call('POST', '/email', { to: f.to, cc: f.cc, subject: f.subject, body: need(body, 'the body on stdin (or --body)'), reply_to }));
+      return out(
+        await call('POST', '/email', {
+          to: f.to,
+          cc: f.cc,
+          subject: f.subject,
+          body: need(body, 'the body on stdin (or --body)'),
+          reply_to,
+        }),
+      );
     }
     case 'sms': {
       if (sub !== 'send' && sub !== 'reply') break;

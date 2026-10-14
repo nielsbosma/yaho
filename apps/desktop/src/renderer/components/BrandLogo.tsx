@@ -18,7 +18,22 @@ import { cn } from './ui/cn.ts';
  * The services Yaho connects to, with their own marks (assets/providers): Anthropic, OpenAI, OpenRouter, Resend, Twilio and WhatsApp from Simple Icons,
  * Slack's colour mark, Telegram's plane in its circle, a plain globe for the browser, the rest from the companies' sites.
  */
-export const BRAND_LOGOS = { anthropic, berget, browser, claude, composio, litellm, openai, openrouter, opper, resend, slack, telegram, twilio, whatsapp } as const;
+export const BRAND_LOGOS = {
+  anthropic,
+  berget,
+  browser,
+  claude,
+  composio,
+  litellm,
+  openai,
+  openrouter,
+  opper,
+  resend,
+  slack,
+  telegram,
+  twilio,
+  whatsapp,
+} as const;
 export type Brand = keyof typeof BRAND_LOGOS;
 
 /** A brand's mark on a small white tile, so it reads the same in light and dark. */

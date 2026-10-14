@@ -97,10 +97,19 @@ describe('SlackBridge', () => {
 
     // Opening the app, reacting, tapping or a wrong code links nobody; the code does.
     await slack.send('events_api', { event: { type: 'app_home_opened', user: 'USOMEONE' } });
-    await slack.send('events_api', { event: { type: 'reaction_added', user: 'USOMEONE', reaction: 'white_check_mark', item: { ts: '1' } } });
-    await slack.send('interactive', { type: 'block_actions', user: { id: 'USOMEONE' }, channel: { id: 'D9' }, actions: [{ action_id: 'yaho_backlog', value: 'backlog' }] });
+    await slack.send('events_api', {
+      event: { type: 'reaction_added', user: 'USOMEONE', reaction: 'white_check_mark', item: { ts: '1' } },
+    });
+    await slack.send('interactive', {
+      type: 'block_actions',
+      user: { id: 'USOMEONE' },
+      channel: { id: 'D9' },
+      actions: [{ action_id: 'yaho_backlog', value: 'backlog' }],
+    });
     await slack.send('slash_commands', { user_id: 'USOMEONE', text: 'link nope' });
-    await slack.send('events_api', { event: { type: 'message', channel_type: 'im', channel: 'D9', user: 'USOMEONE', text: 'hello', ts: '1' } });
+    await slack.send('events_api', {
+      event: { type: 'message', channel_type: 'im', channel: 'D9', user: 'USOMEONE', text: 'hello', ts: '1' },
+    });
     expect(ctx.settings.slack?.owner).toBeUndefined();
     expect(slack.calls.filter((c) => c.op === 'ephemeral').length).toBe(2);
     await slack.send('slash_commands', { user_id: 'UNIELS', text: `link ${code}` });
@@ -113,7 +122,14 @@ describe('SlackBridge', () => {
     expect(ctx.settings.slack?.owner).toBe('UNIELS');
 
     // A question from an agent is posted as that agent, with its choices.
-    const q = sendMessage(ctx, { from: 'agent:scout', to: 'human', type: 'question', title: 'Spend $5?', body: 'For **ads**', choices: ['Yes', 'No'] });
+    const q = sendMessage(ctx, {
+      from: 'agent:scout',
+      to: 'human',
+      type: 'question',
+      title: 'Spend $5?',
+      body: 'For **ads**',
+      choices: ['Yes', 'No'],
+    });
     await tick();
     const posted = slack.calls.filter((c) => c.op === 'post').at(-1)!.args as { username: string; blocks: Array<Record<string, unknown>> };
     expect(posted.username).toBe('scout via Yaho');
@@ -122,16 +138,28 @@ describe('SlackBridge', () => {
     expect(actions.elements[1]!.value).toBe(`${q.id}|1`);
 
     // Clicking Yes answers it, marks it read, and the Slack message shows the outcome.
-    await slack.send('interactive', { type: 'block_actions', user: { id: 'UNIELS' }, channel: { id: 'D1' }, actions: [actions.elements[0]] });
+    await slack.send('interactive', {
+      type: 'block_actions',
+      user: { id: 'UNIELS' },
+      channel: { id: 'D1' },
+      actions: [actions.elements[0]],
+    });
     const answer = ctx.db.prepare("SELECT body FROM messages WHERE reply_to = ? AND from_addr = 'human'").get(q.id) as { body: string };
     expect(answer.body).toBe('Yes');
     expect(getMessage(ctx, q.id).read).toBe(true);
-    const update = slack.calls.filter((c) => c.op === 'update').at(-1)!.args as { blocks: Array<{ type: string; elements?: Array<{ text: string }> }> };
+    const update = slack.calls.filter((c) => c.op === 'update').at(-1)!.args as {
+      blocks: Array<{ type: string; elements?: Array<{ text: string }> }>;
+    };
     expect(JSON.stringify(update.blocks)).toContain('Answered: Yes');
     expect(update.blocks.some((b) => b.type === 'actions')).toBe(false);
 
     // A second tap (an old button) is refused.
-    await slack.send('interactive', { type: 'block_actions', user: { id: 'UNIELS' }, channel: { id: 'D1' }, actions: [actions.elements[1]] });
+    await slack.send('interactive', {
+      type: 'block_actions',
+      user: { id: 'UNIELS' },
+      channel: { id: 'D1' },
+      actions: [actions.elements[1]],
+    });
     expect(ctx.db.prepare("SELECT COUNT(*) n FROM messages WHERE reply_to = ? AND from_addr = 'human'").get(q.id)).toEqual({ n: 1 });
     expect(slack.calls.filter((c) => c.op === 'ephemeral').at(-1)!.args).toMatchObject({ text: 'Already answered: Yes' });
 
@@ -139,15 +167,29 @@ describe('SlackBridge', () => {
     const ins = sendMessage(ctx, { from: 'agent:scout', to: 'human', type: 'instruction', title: 'Add the DNS record' });
     await tick();
     const insTs = String(1000 + slack.calls.filter((c) => c.op === 'post').length);
-    await slack.send('events_api', { event: { type: 'message', channel_type: 'im', channel: 'D1', user: 'UNIELS', text: 'Done, took a minute', ts: '9999', thread_ts: insTs } });
-    const insAnswer = ctx.db.prepare("SELECT body FROM messages WHERE reply_to = ? AND from_addr = 'human'").get(ins.id) as { body: string };
+    await slack.send('events_api', {
+      event: {
+        type: 'message',
+        channel_type: 'im',
+        channel: 'D1',
+        user: 'UNIELS',
+        text: 'Done, took a minute',
+        ts: '9999',
+        thread_ts: insTs,
+      },
+    });
+    const insAnswer = ctx.db.prepare("SELECT body FROM messages WHERE reply_to = ? AND from_addr = 'human'").get(ins.id) as {
+      body: string;
+    };
     expect(insAnswer.body).toBe('Done, took a minute');
 
     // A ✓ reaction on an info message marks it read.
     const info = sendMessage(ctx, { from: 'agent:scout', to: 'human', type: 'info', title: 'Weekly report' });
     await tick();
     const infoTs = String(1000 + slack.calls.filter((c) => c.op === 'post').length);
-    await slack.send('events_api', { event: { type: 'reaction_added', user: 'UNIELS', reaction: 'white_check_mark', item: { ts: infoTs } } });
+    await slack.send('events_api', {
+      event: { type: 'reaction_added', user: 'UNIELS', reaction: 'white_check_mark', item: { ts: infoTs } },
+    });
     expect(getMessage(ctx, info.id).read).toBe(true);
   });
 
@@ -179,7 +221,10 @@ describe('SlackBridge', () => {
   it('starts the link over for another workspace', async () => {
     ctx.settings.slack = { ...ctx.settings.slack!, owner: 'UNIELS', since: new Date().toISOString() };
     let team = 'T1';
-    const b = new SlackBridge(ctx, async () => ({ api: { ...slack.api, authTest: async () => ({ team: 'X', team_id: team }) }, socket: slack.socket }));
+    const b = new SlackBridge(ctx, async () => ({
+      api: { ...slack.api, authTest: async () => ({ team: 'X', team_id: team }) },
+      socket: slack.socket,
+    }));
     await bridge.stop();
     await b.start();
     expect(ctx.settings.slack?.owner).toBe('UNIELS');
@@ -199,7 +244,12 @@ describe('SlackBridge', () => {
     await tick();
     expect(slack.calls.filter((c) => c.op === 'post').length).toBe(before + 1);
 
-    await slack.send('interactive', { type: 'block_actions', user: { id: 'USOMEONE' }, channel: { id: 'D1' }, actions: [{ action_id: 'yaho_done', value: q.id }] });
+    await slack.send('interactive', {
+      type: 'block_actions',
+      user: { id: 'USOMEONE' },
+      channel: { id: 'D1' },
+      actions: [{ action_id: 'yaho_done', value: q.id }],
+    });
     expect(getMessage(ctx, q.id).read).toBe(false);
     expect(slack.calls.at(-1)!.op).toBe('ephemeral');
 
@@ -213,7 +263,9 @@ describe('messageBlocks', () => {
   it('shows Done only when a response is expected, and the outcome once read', () => {
     const base = { id: 'm', from: 'agent:a', to: 'human', title: 'T', body: 'B', reply_to: null, hop: 0, job: null, created: '' };
     const ids = (b: ReturnType<typeof messageBlocks>) =>
-      ((b.blocks.find((x) => x.block_id === 'yaho_actions') as { elements: Array<{ action_id: string }> } | undefined)?.elements ?? []).map((e) => e.action_id);
+      ((b.blocks.find((x) => x.block_id === 'yaho_actions') as { elements: Array<{ action_id: string }> } | undefined)?.elements ?? []).map(
+        (e) => e.action_id,
+      );
     expect(ids(messageBlocks({ ...base, type: 'instruction', read: false, expects_response: true }))).toContain('yaho_done');
     expect(ids(messageBlocks({ ...base, type: 'info', read: false, expects_response: false }))).not.toContain('yaho_done');
     expect(ids(messageBlocks({ ...base, type: 'info', read: true, expects_response: false }))).toEqual([]);

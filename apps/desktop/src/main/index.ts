@@ -1,4 +1,17 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, session, shell, Tray, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  Notification,
+  session,
+  shell,
+  Tray,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from 'electron';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import nodeModule from 'node:module';
@@ -235,14 +248,19 @@ on('yaho:notify', (title: string, body: string) => {
 // shortcut cannot start Yaho with, so it only says so.
 ipcMain.handle('yaho:shortcut', (e) => {
   if (!fromApp(e)) return { files: [], error: 'Not allowed.' };
-  return packaged ? { files: createShortcuts(winIcon, pngIcon) } : { files: [], error: 'Shortcuts are made by the installed app, not the dev session.' };
+  return packaged
+    ? { files: createShortcuts(winIcon, pngIcon) }
+    : { files: [], error: 'Shortcuts are made by the installed app, not the dev session.' };
 });
 // Restart after an update. Started from the yaho command, the launcher opens the new version once this one has
 // exited (it waits for this pid); otherwise Electron restarts the same build.
 on('yaho:restart', () => {
   const launcher = process.env.YAHO_LAUNCHER;
   if (launcher && existsSync(launcher)) {
-    spawn(process.env.YAHO_NODE ?? 'node', [launcher, 'open', '--wait-pid', String(process.pid)], { detached: true, stdio: 'ignore' }).unref();
+    spawn(process.env.YAHO_NODE ?? 'node', [launcher, 'open', '--wait-pid', String(process.pid)], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
   } else app.relaunch();
   quitting = true;
   app.quit();
@@ -267,7 +285,10 @@ on('yaho:open', (url: string) => {
  */
 const oneShot = ['--create-shortcut', '--remove-shortcut', '--serve'].find((f) => process.argv.includes(f));
 if (oneShot === '--serve') {
-  const child = spawn(process.execPath, ['--no-warnings', coreMain, 'serve'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'inherit' });
+  const child = spawn(process.execPath, ['--no-warnings', coreMain, 'serve'], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    stdio: 'inherit',
+  });
   child.on('exit', (code) => app.exit(code ?? 0));
 } else if (oneShot) {
   void app.whenReady().then(() => {
@@ -294,7 +315,9 @@ app.whenReady().then(async () => {
   tray = new Tray(appIcon(32));
   tray.on('click', () => show());
   // Nothing the app does needs a camera, location or the like; only copying to the clipboard and full-screen video.
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === 'clipboard-sanitized-write' || permission === 'fullscreen'));
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, done) =>
+    done(permission === 'clipboard-sanitized-write' || permission === 'fullscreen'),
+  );
   win = createWindow();
   applyBadge();
   void followCore();

@@ -183,7 +183,10 @@ export class BrowserManager {
     if (!e?.starting && providerOf(this.ctx.settings) === 'local')
       for (const [other, x] of this.jobs)
         if (other !== job && x.agent === agent && (x.starting || (x.session && !x.session.closed)))
-          throw new HttpError(409, `another job of ${agent} (${other}) has the browser open, and a local browser opens the agent's profile one job at a time. Wait for that job to end, or go on without the browser.`);
+          throw new HttpError(
+            409,
+            `another job of ${agent} (${other}) has the browser open, and a local browser opens the agent's profile one job at a time. Wait for that job to end, or go on without the browser.`,
+          );
     if (!e) this.jobs.set(job, (e = { queue: Promise.resolve(), agent }));
     const entry = e;
     entry.starting ??= this.open(agent, job).finally(() => (entry.starting = undefined));

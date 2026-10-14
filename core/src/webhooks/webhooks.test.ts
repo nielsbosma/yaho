@@ -155,7 +155,13 @@ describe('webhook triggers', () => {
   });
 
   it('drop a replayed signed delivery, whatever id headers it carries', async () => {
-    saveAgent(ctx, { name: 'triage', triggers: [{ webhook: 'signed', verify: 'yaho', limit: 100 }, { webhook: 'gh', verify: 'github' }] });
+    saveAgent(ctx, {
+      name: 'triage',
+      triggers: [
+        { webhook: 'signed', verify: 'yaho', limit: 100 },
+        { webhook: 'gh', verify: 'github' },
+      ],
+    });
     const w = hook('signed');
     const sign = (t: number, data = body) => `t=${t},v1=${stripeSignature(w.secret, t, data)}`;
     const t = Math.floor(Date.now() / 1000);
@@ -168,7 +174,9 @@ describe('webhook triggers', () => {
     const gh = hook('gh');
     const sig = `sha256=${createHmac('sha256', gh.secret).update(body).digest('hex')}`;
     expect((await post(gh, body, { 'x-hub-signature-256': sig, 'x-github-delivery': 'one' })).status).toBe(202);
-    expect(await (await post(gh, body, { 'x-hub-signature-256': sig, 'x-github-delivery': 'two' })).json()).toMatchObject({ duplicate: true });
+    expect(await (await post(gh, body, { 'x-hub-signature-256': sig, 'x-github-delivery': 'two' })).json()).toMatchObject({
+      duplicate: true,
+    });
 
     const stripeHeaders = (secret: string, data: Buffer) => ({ 'stripe-signature': `t=${t},v1=${stripeSignature(secret, t, data)}` });
     expect(deliveryId('stripe', 's', stripeHeaders('s', Buffer.from('{"id":"evt_1"}')), Buffer.from('{"id":"evt_1"}'))).toBe('evt:evt_1');

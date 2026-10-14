@@ -117,7 +117,11 @@ export function messageText(m: Message, opts: { answer?: string } = {}): string 
   for (const s of m.steps ?? []) {
     // Telegram refuses a whole message over a link it does not support, so only http(s) becomes one.
     if ('open' in s && s.open)
-      parts.push(/^https?:\/\//i.test(s.open) ? `Open: <a href="${attr(s.open)}">${escapeHtml(s.open)}</a>` : `Open: <code>${escapeHtml(s.open)}</code>`);
+      parts.push(
+        /^https?:\/\//i.test(s.open)
+          ? `Open: <a href="${attr(s.open)}">${escapeHtml(s.open)}</a>`
+          : `Open: <code>${escapeHtml(s.open)}</code>`,
+      );
     if ('copy' in s && s.copy) parts.push(`<pre>${escapeHtml(s.copy)}</pre>`);
   }
   if (m.artifacts?.length) parts.push(`<i>${m.artifacts.length} artifact${m.artifacts.length === 1 ? '' : 's'} in Yaho</i>`);

@@ -7,7 +7,12 @@ describe('schedule', () => {
     const db = openDb(':memory:');
     const now = new Date('2026-10-10T10:00:00Z');
     const iso = (h: number) => new Date(now.getTime() + h * 3_600_000).toISOString();
-    db.prepare("INSERT INTO agents (name, enabled, created, updated) VALUES ('a', 1, ?, ?), ('b', 0, ?, ?)").run(iso(0), iso(0), iso(0), iso(0));
+    db.prepare("INSERT INTO agents (name, enabled, created, updated) VALUES ('a', 1, ?, ?), ('b', 0, ?, ?)").run(
+      iso(0),
+      iso(0),
+      iso(0),
+      iso(0),
+    );
     const trig = db.prepare('INSERT INTO triggers (id, agent, type, cron, next_fire, created) VALUES (?, ?, ?, ?, ?, ?)');
     trig.run('t1', 'a', 'cron', '0 */6 * * *', iso(-1), iso(0)); // overdue: fires now, then every 6 hours
     trig.run('t2', 'b', 'cron', '0 12 * * *', iso(2), iso(0));
@@ -32,7 +37,10 @@ describe('schedule', () => {
     const db = openDb(':memory:');
     const now = new Date('2026-10-10T10:00:00Z');
     db.prepare("INSERT INTO agents (name, created, updated) VALUES ('m', ?, ?)").run(now.toISOString(), now.toISOString());
-    db.prepare("INSERT INTO triggers (id, agent, type, cron, next_fire, created) VALUES ('t', 'm', 'cron', '* * * * *', ?, ?)").run(now.toISOString(), now.toISOString());
+    db.prepare("INSERT INTO triggers (id, agent, type, cron, next_fire, created) VALUES ('t', 'm', 'cron', '* * * * *', ?, ?)").run(
+      now.toISOString(),
+      now.toISOString(),
+    );
     const runs = schedule(db, 24, now).runs;
     expect(runs.length).toBe(24 * 60 + 1);
     expect(runs.at(-1)!.at).toBe(new Date(now.getTime() + 24 * 3_600_000).toISOString());

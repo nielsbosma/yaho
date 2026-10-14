@@ -125,7 +125,10 @@ export function inFolder(root: string, folder: string, rel: string): string {
 /** The web UI's own files. */
 function sendStatic(res: Req['res'], file: string): void {
   if (!existsSync(file) || !statSync(file).isFile()) throw new HttpError(404, 'file not found');
-  res.writeHead(200, { 'Content-Type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream', 'Content-Length': statSync(file).size });
+  res.writeHead(200, {
+    'Content-Type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'Content-Length': statSync(file).size,
+  });
   createReadStream(file).pipe(res);
 }
 
@@ -157,7 +160,11 @@ export function safeJoin(root: string, rel: string): string {
  * Serve the API and UI on host:port, and with socket also on that Unix socket: the way a sandboxed job's yaho reaches the
  * core, as the sandbox has its own network where 127.0.0.1 is not this machine.
  */
-export function startServer(ctx: Ctx, router: Router, opts: { host: string; port: number; webRoot?: string; socket?: string }): Promise<Server> {
+export function startServer(
+  ctx: Ctx,
+  router: Router,
+  opts: { host: string; port: number; webRoot?: string; socket?: string },
+): Promise<Server> {
   const sse = new Set<Req['res']>();
   ctx.bus.on('event', (e: BusEvent) => {
     const line = `data: ${JSON.stringify(e)}\n\n`;
@@ -186,7 +193,8 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
       // Claude Code to Chat Completions providers (bridge.ts); it checks the job token itself.
       if (path.startsWith('/bridge/') && (await handleBridge(ctx, raw, res, path, () => readBytes(raw, 64 * 1024 * 1024)))) return;
       // Meta's webhook for WhatsApp; it checks the app secret's signature itself.
-      if (path === '/api/whatsapp/webhook') return await handleWhatsAppWebhook(ctx, raw, res, url.searchParams, () => readBytes(raw, 4 * 1024 * 1024));
+      if (path === '/api/whatsapp/webhook')
+        return await handleWhatsAppWebhook(ctx, raw, res, url.searchParams, () => readBytes(raw, 4 * 1024 * 1024));
       // Resend's webhook for inbound email; it checks the signing secret itself.
       if (path === '/api/resend/webhook') return await handleResendWebhook(ctx, raw, res, () => readBytes(raw, 4 * 1024 * 1024));
       // Twilio's webhook for incoming texts; it checks the auth token's signature itself.
@@ -251,7 +259,10 @@ export function startServer(ctx: Ctx, router: Router, opts: { host: string; port
         if (!existsSync(file) || statSync(file).isDirectory()) file = join(opts.webRoot, 'index.html');
         // index.html names the current build's files: never cache it, or a browser keeps the old app after an update.
         // The built files under /assets/ have hashed names and can be cached for good.
-        res.setHeader('Cache-Control', path.startsWith('/assets/') && !file.endsWith('index.html') ? 'public, max-age=31536000, immutable' : 'no-cache');
+        res.setHeader(
+          'Cache-Control',
+          path.startsWith('/assets/') && !file.endsWith('index.html') ? 'public, max-age=31536000, immutable' : 'no-cache',
+        );
         return sendStatic(res, file);
       }
       throw new HttpError(404, 'not found');

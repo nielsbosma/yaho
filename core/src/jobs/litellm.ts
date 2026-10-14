@@ -38,7 +38,10 @@ export async function deleteLitellmKey(p: ProviderConfig, key: string): Promise<
 
 export async function litellmModels(p: ProviderConfig): Promise<string[]> {
   const key = p.master_key ?? p.api_key;
-  const res = await fetch(`${(p.url ?? '').replace(/\/$/, '')}/v1/models`, { headers: key ? { Authorization: `Bearer ${key}` } : {}, signal: AbortSignal.timeout(20_000) });
+  const res = await fetch(`${(p.url ?? '').replace(/\/$/, '')}/v1/models`, {
+    headers: key ? { Authorization: `Bearer ${key}` } : {},
+    signal: AbortSignal.timeout(20_000),
+  });
   if (!res.ok) throw new Error(`LiteLLM /v1/models: ${res.status}`);
   const j = (await res.json()) as { data?: Array<{ id: string }> };
   return (j.data ?? []).map((m) => m.id);

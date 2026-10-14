@@ -299,7 +299,9 @@ export async function handleWebhook(
   }
 
   const event = EVENT_HEADERS.map((h) => header(raw.headers, h)).find(Boolean);
-  const shown = DELIVERY_HEADERS.map((h) => header(raw.headers, h)).find(Boolean)?.slice(0, 200);
+  const shown = DELIVERY_HEADERS.map((h) => header(raw.headers, h))
+    .find(Boolean)
+    ?.slice(0, 200);
   let msg: s.Message | undefined;
   try {
     msg = s.sendMessage(ctx, {

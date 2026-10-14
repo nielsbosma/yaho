@@ -49,7 +49,10 @@ const LIST_MAX = 5000;
 /** A folder's entries, four levels deep and at most LIST_MAX of them. Symlinks are listed as they are, never followed. */
 async function listDir(root: string): Promise<Array<{ path: string; size: number; modified: string; dir: boolean }>> {
   const out: Array<{ path: string; size: number; modified: string; dir: boolean }> = [];
-  const isDir = await lstat(root).then((st) => st.isDirectory(), () => false);
+  const isDir = await lstat(root).then(
+    (st) => st.isDirectory(),
+    () => false,
+  );
   if (!isDir) return out;
   const walk = async (d: string, depth: number) => {
     const names = await readdir(d).catch(() => [] as string[]);
@@ -147,7 +150,13 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
       throw new HttpError(400, (e as Error).message);
     }
     const slackBefore = JSON.stringify([ctx.settings.slack?.bot_token, ctx.settings.slack?.app_token]);
-    const wa = () => JSON.stringify([ctx.settings.whatsapp?.access_token, ctx.settings.whatsapp?.app_secret, ctx.settings.whatsapp?.phone_number_id, ctx.settings.whatsapp?.number]);
+    const wa = () =>
+      JSON.stringify([
+        ctx.settings.whatsapp?.access_token,
+        ctx.settings.whatsapp?.app_secret,
+        ctx.settings.whatsapp?.phone_number_id,
+        ctx.settings.whatsapp?.number,
+      ]);
     const waBefore = wa();
     const rs = () => JSON.stringify([ctx.settings.resend?.api_key, ctx.settings.resend?.domain]);
     const rsBefore = rs();
@@ -243,7 +252,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   });
 
   // ---- Email (Resend) ----
-  r.on('GET', '/api/resend', () => ({ ...(ctx.email?.status ?? { configured: false, connected: false }), webhook_path: '/api/resend/webhook' }));
+  r.on('GET', '/api/resend', () => ({
+    ...(ctx.email?.status ?? { configured: false, connected: false }),
+    webhook_path: '/api/resend/webhook',
+  }));
   r.on('POST', '/api/resend/reconnect', async () => {
     if (serverMode()) await ctx.email?.start();
     return ctx.email?.status;
@@ -273,7 +285,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   }));
 
   // ---- Telegram ----
-  r.on('GET', '/api/telegram', () => ({ ...(ctx.telegram?.status ?? { configured: false, connected: false, linked: false }), link_url: ctx.telegram?.linkUrl() }));
+  r.on('GET', '/api/telegram', () => ({
+    ...(ctx.telegram?.status ?? { configured: false, connected: false, linked: false }),
+    link_url: ctx.telegram?.linkUrl(),
+  }));
   r.on('POST', '/api/telegram/reconnect', async () => {
     await ctx.telegram?.start();
     return ctx.telegram?.status;
@@ -291,7 +306,11 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   });
 
   // ---- Slack ----
-  r.on('GET', '/api/slack', () => ({ ...(ctx.slack?.status ?? { configured: false, connected: false, owner: false }), create_url: slackCreateUrl(), manifest: JSON.stringify(slackManifest(), null, 2) }));
+  r.on('GET', '/api/slack', () => ({
+    ...(ctx.slack?.status ?? { configured: false, connected: false, owner: false }),
+    create_url: slackCreateUrl(),
+    manifest: JSON.stringify(slackManifest(), null, 2),
+  }));
   r.on('POST', '/api/slack/reconnect', async () => {
     await ctx.slack?.start();
     return ctx.slack?.status;
@@ -516,10 +535,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
           limit: 200,
         }).messages
       : s.listMessages(ctx, {
-      to: req.query.get('to') ?? undefined,
-      involving: req.query.get('involving') ?? undefined,
-      unread: req.query.get('unread') === '1',
-    }),
+          to: req.query.get('to') ?? undefined,
+          involving: req.query.get('involving') ?? undefined,
+          unread: req.query.get('unread') === '1',
+        }),
   );
   r.on('GET', '/api/messages/:id', (req) => s.getMessage(ctx, req.params.id!));
   r.on('GET', '/api/messages/:id/thread', (req) => s.thread(ctx, req.params.id!));
@@ -548,7 +567,9 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     return { deleted: ids.length };
   });
   r.on('POST', '/api/inbox/read-all', () => {
-    const ids = (ctx.db.prepare("SELECT id FROM messages WHERE to_addr = 'human' AND read = 0").all() as Array<{ id: string }>).map((r) => r.id);
+    const ids = (ctx.db.prepare("SELECT id FROM messages WHERE to_addr = 'human' AND read = 0").all() as Array<{ id: string }>).map(
+      (r) => r.id,
+    );
     for (const id of ids) s.markRead(ctx, id, true);
     return { marked: ids.length };
   });
@@ -587,7 +608,12 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     { maxBody: UPLOAD_LIMIT },
   );
   r.on('GET', '/api/projects/:name/files/:file', (req) =>
-    sendFile(req.res, project(req), inFolder(project(req), 'files', req.params.file!), req.query.get('download') ? req.params.file! : undefined),
+    sendFile(
+      req.res,
+      project(req),
+      inFolder(project(req), 'files', req.params.file!),
+      req.query.get('download') ? req.params.file! : undefined,
+    ),
   );
   r.on('DELETE', '/api/projects/:name/files/:file', (req) => {
     removeUnder(project(req), inFolder(project(req), 'files', req.params.file!));
@@ -682,7 +708,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('DELETE', '/api/resources/:name', (req) => s.deleteResource(ctx, req.params.name!));
   /** The values of the keys that are not secret (agents see them anyway). Secret values never leave Dopbase this way. */
   r.on('GET', '/api/resources/:name/values', async (req) => {
-    const open = s.getResource(ctx, req.params.name!).keys.filter((k) => !k.secret && k.has_value).map((k) => k.name);
+    const open = s
+      .getResource(ctx, req.params.name!)
+      .keys.filter((k) => !k.secret && k.has_value)
+      .map((k) => k.name);
     if (!open.length) return {};
     const all = await new Dopbase(ctx).runtimeValues(req.params.name!);
     return Object.fromEntries(open.filter((k) => k in all).map((k) => [k, all[k]!]));

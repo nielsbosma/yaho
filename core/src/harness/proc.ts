@@ -7,7 +7,10 @@ const run = promisify(execFile);
 /** How to ask this system when a process started, where it takes a program. */
 function query(pid: number): [string, string[]] {
   return process.platform === 'win32'
-    ? ['powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid}).StartTime.ToUniversalTime().ToString('o')`]]
+    ? [
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid}).StartTime.ToUniversalTime().ToString('o')`],
+      ]
     : ['ps', ['-o', 'lstart=', '-p', String(pid)]];
 }
 

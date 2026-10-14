@@ -69,7 +69,11 @@ function ResourceList() {
             to={(r) => ['resources', r.name]}
             columns={[
               { label: 'Resource', className: 'whitespace-nowrap', cell: (r) => <span className="font-medium">{r.name}</span> },
-              { label: 'Briefing', className: 'w-full max-w-0', cell: (r) => <span className="block truncate text-muted">{plainText(r.briefing) || '—'}</span> },
+              {
+                label: 'Briefing',
+                className: 'w-full max-w-0',
+                cell: (r) => <span className="block truncate text-muted">{plainText(r.briefing) || '—'}</span>,
+              },
               {
                 label: 'Keys',
                 cell: (r) =>
@@ -86,9 +90,7 @@ function ResourceList() {
               },
               {
                 label: 'Agents',
-                cell: (r) => (
-                  <AgentChips agents={r.agents} />
-                ),
+                cell: (r) => <AgentChips agents={r.agents} />,
               },
             ]}
           />
@@ -338,7 +340,10 @@ function ResourceDetail({ name }: { name: string }) {
           <Input
             type={r.keys.find((k) => k.name === setting)?.secret === false ? 'text' : 'password'}
             autoComplete="off"
-            value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoFocus
+          />
         </Field>
       </Dialog>
       <Dialog

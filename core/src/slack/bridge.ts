@@ -12,7 +12,14 @@ type Row = Record<string, unknown>;
 export interface SlackApi {
   authTest(): Promise<{ team?: string; team_id?: string; user_id?: string }>;
   openDm(user: string): Promise<string>;
-  post(args: { channel: string; text: string; blocks?: Block[]; username?: string; icon_emoji?: string; thread_ts?: string }): Promise<{ ts: string }>;
+  post(args: {
+    channel: string;
+    text: string;
+    blocks?: Block[];
+    username?: string;
+    icon_emoji?: string;
+    thread_ts?: string;
+  }): Promise<{ ts: string }>;
   update(args: { channel: string; ts: string; text: string; blocks: Block[] }): Promise<void>;
   remove(channel: string, ts: string): Promise<void>;
   ephemeral(channel: string, user: string, text: string): Promise<void>;
@@ -145,7 +152,9 @@ export class SlackBridge extends InboxMirror<SlackStatus, SlackSettings> {
   }
 
   private postFor(id: string): { channel: string; ts: string } | undefined {
-    return this.ctx.db.prepare('SELECT channel, ts FROM slack_posts WHERE message = ?').get(id) as { channel: string; ts: string } | undefined;
+    return this.ctx.db.prepare('SELECT channel, ts FROM slack_posts WHERE message = ?').get(id) as
+      | { channel: string; ts: string }
+      | undefined;
   }
 
   async onMessage(m: Message & { deleted?: boolean }): Promise<void> {
@@ -170,7 +179,9 @@ export class SlackBridge extends InboxMirror<SlackStatus, SlackSettings> {
     if (!channel || !this.api) return;
     const { text, blocks } = messageBlocks(m, { answer: this.answerOf(m.id) });
     const res = await this.api.post({ channel, text, blocks, username: senderName(m), icon_emoji: ':robot_face:' });
-    this.ctx.db.prepare('INSERT OR REPLACE INTO slack_posts (message, channel, ts, created) VALUES (?, ?, ?, ?)').run(m.id, channel, res.ts, new Date().toISOString());
+    this.ctx.db
+      .prepare('INSERT OR REPLACE INTO slack_posts (message, channel, ts, created) VALUES (?, ?, ?, ?)')
+      .run(m.id, channel, res.ts, new Date().toISOString());
     this.shownNow(m.id);
   }
 
@@ -212,12 +223,25 @@ export class SlackBridge extends InboxMirror<SlackStatus, SlackSettings> {
         channel,
         text: 'Yaho is connected.',
         blocks: [
-          { type: 'section', text: { type: 'mrkdwn', text: '*Yaho is connected.* New messages from your agents arrive here, and you can answer them with the buttons or in a thread.' } },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*Yaho is connected.* New messages from your agents arrive here, and you can answer them with the buttons or in a thread.',
+            },
+          },
           ...(unread
             ? [
                 {
                   type: 'actions',
-                  elements: [{ type: 'button', action_id: 'yaho_backlog', text: { type: 'plain_text', text: `Post ${unread} Unread` }, value: 'backlog' }],
+                  elements: [
+                    {
+                      type: 'button',
+                      action_id: 'yaho_backlog',
+                      text: { type: 'plain_text', text: `Post ${unread} Unread` },
+                      value: 'backlog',
+                    },
+                  ],
                 },
               ]
             : []),
@@ -231,7 +255,8 @@ export class SlackBridge extends InboxMirror<SlackStatus, SlackSettings> {
   }
 
   private async envelope(type: string, body: Row, ack: (payload?: unknown) => Promise<void>): Promise<void> {
-    if (process.env.YAHO_DEBUG === '1') console.error(`[slack] ${type} ${String(body.type ?? (body.event as Row | undefined)?.type ?? body.command ?? '')}`);
+    if (process.env.YAHO_DEBUG === '1')
+      console.error(`[slack] ${type} ${String(body.type ?? (body.event as Row | undefined)?.type ?? body.command ?? '')}`);
     if (type === 'slash_commands') return ack(await this.command(body));
     // Everything else is acknowledged at once; Slack wants an answer within three seconds.
     await ack();
@@ -354,9 +379,12 @@ export class SlackBridge extends InboxMirror<SlackStatus, SlackSettings> {
   async command(body: Row): Promise<unknown> {
     const user = body.user_id as string;
     const reply = (text: string) => ({ response_type: 'ephemeral', text });
-    const [verb = 'help', ...rest] = String(body.text ?? '').trim().split(/\s+/);
+    const [verb = 'help', ...rest] = String(body.text ?? '')
+      .trim()
+      .split(/\s+/);
     if (!this.isOwner(user)) {
-      if (verb === 'link' && rest[0] && (await this.link(user, rest[0]))) return reply('Yaho is connected: your inbox comes to your DMs with Yaho.');
+      if (verb === 'link' && rest[0] && (await this.link(user, rest[0])))
+        return reply('Yaho is connected: your inbox comes to your DMs with Yaho.');
       return reply(this.settings.owner ? NOT_OWNER : verb === 'link' ? 'That is not the link code shown in Yaho.' : NOT_LINKED);
     }
     if (verb === 'link') return reply('Yaho is already connected to you.');
@@ -378,7 +406,12 @@ export class SlackBridge extends InboxMirror<SlackStatus, SlackSettings> {
     const thinking = await api.post({ channel, text: 'Thinking…', ...(thread ? { thread_ts: thread } : {}) });
     try {
       const answer = await this.converse(channel, text);
-      await api.update({ channel, ts: thinking.ts, text: answer.slice(0, 200), blocks: [{ type: 'section', text: { type: 'mrkdwn', text: toMrkdwn(answer).slice(0, 2900) } }] });
+      await api.update({
+        channel,
+        ts: thinking.ts,
+        text: answer.slice(0, 200),
+        blocks: [{ type: 'section', text: { type: 'mrkdwn', text: toMrkdwn(answer).slice(0, 2900) } }],
+      });
     } catch (err) {
       await api.update({
         channel,
@@ -399,8 +432,16 @@ function replyModal(m: Message): Block {
     submit: { type: 'plain_text', text: 'Send' },
     close: { type: 'plain_text', text: 'Cancel' },
     blocks: [
-      { type: 'context', elements: [{ type: 'mrkdwn', text: `To *${m.from.replace(/^agent:/, '')}* · ${escapeText(m.title || m.body.slice(0, 80))}` }] },
-      { type: 'input', block_id: 'reply', label: { type: 'plain_text', text: 'Message' }, element: { type: 'plain_text_input', action_id: 'text', multiline: true } },
+      {
+        type: 'context',
+        elements: [{ type: 'mrkdwn', text: `To *${m.from.replace(/^agent:/, '')}* · ${escapeText(m.title || m.body.slice(0, 80))}` }],
+      },
+      {
+        type: 'input',
+        block_id: 'reply',
+        label: { type: 'plain_text', text: 'Message' },
+        element: { type: 'plain_text_input', action_id: 'text', multiline: true },
+      },
     ],
   };
 }

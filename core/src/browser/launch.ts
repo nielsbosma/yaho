@@ -192,7 +192,9 @@ export async function connectCloud(s: Settings): Promise<Launched> {
   const cdp = await Cdp.overWebSocket(url);
   let context: string;
   try {
-    ({ browserContextId: context } = await cdp.send<{ browserContextId: string }>('Target.createBrowserContext', { disposeOnDetach: true }));
+    ({ browserContextId: context } = await cdp.send<{ browserContextId: string }>('Target.createBrowserContext', {
+      disposeOnDetach: true,
+    }));
   } catch (e) {
     cdp.close();
     throw new Error(`the browser at the CDP endpoint cannot give the job its own context: ${(e as Error).message}`);

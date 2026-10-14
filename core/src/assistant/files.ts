@@ -1,4 +1,14 @@
-import { constants, createReadStream, createWriteStream, existsSync, openSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import {
+  constants,
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
 import { lstat, mkdir, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -11,7 +21,22 @@ import * as s from '../store.ts';
 
 /** Text the chat model reads at most from one file; longer files are cut, with a note. */
 const MAX_CHARS = 150_000;
-const TEXT = new Set(['.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.yaml', '.yml', '.xml', '.html', '.htm', '.log', '.ini', '.toml']);
+const TEXT = new Set([
+  '.txt',
+  '.md',
+  '.markdown',
+  '.csv',
+  '.tsv',
+  '.json',
+  '.yaml',
+  '.yml',
+  '.xml',
+  '.html',
+  '.htm',
+  '.log',
+  '.ini',
+  '.toml',
+]);
 
 const under = (root: string, p: string) => {
   try {
@@ -32,14 +57,23 @@ function guardPath(ctx: Ctx, p: string): void {
   const core = coreFiles(r);
   if ([...core, '/proc'].some((c) => under(c, p))) throw new HttpError(403, `${p} is Yaho's own file; the chat cannot read or copy it`);
   if (serverMode() && ![r.agents, r.projects].some((root) => under(root, p)))
-    throw new HttpError(403, `in the server version the chat only reaches the agents' workspaces (${r.agents}) and the projects (${r.projects})`);
+    throw new HttpError(
+      403,
+      `in the server version the chat only reaches the agents' workspaces (${r.agents}) and the projects (${r.projects})`,
+    );
 }
 
 function localPath(ctx: Ctx, path: string, what: 'file' | 'folder'): string {
   const p = path.trim().replace(/^"(.*)"$/, '$1');
   if (!isAbsolute(p))
-    throw new HttpError(400, what === 'file' ? 'give the full path of the file, e.g. D:\\Docs\\plan.pdf' : 'give the full path of the folder, e.g. D:\\Workspaces\\Jobs');
-  if (!existsSync(p) || (what === 'file' ? !statSync(p).isFile() : !statSync(p).isDirectory())) throw new HttpError(404, `no ${what} at ${p}`);
+    throw new HttpError(
+      400,
+      what === 'file'
+        ? 'give the full path of the file, e.g. D:\\Docs\\plan.pdf'
+        : 'give the full path of the folder, e.g. D:\\Workspaces\\Jobs',
+    );
+  if (!existsSync(p) || (what === 'file' ? !statSync(p).isFile() : !statSync(p).isDirectory()))
+    throw new HttpError(404, `no ${what} at ${p}`);
   guardPath(ctx, p);
   // The real path: a link swapped in after the check leads nowhere new.
   return realpathSync(p);
@@ -57,7 +91,13 @@ function workspacePath<T>(f: () => T): T {
   }
 }
 
-const IMAGES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
+const IMAGES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+};
 /** Vision models take images up to about 5 MB. */
 const MAX_IMAGE = 5 * 1024 * 1024;
 
@@ -83,7 +123,11 @@ async function officeText(p: string, ext: string): Promise<string> {
       .filter((n) => re.test(n))
       .sort((a, b) => Number(/(\d+)\.xml$/.exec(a)?.[1]) - Number(/(\d+)\.xml$/.exec(b)?.[1]));
   if (ext === '.docx')
-    return unxml(part('word/document.xml').replace(/<w:tab\/>/g, '\t').replace(/<\/w:p>/g, '\n')).replace(/\n{3,}/g, '\n\n');
+    return unxml(
+      part('word/document.xml')
+        .replace(/<w:tab\/>/g, '\t')
+        .replace(/<\/w:p>/g, '\n'),
+    ).replace(/\n{3,}/g, '\n\n');
   if (ext === '.pptx')
     return byNumber(/^ppt\/slides\/slide\d+\.xml$/)
       .map((n, i) => `## Slide ${i + 1}\n` + unxml(part(n).replace(/<\/a:p>/g, '\n')).trim())
@@ -133,7 +177,8 @@ export async function readLocalFile(
     pages = r.totalPages;
   } else if (TEXT.has(ext) || statSync(p).size < 1_000_000) {
     const buf = readFileSync(p);
-    if (buf.subarray(0, 8000).includes(0)) throw new HttpError(415, `${basename(p)} is not a format Yaho can read (text, PDF, Office, image)`);
+    if (buf.subarray(0, 8000).includes(0))
+      throw new HttpError(415, `${basename(p)} is not a format Yaho can read (text, PDF, Office, image)`);
     text = buf.toString('utf8');
   } else throw new HttpError(415, `${basename(p)} is too large to read as text`);
   return { path: p, ...(pages ? { pages } : {}), text: text.slice(0, MAX_CHARS), truncated: text.length > MAX_CHARS };
@@ -194,7 +239,8 @@ export async function copyToAgentWorkspace(
   if (!isDir && existsSync(target) && (await lstat(target)).isDirectory()) target = join(target, basename(src));
   // Copying a folder into itself would recurse until the disk fills.
   const inside = (child: string, parent: string) => child === parent || child.startsWith(parent + sep);
-  if (isDir && inside(join(existsSync(root) ? realpathSync(root) : root, relative(root, target)), src)) throw new HttpError(400, `cannot copy ${src} into a folder inside itself`);
+  if (isDir && inside(join(existsSync(root) ? realpathSync(root) : root, relative(root, target)), src))
+    throw new HttpError(400, `cannot copy ${src} into a folder inside itself`);
 
   // Measure before copying anything. Links inside the source are skipped: they may point anywhere.
   let files = 0;
@@ -207,7 +253,10 @@ export async function copyToAgentWorkspace(
       files++;
       bytes += st.size;
       if (files > COPY_LIMIT.files || bytes > COPY_LIMIT.bytes)
-        throw new HttpError(413, `too much to copy (over ${COPY_LIMIT.files} files or ${COPY_LIMIT.bytes / 1024 ** 3} GB): pick a smaller folder`);
+        throw new HttpError(
+          413,
+          `too much to copy (over ${COPY_LIMIT.files} files or ${COPY_LIMIT.bytes / 1024 ** 3} GB): pick a smaller folder`,
+        );
       return;
     }
     for (const d of await readdir(p)) if (!SKIP.has(d)) await walk(join(p, d));

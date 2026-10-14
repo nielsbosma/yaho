@@ -7,7 +7,15 @@ import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { totp } from './totp.mjs';
 
-const { values: o } = parseArgs({ options: { url: { type: 'string' }, password: { type: 'string' }, totp: { type: 'string' }, token: { type: 'string' }, only: { type: 'string' } } });
+const { values: o } = parseArgs({
+  options: {
+    url: { type: 'string' },
+    password: { type: 'string' },
+    totp: { type: 'string' },
+    token: { type: 'string' },
+    only: { type: 'string' },
+  },
+});
 const U = o.url ?? 'http://127.0.0.1:4799';
 const env = Object.fromEntries(
   readFileSync(new URL('../.plan/secrets.env', import.meta.url), 'utf8')
@@ -23,7 +31,11 @@ const pass = (name, ok, note = '') => {
 
 let cookie = '';
 async function call(path, init = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(o.token ? { Authorization: `Bearer ${o.token}` } : { Cookie: cookie }), ...init.headers };
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(o.token ? { Authorization: `Bearer ${o.token}` } : { Cookie: cookie }),
+    ...init.headers,
+  };
   const r = await fetch(U + path, { ...init, headers });
   const sc = r.headers.get('set-cookie');
   if (sc && !o.token) cookie = sc.split(';')[0];
@@ -78,7 +90,11 @@ pass('no key in the settings the UI receives', !leaked);
 const models = (await call('/api/models')).body;
 const per = {};
 for (const id of Object.values(models.provider_of ?? {})) per[id] = (per[id] ?? 0) + 1;
-pass('every provider lists models', ['litellm', 'opper', 'berget', 'openai'].every((id) => per[id] > 0), JSON.stringify(per));
+pass(
+  'every provider lists models',
+  ['litellm', 'opper', 'berget', 'openai'].every((id) => per[id] > 0),
+  JSON.stringify(per),
+);
 
 // ---- 3. Harness checks ----
 for (const h of ['claude-code', 'codex']) {
@@ -87,9 +103,16 @@ for (const h of ['claude-code', 'codex']) {
 }
 
 // ---- 4. The chat, with a tool ----
-const chat = await call('/api/assistant', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'List my agents with your tool, then say how many there are.' }] }) });
+const chat = await call('/api/assistant', {
+  method: 'POST',
+  body: JSON.stringify({ messages: [{ role: 'user', content: 'List my agents with your tool, then say how many there are.' }] }),
+});
 const steps = chat.body?.steps ?? [];
-pass('chat answers and uses a tool', chat.status === 200 && steps.some((x) => x.tool === 'list_agents'), `${steps.map((x) => x.tool).join(', ')}`);
+pass(
+  'chat answers and uses a tool',
+  chat.status === 200 && steps.some((x) => x.tool === 'list_agents'),
+  `${steps.map((x) => x.tool).join(', ')}`,
+);
 
 // ---- 5. Real jobs: each must send an inbox message through the yaho CLI ----
 const matrix = [
@@ -106,8 +129,12 @@ const jobs = await Promise.all(
     const name = `e2e-${runId}-${i}`;
     const title = `E2E ${runId} ${i}`;
     const briefing = `You are a test agent. Do exactly this and nothing else:\n1. Run this shell command: yaho send --to human --type info --title "${title}" --body "ok from ${harness} on ${label}"\n2. Run: yaho finish --summary done\nDo not create any files.`;
-    const created = await call('/api/agents', { method: 'POST', body: JSON.stringify({ name, briefing, harness, models: [model], enabled: false, budget_usd: 1 }) });
-    if (created.status !== 200) return { harness, label, name, title, error: `create ${created.status} ${JSON.stringify(created.body).slice(0, 120)}` };
+    const created = await call('/api/agents', {
+      method: 'POST',
+      body: JSON.stringify({ name, briefing, harness, models: [model], enabled: false, budget_usd: 1 }),
+    });
+    if (created.status !== 200)
+      return { harness, label, name, title, error: `create ${created.status} ${JSON.stringify(created.body).slice(0, 120)}` };
     const run = await call(`/api/agents/${name}/run`, { method: 'POST', body: JSON.stringify({}) });
     return { harness, label, name, title, job: run.body?.id ?? run.body?.job?.id, runStatus: run.status, runBody: run.body };
   }),
@@ -129,14 +156,23 @@ for (const j of jobs) {
   const inbox = (await call('/api/messages?to=human')).body ?? [];
   const msg = (Array.isArray(inbox) ? inbox : []).find((m) => m.title === j.title);
   const ok = !!job && job.status === 'finished' && !!msg;
-  pass(`job: ${j.harness} on ${j.label}`, ok, job ? `${job.status}${job.reason ? ` (${String(job.reason).slice(0, 100)})` : ''}, cost $${Number(job.cost_usd).toFixed(4)}, message ${msg ? 'arrived' : 'missing'}` : `no job (${j.runStatus})`);
+  pass(
+    `job: ${j.harness} on ${j.label}`,
+    ok,
+    job
+      ? `${job.status}${job.reason ? ` (${String(job.reason).slice(0, 100)})` : ''}, cost $${Number(job.cost_usd).toFixed(4)}, message ${msg ? 'arrived' : 'missing'}`
+      : `no job (${j.runStatus})`,
+  );
 }
 
 // ---- 6. Clean up the test agents and their messages ----
 for (const j of jobs) await call(`/api/agents/${j.name}`, { method: 'DELETE' });
 const inbox = (await call('/api/messages?to=human')).body ?? [];
-for (const m of (Array.isArray(inbox) ? inbox : []).filter((x) => String(x.title).startsWith(`E2E ${runId}`))) await call(`/api/messages/${m.id}`, { method: 'DELETE' });
+for (const m of (Array.isArray(inbox) ? inbox : []).filter((x) => String(x.title).startsWith(`E2E ${runId}`)))
+  await call(`/api/messages/${m.id}`, { method: 'DELETE' });
 
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} passed${failed.length ? `; failed: ${failed.map((f) => f.name).join('; ')}` : ''}`);
+console.log(
+  `\n${results.length - failed.length}/${results.length} passed${failed.length ? `; failed: ${failed.map((f) => f.name).join('; ')}` : ''}`,
+);
 process.exit(failed.length ? 1 : 0);

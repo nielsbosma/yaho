@@ -34,7 +34,14 @@ export interface ClaudeCheck {
 let last: ClaudeCheck | null = null;
 export const lastClaudeCheck = () => last;
 
-function run(cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, timeoutMs: number, input = ''): Promise<{ code: number | null; out: string; err: string }> {
+function run(
+  cmd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+  timeoutMs: number,
+  input = '',
+): Promise<{ code: number | null; out: string; err: string }> {
   return new Promise((resolve) => {
     let out = '';
     let err = '';
@@ -70,7 +77,12 @@ const CHECK_BUDGET_USD = 1;
  * How a check's harness reaches the provider: as a job does, with a key minted and capped for the check where the
  * provider can (never the master key), and a bridge token for this one provider and model (never the human's token).
  */
-async function checkAccess(ctx: Ctx, provider: ProviderConfig, model: string, harness: string): Promise<{ access: JobAccess; done(): void }> {
+async function checkAccess(
+  ctx: Ctx,
+  provider: ProviderConfig,
+  model: string,
+  harness: string,
+): Promise<{ access: JobAccess; done(): void }> {
   const bridge = checkToken(provider.id, [model]);
   try {
     const access = await jobAccess(ctx.settings, provider, {
@@ -222,7 +234,9 @@ export async function checkCodex(ctx: Ctx): Promise<ClaudeCheck> {
     const gpt = (m: string) => /(^|\/)(gpt|o\d|codex)/i.test(m);
     let model = resolved.model;
     if (!gpt(model)) {
-      const fromDefaults = ctx.settings.defaults.models.map((m) => resolveModel(ctx.settings, m)).find((x) => x.provider.id === resolved.provider.id && gpt(x.model));
+      const fromDefaults = ctx.settings.defaults.models
+        .map((m) => resolveModel(ctx.settings, m))
+        .find((x) => x.provider.id === resolved.provider.id && gpt(x.model));
       model = fromDefaults?.model ?? (await listModels(ctx.settings, resolved.provider).catch(() => [] as string[])).find(gpt) ?? model;
     }
     r.model = model;
