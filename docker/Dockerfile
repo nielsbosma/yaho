@@ -13,7 +13,9 @@
 # ---- Dopbase, from its pinned tag (it publishes no binary for every platform we build) ----
 FROM rust:1-bookworm AS dopbase
 ARG DOPBASE_VERSION=0.1.9
+ARG DOPBASE_COMMIT=e3e528f0ac652a7d706dc2995ada6b21dda1b5ff
 RUN git clone --depth 1 --branch "${DOPBASE_VERSION}" https://github.com/dopbase/dopbase.git /src \
+ && test "$(git -C /src rev-parse HEAD)" = "${DOPBASE_COMMIT}" \
  && mkdir -p /src/dist \
  && printf '<!doctype html><title>Dopbase</title><p>Dopbase bundled with Yaho (API only).</p>\n' > /src/dist/index.html
 WORKDIR /src/app
