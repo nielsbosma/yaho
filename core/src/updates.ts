@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Ctx } from './context.ts';
+import { withoutCaps } from './harness/asAgent.ts';
 
 export const PACKAGE = '@bosmainteractive/yaho';
 const SIX_HOURS = 6 * 3600_000;
@@ -110,7 +111,7 @@ export class Updates {
     Object.assign(this.state, { status: 'installing', error: undefined });
     this.emit();
     let output = '';
-    const child = spawn('npm', ['install', '-g', `${PACKAGE}@${channel}`], { shell: process.platform === 'win32', windowsHide: true });
+    const child = spawn(...withoutCaps('npm', ['install', '-g', `${PACKAGE}@${channel}`]), { shell: process.platform === 'win32', windowsHide: true });
     child.stdout.on('data', (d) => (output += d));
     child.stderr.on('data', (d) => (output += d));
     child.on('error', (e) => (output += e.message));

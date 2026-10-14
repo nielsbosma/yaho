@@ -4,6 +4,8 @@ import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import type { Ctx } from '../context.ts';
+import { withoutCaps } from '../harness/asAgent.ts';
+import { procId, sameProc } from '../harness/proc.ts';
 
 /**
  * The Dopbase that ships with Yaho: one local server per data directory, started and stopped by the core.
@@ -53,7 +55,7 @@ export class LocalDopbase {
   private setup(): Credentials {
     if (existsSync(this.credentialsFile)) return YAML.parse(readFileSync(this.credentialsFile, 'utf8')) as Credentials;
     mkdirSync(this.dataDir, { recursive: true });
-    const r = spawnSync(this.bin!, ['--data-dir', this.dataDir, '--json', 'server', 'setup', '--email', LOCAL_EMAIL], {
+    const r = spawnSync(...withoutCaps(this.bin!, ['--data-dir', this.dataDir, '--json', 'server', 'setup', '--email', LOCAL_EMAIL]), {
       encoding: 'utf8',
       windowsHide: true,
     });
@@ -73,11 +75,14 @@ export class LocalDopbase {
       this.setup();
       this.killLeftover();
       const port = this.url.split(':').pop()!;
-      this.child = spawn(this.bin, ['--data-dir', this.dataDir, 'server', 'start', '--host', '127.0.0.1', '--port', port], {
+      this.child = spawn(...withoutCaps(this.bin, ['--data-dir', this.dataDir, 'server', 'start', '--host', '127.0.0.1', '--port', port]), {
         stdio: 'ignore',
         windowsHide: true,
       });
-      if (this.child.pid) writeFileSync(this.pidFile, String(this.child.pid));
+      const child = this.child;
+      void procId(child.pid).then((id) => {
+        if (id && this.child === child) writeFileSync(this.pidFile, id);
+      });
       this.child.on('exit', (code) => {
         if (this.child && code !== null) this.lastError = `dopbase exited with code ${code}`;
         this.child = null;
@@ -127,20 +132,16 @@ export class LocalDopbase {
   /** A Dopbase left running by a core that was killed outright holds the port and the database; stop it first. */
   private killLeftover(): void {
     if (!existsSync(this.pidFile)) return;
-    const pid = Number(readFileSync(this.pidFile, 'utf8'));
+    const recorded = readFileSync(this.pidFile, 'utf8').trim();
     rmSync(this.pidFile, { force: true });
+    // Only the very process that was started (its pid and start time); pids get reused.
+    const pid = sameProc(recorded) ?? (process.platform === 'win32' && /^\d+$/.test(recorded) ? Number(recorded) : null);
     if (!pid) return;
     if (process.platform === 'win32') {
-      // Only if that pid is still a dopbase process; pids get reused.
+      // Only if that pid is still a dopbase process.
       const r = spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
       if (/dopbase/i.test(r.stdout ?? '')) killPid(pid);
-    } else {
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch {
-        /* already gone */
-      }
-    }
+    } else killPid(pid);
   }
 
   stop(): void {
