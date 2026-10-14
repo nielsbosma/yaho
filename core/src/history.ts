@@ -25,10 +25,12 @@ const trigger = (j: Job) => [j.trigger_type, j.trigger_detail].filter(Boolean).j
 export function indexJob(ctx: Ctx, id: string, summary?: string | null): void {
   const j = getJob(ctx, id);
   const messages = [...texts(ctx, id), ...sent(ctx, id)].join('\n\n').slice(-200_000);
-  ctx.db.prepare('DELETE FROM job_search WHERE job = ?').run(id);
-  ctx.db
+  const old = ctx.db.prepare('SELECT row FROM job_search_rows WHERE job = ?').get(id) as Row | undefined;
+  if (old) ctx.db.prepare('DELETE FROM job_search WHERE rowid = ?').run(old.row as number);
+  const r = ctx.db
     .prepare('INSERT INTO job_search (job, agent, trigger, messages, summary, recap) VALUES (?,?,?,?,?,?)')
     .run(id, j.agent, trigger(j), messages, summary ?? j.summary ?? '', j.recap ?? '');
+  ctx.db.prepare('INSERT OR REPLACE INTO job_search_rows (job, row) VALUES (?, ?)').run(id, Number(r.lastInsertRowid));
 }
 
 /**
@@ -41,7 +43,7 @@ export function indexMissing(ctx: Ctx): number {
       `SELECT j.id, CASE WHEN j.summary IS NULL AND j.ended = (SELECT MAX(ended) FROM jobs WHERE session_id = j.session_id)
               THEN s.summary END AS session_summary
        FROM jobs j LEFT JOIN sessions s ON s.id = j.session_id
-       WHERE j.ended IS NOT NULL AND j.id NOT IN (SELECT job FROM job_search)`,
+       WHERE j.ended IS NOT NULL AND NOT EXISTS (SELECT 1 FROM job_search_rows r WHERE r.job = j.id)`,
     )
     .all() as Row[];
   ctx.db.exec('BEGIN');
