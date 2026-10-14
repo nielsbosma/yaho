@@ -24,7 +24,8 @@ process.stdin.on('data', (d) => (input += d)).on('end', () => {
   let c = (j.tool_input || {}).command;
   // Codex gives argv: [shell, -lc, script] is the script; anything else is quoted back into one line.
   const q = (a) => (/^[\\w@%+=:,./-]+$/.test(a) ? a : "'" + String(a).replace(/'/g, "'\\\\''") + "'");
-  if (Array.isArray(c)) c = c.length === 3 && /^-[a-z]*c$/.test(c[1]) ? c[2] : c.map(q).join(' ');
+  const shell = (a) => /(^|[\\\\/])(ba|da|k|z|mk)?sh(\\.exe)?$/i.test(String(a));
+  if (Array.isArray(c)) c = c.length === 3 && shell(c[0]) && /^-[a-z]*c$/.test(c[1]) ? c[2] : c.map(q).join(' ');
   if (typeof c !== 'string' || !c.trim()) return;
   const body = JSON.stringify({ command: c });
   const socket = process.env.YAHO_API_SOCKET;

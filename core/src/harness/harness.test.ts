@@ -1,9 +1,12 @@
+import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vite-plus/test';
 import { agentEnv, jobEnv } from './asAgent.ts';
 import { transcriptWriter } from './claudeCode.ts';
+import { commandGuardScript } from './commandGuard.ts';
 import type { HarnessEvent } from './types.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'yaho-harness-'));
@@ -65,5 +68,34 @@ describe.skipIf(process.platform === 'win32')('transcripts', () => {
     evil('{"b":2}');
     expect(readFileSync(db, 'utf8')).toBe('database');
     expect(events.filter((e) => e.kind === 'stderr')).toHaveLength(1);
+  });
+});
+
+describe('the Command Rules hook', () => {
+  it('checks the script of a shell argv, and any other argv as a whole', async () => {
+    const script = join(dir, 'command-guard.cjs');
+    writeFileSync(script, commandGuardScript());
+    const seen: string[] = [];
+    const server = createServer((req, res) => {
+      let b = '';
+      req.on('data', (d) => (b += d)).on('end', () => {
+        seen.push(JSON.parse(b).command);
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"decision":"allow"}');
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const env = { ...process.env, YAHO_API_URL: `http://127.0.0.1:${(server.address() as { port: number }).port}`, YAHO_API_SOCKET: '' };
+    const hook = (command: string[]) =>
+      new Promise<number | null>((resolve) => {
+        const p = spawn(process.execPath, [script], { env });
+        p.on('exit', resolve);
+        p.stdin.end(JSON.stringify({ tool_input: { command } }));
+      });
+    try {
+      for (const c of [['/bin/bash', '-lc', 'rm -rf x'], ['python3', '-c', 'import os'], ['rm', '-rf', 'a b']]) expect(await hook(c)).toBe(0);
+      expect(seen).toEqual(['rm -rf x', "python3 -c 'import os'", "rm -rf 'a b'"]);
+    } finally {
+      server.close();
+    }
   });
 });
