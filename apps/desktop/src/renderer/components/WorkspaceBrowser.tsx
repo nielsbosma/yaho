@@ -183,7 +183,9 @@ function FileView({ agent, file }: { agent: string; file: FileEntry }) {
         className="ml-auto"
         title="Download"
         onClick={() =>
-          downloadFile(`/api/agents/${agent}/workspace/file`, { path: file.path }, file.path.split('/').pop()!).catch((e) => setError((e as Error).message))
+          downloadFile(`/api/agents/${agent}/workspace/file`, { path: file.path }, file.path.split('/').pop()!).catch((e) =>
+            setError((e as Error).message),
+          )
         }
       >
         <Download /> Download

@@ -12,7 +12,8 @@ const VERSION = process.argv[2] ?? '0.1.9'; // a tag of github.com/dopbase/dopba
 // The commit the tag must point at: `git ls-remote https://github.com/dopbase/dopbase 'refs/tags/<version>^{}'`.
 const PINNED = { '0.1.9': 'e3e528f0ac652a7d706dc2995ada6b21dda1b5ff' };
 const COMMIT = process.argv[3] ?? PINNED[VERSION];
-if (!/^[0-9a-f]{40}$/.test(COMMIT ?? '')) throw new Error(`No pinned commit for Dopbase ${VERSION}; pass it: node tools/build-dopbase.mjs ${VERSION} <sha>`);
+if (!/^[0-9a-f]{40}$/.test(COMMIT ?? ''))
+  throw new Error(`No pinned commit for Dopbase ${VERSION}; pass it: node tools/build-dopbase.mjs ${VERSION} <sha>`);
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src = join(tmpdir(), `yaho-dopbase-${VERSION}`);
 const exe = process.platform === 'win32' ? 'dopbase.exe' : 'dopbase';
