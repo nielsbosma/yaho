@@ -12,10 +12,14 @@ const working = (j?: Job) => j?.status === 'running' || j?.status === 'queued';
 
 /** Follow-ups on a job, in the chat panel: each one is a new job in the same session, so the agent remembers its work. */
 export function JobChat({ job, onLeave }: { job: string; onLeave: () => void }) {
-  const thread = useApi<ThreadJob[]>(
-    `/api/jobs/${job}/thread`,
-    (e) => e.type === 'job' || (e.type === 'job_event' && e.event.kind === 'text'),
-  );
+  // Only this thread's jobs refetch it: those it has, and new ones in its session.
+  const known = useRef<{ ids: Set<string>; session: string | null }>({ ids: new Set(), session: null });
+  const thread = useApi<ThreadJob[]>(`/api/jobs/${job}/thread`, (e) => {
+    const { ids, session } = known.current;
+    if (e.type === 'job') return e.job.id === job || ids.has(e.job.id) || (!!session && e.job.session_id === session);
+    return e.type === 'job_event' && e.event.kind === 'text' && (e.job === job || ids.has(e.job));
+  });
+  known.current = { ids: new Set(thread.data?.map((j) => j.id)), session: thread.data?.find((j) => j.session_id)?.session_id ?? null };
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);

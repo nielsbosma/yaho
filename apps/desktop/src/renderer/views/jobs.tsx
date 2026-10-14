@@ -1,7 +1,7 @@
 import { Markdown } from '../components/Markdown.tsx';
 import { Resizer, usePanelWidth } from '../components/Resizer.tsx';
 import { ChevronRight, CircleStop, FileText, MessageSquare, Play, RotateCcw, Terminal, Wrench } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { ago, Badge, Card, duration, Empty, ErrorNote, money, PageHeader, Section, StatusBadge } from '../components/ui/display.tsx';
@@ -23,6 +23,20 @@ function useTick(active: boolean) {
   }, [active]);
 }
 
+/** A runtime that ticks on its own, so the page around it does not re-render every second. */
+function Runtime({ started, ended, running }: { started: string | null; ended: string | null; running: boolean }) {
+  useTick(running);
+  return <>{duration(started, running ? null : ended)}</>;
+}
+
+/** Events by id, each once, whether it came live or from history. */
+function mergeEvents(prev: JobEvent[], more: JobEvent[]): JobEvent[] {
+  const seen = new Set(prev.map((p) => p.id));
+  const add = more.filter((m) => !seen.has(m.id));
+  if (!add.length) return prev;
+  return [...prev, ...add].sort((a, b) => a.id - b.id);
+}
+
 export function JobsView({ route }: ViewProps) {
   if (route[1]) return <JobDetail id={route[1]} />;
   return <ActiveJobs />;
@@ -31,7 +45,6 @@ export function JobsView({ route }: ViewProps) {
 function ActiveJobs() {
   const active = useApi<Job[]>('/api/jobs?active=1', jobChanged);
   const recent = useApi<Job[]>('/api/jobs?limit=30', jobChanged);
-  useTick(!!active.data?.length);
   return (
     <>
       <PageHeader title="Running Jobs" sub="Every active job, with its trigger, runtime and cost." />
@@ -58,7 +71,6 @@ function ActiveJobs() {
 
 export function JobList({ agent }: { agent: string }) {
   const jobs = useApi<Job[]>(`/api/jobs?agent=${encodeURIComponent(agent)}&limit=50`, jobChanged);
-  useTick(!!jobs.data?.some((j) => j.status === 'running'));
   if (jobs.data && !jobs.data.length) return <div className="text-sm text-muted">No jobs yet.</div>;
   return <JobTable jobs={jobs.data ?? []} />;
 }
@@ -107,7 +119,9 @@ function JobTable({ jobs, showAgent }: { jobs: Job[]; showAgent?: boolean }) {
                   </div>
                 )}
               </td>
-              <td className="px-4 py-2 text-muted tabular-nums">{duration(j.started, j.status === 'running' ? null : j.ended)}</td>
+              <td className="px-4 py-2 text-muted tabular-nums">
+                <Runtime started={j.started} ended={j.ended} running={j.status === 'running'} />
+              </td>
               <td className={cn('px-4 py-2 text-right tabular-nums', !j.messages && 'text-muted')}>{j.messages ?? 0}</td>
               <td className="px-4 py-2 text-right tabular-nums">{money(j.cost_usd)}</td>
               {stoppable && (
@@ -141,20 +155,28 @@ function JobDetail({ id }: { id: string }) {
   const follow = useRef(true);
 
   useEffect(() => {
+    // Live events move the cursor only once history has loaded; before that, history could be skipped past.
     let last = 0;
+    let loaded = false;
     let alive = true;
     setEvents([]);
     const load = async () => {
-      const more = await api<JobEvent[]>(`/api/jobs/${id}/events?after=${last}`);
-      if (!alive || !more.length) return;
-      last = more[more.length - 1]!.id;
-      setEvents((prev) => [...prev, ...more.filter((m) => !prev.some((p) => p.id === m.id))]);
+      try {
+        const more = await api<JobEvent[]>(`/api/jobs/${id}/events?after=${last}`);
+        if (!alive) return;
+        loaded = true;
+        if (!more.length) return;
+        last = Math.max(last, more[more.length - 1]!.id);
+        setEvents((prev) => mergeEvents(prev, more));
+      } catch (e) {
+        if (alive) setError((e as Error).message);
+      }
     };
     void load();
     const off = onLive((e) => {
       if (e.type === 'job_event' && e.job === id) {
-        last = Math.max(last, e.event.id);
-        setEvents((prev) => (prev.some((p) => p.id === e.event.id) ? prev : [...prev, e.event]));
+        if (loaded) last = Math.max(last, e.event.id);
+        setEvents((prev) => mergeEvents(prev, [e.event]));
       }
       if (e.type === 'connection' && e.connected) void load();
     });
@@ -178,7 +200,6 @@ function JobDetail({ id }: { id: string }) {
   }, [events.length]);
 
   const j = job.data;
-  useTick(j?.status === 'running');
   const files = useMemo(() => filesTouched(events), [events]);
   const [sideWidth, setSideWidth] = usePanelWidth('job-side', 280, 200, 520);
   if (job.error) return <Empty title="Job not found">{job.error}</Empty>;
@@ -215,7 +236,9 @@ function JobDetail({ id }: { id: string }) {
             <span className="font-mono text-xs">{j.id}</span>
             <span>trigger: {j.trigger_type}</span>
             {j.model && <span>model: {j.model}</span>}
-            <span className="tabular-nums">runtime: {duration(j.started, live ? null : j.ended)}</span>
+            <span className="tabular-nums">
+              runtime: <Runtime started={j.started} ended={j.ended} running={live} />
+            </span>
             <span className="tabular-nums font-medium text-ink">cost: {money(j.cost_usd)}</span>
           </span>
         }
@@ -323,7 +346,7 @@ function toolSummary(name: string, input: Record<string, unknown>): string {
   return s.length > 120 ? `${s.slice(0, 120)}…` : s;
 }
 
-function EventRow({ e }: { e: JobEvent }) {
+const EventRow = memo(function EventRow({ e }: { e: JobEvent }) {
   const [open, setOpen] = useState(false);
   const d = e.data;
   switch (e.kind) {
@@ -396,4 +419,4 @@ function EventRow({ e }: { e: JobEvent }) {
         </div>
       );
   }
-}
+});
