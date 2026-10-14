@@ -174,7 +174,14 @@ export const migrations: string[] = [
   // replies and reactions find their message.
   `CREATE TABLE telegram_posts (chat TEXT NOT NULL, tg_id INTEGER NOT NULL, message TEXT NOT NULL, actions INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, PRIMARY KEY (chat, tg_id));
    CREATE INDEX telegram_posts_message ON telegram_posts(message);`,
-  // 11: Command Rules: a command an Ask rule held back, the inbox question about it, and the human's answer.
+  // 11: inbound webhooks, a trigger type: each has an unguessable URL token and an optional signature check.
+  // webhook_deliveries keeps each accepted delivery, for the hourly limit and for dropping repeats by the sender's id.
+  `CREATE TABLE webhooks (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE ON UPDATE CASCADE, name TEXT NOT NULL, token TEXT NOT NULL UNIQUE, verify TEXT NOT NULL DEFAULT 'none', secret TEXT NOT NULL, instructions TEXT NOT NULL DEFAULT '', hourly_limit INTEGER NOT NULL DEFAULT 60, paused INTEGER NOT NULL DEFAULT 0, last_delivery TEXT, last_rejected TEXT, created TEXT NOT NULL, UNIQUE (agent, name));
+   CREATE TABLE webhook_deliveries (id TEXT PRIMARY KEY, webhook TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE, delivery TEXT, job TEXT, message TEXT, file TEXT NOT NULL, created TEXT NOT NULL);
+   CREATE INDEX webhook_deliveries_webhook ON webhook_deliveries(webhook, created);
+   CREATE INDEX webhook_deliveries_job ON webhook_deliveries(job);
+   CREATE UNIQUE INDEX webhook_deliveries_delivery ON webhook_deliveries(webhook, delivery) WHERE delivery IS NOT NULL;`,
+  // 12: Command Rules: a command an Ask rule held back, the inbox question about it, and the human's answer.
   // used: an approved command runs once.
   `CREATE TABLE command_approvals (id TEXT PRIMARY KEY, agent TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE ON UPDATE CASCADE, job TEXT NOT NULL, session TEXT, command TEXT NOT NULL, message TEXT, status TEXT NOT NULL DEFAULT 'pending', used INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, decided TEXT);
    CREATE INDEX command_approvals_message ON command_approvals(message);

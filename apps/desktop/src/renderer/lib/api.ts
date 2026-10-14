@@ -107,7 +107,31 @@ export function useApi<T>(path: string | null, refresh: (e: LiveEvent) => boolea
 
 // ---------- shapes ----------
 
-export type TriggerSpec = { cron: string } | { inbox: true };
+export type WebhookVerify = 'none' | 'github' | 'stripe' | 'svix' | 'yaho';
+export interface WebhookTrigger {
+  webhook: string;
+  verify?: WebhookVerify;
+  instructions?: string;
+  limit?: number;
+  paused?: boolean;
+}
+export type TriggerSpec = { cron: string } | { inbox: true } | WebhookTrigger;
+
+/** A webhook as the human sees it: with its URL path and signing secret. */
+export interface Webhook {
+  id: string;
+  agent: string;
+  name: string;
+  path: string;
+  verify: WebhookVerify;
+  secret: string;
+  instructions: string;
+  limit: number;
+  paused: boolean;
+  last_delivery: string | null;
+  last_rejected: string | null;
+  deliveries_24h: number;
+}
 
 export interface Agent {
   name: string;
