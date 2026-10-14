@@ -2,7 +2,7 @@ import { Check as CheckIcon, CheckCircle2, Monitor, Moon, Plus, Sun, Trash2, XCi
 import { useEffect, useState, Children, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { Card, ErrorNote, PageHeader, Section } from '../components/ui/display.tsx';
-import { Field, Input, Select, Switch } from '../components/ui/form.tsx';
+import { Field, Input, Select, Switch, Textarea } from '../components/ui/form.tsx';
 import { ModelPicker } from '../components/ModelPicker.tsx';
 import type { AppState } from '../App.tsx';
 import { ClaudeCheckPanel } from './onboarding.tsx';
@@ -36,6 +36,15 @@ export interface Settings {
   };
   resend?: { api_key?: string; webhook_secret?: string; domain?: string; accept_new?: boolean };
   twilio?: { account_sid?: string; auth_token?: string; number?: string; new_agent?: string };
+  browser?: {
+    provider?: 'local' | 'browserbase' | 'steel' | 'cdp';
+    executable?: string;
+    headless?: boolean;
+    api_key?: string;
+    project_id?: string;
+    cdp_url?: string;
+    allowed_sites?: string[];
+  };
   telegram?: { bot_token?: string; post?: 'all' | 'expects_response' };
   sandbox?: boolean;
   ideas?: { enabled?: boolean; repo?: string };
@@ -171,6 +180,23 @@ export function SettingsView({ route }: { route: string[] }) {
         </Pane>
         <Pane id="defaults" label="Defaults">
         <Section title="Defaults for New Agents">
+              <Field
+                label="Browser: Allowed Sites"
+                className="md:col-span-2"
+                hint="One site per line (example.com also allows its subdomains). Agents' browsers can only open pages on these. Empty: any site."
+              >
+                <Textarea
+                  rows={3}
+                  value={(s.browser?.allowed_sites ?? []).join('\n')}
+                  placeholder={'example.com\ndocs.acme.dev'}
+                  onChange={(e) =>
+                    upd(
+                      (d) =>
+                        void (d.browser = { ...d.browser, allowed_sites: e.target.value.trim() ? e.target.value.split('\n') : undefined }),
+                    )
+                  }
+                />
+              </Field>
           <Card className="grid gap-4 p-4 md:grid-cols-2">
             <Field label="Models" className="md:col-span-2" group>
               <ModelPicker value={s.defaults.models} onChange={(v) => upd((d) => void (d.defaults.models = v))} />

@@ -29,6 +29,21 @@ const HELP = `yaho - talk to the Yaho orchestrator from inside a job
   yaho email reply <message-id> [--to ...] [--cc ...] [--body B] < body.txt
   yaho sms send --to +46701234567 [--body B] < text.txt
   yaho sms reply <message-id> [--body B] < text.txt
+  yaho browser open <url>               the browser (when it is on for you): open a page in this tab
+  yaho browser snapshot                 the page as roles and names, with a [ref=eN] on what you can act on
+  yaho browser click|hover <ref>        e.g. yaho browser click e12
+  yaho browser type <ref> "text" [--submit] [--append]
+  yaho browser press <key>              Enter, Tab, Escape, ArrowDown, a character, ...
+  yaho browser select <ref> <option>    pick a dropdown option by value or label
+  yaho browser scroll [down|up|top|bottom|<ref>] [px]
+  yaho browser back|forward|reload
+  yaho browser wait ["text"|seconds] [--selector css] [--gone] [--timeout s]
+  yaho browser text                     the page's visible text
+  yaho browser eval <js> (or < script.js)
+  yaho browser screenshot [file.png] [--full] [--ref eN]
+  yaho browser pdf [file.pdf]
+  yaho browser tabs | tab <n> | tab new [url] | tab close [n]
+  yaho browser close
   yaho budget
   yaho sleep <duration>                 e.g. 30m, 2h, 1d; ends this job now
   yaho finish [--summary "..."]         ends this job now
@@ -104,7 +119,30 @@ function readStdin(): string {
 
 const out = (v: unknown): void => void process.stdout.write(typeof v === 'string' ? (v.endsWith('\n') ? v : `${v}\n`) : YAML.stringify(v));
 
+async function browser(argv: string[]): Promise<void> {
+  const { positionals, values } = parseArgs({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      full: { type: 'boolean' },
+      submit: { type: 'boolean' },
+      append: { type: 'boolean' },
+      gone: { type: 'boolean' },
+      ref: { type: 'string' },
+      text: { type: 'string' },
+      selector: { type: 'string' },
+      timeout: { type: 'string' },
+    },
+  });
+  const [cmd, ...args] = positionals;
+  if (!cmd) throw new CliError(`missing the browser command\n\n${HELP}`);
+  const stdin = (cmd === 'type' && args.length < 2) || (cmd === 'eval' && !args.length) ? readStdin() : undefined;
+  const r = (await call('POST', '/browser', { cmd, args, flags: values, stdin, cwd: process.cwd() })) as { text?: string };
+  out(r?.text ?? '');
+}
+
 async function main(argv: string[]): Promise<void> {
+  if (argv[0] === 'browser') return browser(argv.slice(1));
   const { positionals: p, values: f } = parseArgs({
     args: argv,
     allowPositionals: true,

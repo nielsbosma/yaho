@@ -65,6 +65,12 @@ export function contextPrompt(ctx: Ctx, agent: Agent, job: Job, sessionSummary: 
     parts.push(
       `## SMS\nYou text from \`${ctx.sms.number}\`. Send with \`yaho sms send\`, answer with \`yaho sms reply\`. Replies arrive in your inbox from \`sms:<phone>\`.`,
     );
+  if (ctx.browser?.enabledFor(agent.name)) {
+    const sites = ctx.settings.browser?.allowed_sites?.filter(Boolean) ?? [];
+    parts.push(
+      `## Browser\nYou have a browser: \`yaho browser open <url>\`, then \`yaho browser snapshot\` to read the page and act on its refs.${sites.length ? ` It may only open ${sites.join(', ')}.` : ''}`,
+    );
+  }
   if (sandboxOn(ctx.settings))
     parts.push(
       '## Sandbox\nYou run in Sandbox Mode: you can only write inside your workspace (the current folder) and the temp folder; everything else is read-only. The network is open. Share files with `yaho artifact add`.',

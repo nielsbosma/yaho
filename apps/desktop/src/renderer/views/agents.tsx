@@ -332,6 +332,7 @@ const definitionOf = (a: Agent) => ({
   guardrails: a.guardrails,
   ...(a.email ? { email: true } : {}),
   ...(a.sms ? { sms: true } : {}),
+  ...(a.browser ? { browser: true } : {}),
 });
 
 export function AgentEditor({ existing }: { existing?: Agent }) {
@@ -351,6 +352,8 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
   const resources = useApi<Resource[]>('/api/resources');
   const email = useApi<{ configured: boolean; domain?: string }>('/api/resend');
   const sms = useApi<{ configured: boolean; number?: string }>('/api/twilio');
+  const browser = useApi<{ ready: boolean; detail: string }>('/api/browser');
+  const [forgot, setForgot] = useState(false);
   useEffect(() => {
     if (existing) setDraft({ ...existing });
   }, [existing]);
@@ -533,6 +536,31 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
               >
                 <div className="flex h-9 items-center">
                   <Switch checked={!!draft.sms} onChange={(v) => set('sms', v || undefined)} label="SMS" />
+                </div>
+              </Field>
+              <Field
+                label="Browser"
+                hint={
+                  browser.data?.ready
+                    ? 'A real browser in each job to open pages, sign in, click and fill in forms. Sign-ins stay between jobs.'
+                    : 'A real browser in each job. Set up Browser in Settings → Integrations first.'
+                }
+              >
+                <div className="flex h-9 items-center gap-3">
+                  <Switch checked={!!draft.browser} onChange={(v) => set('browser', v || undefined)} label="Browser" />
+                  {existing?.browser && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={forgot}
+                      onClick={async () => {
+                        await api(`/api/agents/${encodeURIComponent(existing.name)}/browser`, { method: 'DELETE' });
+                        setForgot(true);
+                      }}
+                    >
+                      {forgot ? 'Sign-ins Forgotten' : 'Forget Sign-ins'}
+                    </Button>
+                  )}
                 </div>
               </Field>
             </Card>

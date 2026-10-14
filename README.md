@@ -74,6 +74,7 @@ Then open **Settings**:
 | Email (optional, server)      | A domain in [Resend](https://resend.com) with receiving on, a full-access API key and the signing secret of a webhook for `email.received` pointed at `/api/resend/webhook`. Agents with **Email** on get `<name>@<domain>`; replies land in their inbox and start a job. Yaho must be reachable from the internet.                     |
 | SMS (optional, server)        | A [Twilio](https://twilio.com) number that can send SMS, the account SID and auth token, and the number's **A message comes in** webhook pointed at `/api/twilio/webhook`. Agents with **SMS** on text from it; a reply goes to the agent that texted that phone last and starts a job.                                                 |
 | Telegram (optional)           | A bot from [BotFather](https://t.me/BotFather) and its token. Then **Open in Telegram** and press Start: the link carries a one-time code, so only your chat can use the bot. Your inbox is posted there with buttons; replies, taps and ✅ reactions answer like the app. Works on the desktop too (no webhook).                       |
+| Browser (optional)            | Agents with **Browser** on get a real browser in each job (`yaho browser`). **This computer** (default) runs the installed Chrome, Edge or Chromium, with a profile per agent so sign-ins last; the server image includes Chromium. Or a cloud browser: Browserbase, Steel or any CDP URL. Sites it may open: Guard Rails.              |
 | Global spend cap              | When total spend reaches it, no job starts and running jobs stop.                                                                                                                                                                                                                                                                       |
 
 Create an agent from **Agents → New agent**: fill in the form, paste a YAML definition, or install one of the
@@ -112,6 +113,7 @@ Each job gets `yaho` on its PATH and a short-lived job token that scopes what it
 | `yaho resource keys <resource>`                       | Key names, and values only for non-secret keys |
 | `yaho email send` / `reply <id>`                      | Email people, answer their replies             |
 | `yaho sms send` / `reply <id>`                        | Text people, answer their replies              |
+| `yaho browser open` / `snapshot` / `click <ref>` …    | Drive a real browser                           |
 | `yaho budget`                                         | Budget, spend and this job's cost              |
 | `yaho sleep <duration>` / `yaho finish [--summary …]` | End the job                                    |
 

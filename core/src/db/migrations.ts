@@ -174,4 +174,6 @@ export const migrations: string[] = [
   // replies and reactions find their message.
   `CREATE TABLE telegram_posts (chat TEXT NOT NULL, tg_id INTEGER NOT NULL, message TEXT NOT NULL, actions INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, PRIMARY KEY (chat, tg_id));
    CREATE INDEX telegram_posts_message ON telegram_posts(message);`,
+  // 11: the browser for agents (yaho browser); agents.browser opts an agent in.
+  `ALTER TABLE agents ADD COLUMN browser INTEGER NOT NULL DEFAULT 0;`,
 ];

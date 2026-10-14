@@ -77,6 +77,12 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     return ctx.sms.send(w.agent, w.job, await req.body());
   });
 
+  // ---- the browser (yaho browser) ----
+  on('POST', '/browser', async (req, w) => {
+    if (!ctx.browser) throw new HttpError(400, 'the browser is not available in Yaho');
+    return ctx.browser.run(w.agent, w.job, await req.body());
+  });
+
   // ---- query (read-only, scoped) ----
   on('GET', '/query/:what', (req, w) => {
     const agent = s.getAgent(ctx, w.agent);

@@ -17,6 +17,7 @@ import { SlackBridge } from './slack/bridge.ts';
 import { WhatsAppBridge } from './whatsapp/bridge.ts';
 import { EmailBridge } from './email/resend.ts';
 import { SmsBridge } from './sms/twilio.ts';
+import { BrowserManager } from './browser/index.ts';
 import { TelegramBridge } from './telegram/bridge.ts';
 import { LocalDopbase } from './secrets/localDopbase.ts';
 import { loadSecrets } from './secrets/settingsSecrets.ts';
@@ -57,6 +58,7 @@ export async function serve(
   ctx.whatsapp = new WhatsAppBridge(ctx);
   ctx.email = new EmailBridge(ctx);
   ctx.sms = new SmsBridge(ctx);
+  ctx.browser = new BrowserManager(ctx);
   ctx.telegram = new TelegramBridge(ctx);
 
   const router = new Router();
@@ -98,6 +100,7 @@ export async function serve(
     ctx.updates?.stop();
     ctx.localDopbase?.stop();
     await runner.shutdown();
+    await ctx.browser?.closeAll();
     rmSync(p.server, { force: true });
     server.closeAllConnections();
     await new Promise((r) => server.close(r));
