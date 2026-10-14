@@ -179,6 +179,11 @@ export class BrowserManager {
   private async session(agent: string, job: string): Promise<BrowserSession> {
     let e = this.jobs.get(job);
     if (e?.session && !e.session.closed && !e.session.cdp.closed) return e.session;
+    // A local browser keeps one profile per agent, which one Chromium at a time can open.
+    if (!e?.starting && providerOf(this.ctx.settings) === 'local')
+      for (const [other, x] of this.jobs)
+        if (other !== job && x.agent === agent && (x.starting || (x.session && !x.session.closed)))
+          throw new HttpError(409, `another job of ${agent} (${other}) has the browser open, and a local browser opens the agent's profile one job at a time. Wait for that job to end, or go on without the browser.`);
     if (!e) this.jobs.set(job, (e = { queue: Promise.resolve(), agent }));
     const entry = e;
     entry.starting ??= this.open(agent, job).finally(() => (entry.starting = undefined));

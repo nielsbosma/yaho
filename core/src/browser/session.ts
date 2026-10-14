@@ -75,10 +75,18 @@ export class BrowserSession {
   private async init(): Promise<void> {
     const { cdp } = this;
     cdp.on('Target.attachedToTarget', (p, parent) => {
-      const t = p.targetInfo as { targetId: string; type: string; openerId?: string };
+      const t = p.targetInfo as { targetId: string; type: string; openerId?: string; browserContextId?: string };
       const sessionId = p.sessionId as string;
       if (this.tabs.has(t.targetId)) return;
-      if (parent || t.type !== 'page') return void cdp.send('Runtime.runIfWaitingForDebugger', {}, sessionId).catch(() => undefined);
+      // Another job's tab in a shared browser: not ours to watch or hold.
+      if (this.launched.context && t.browserContextId && t.browserContextId !== this.launched.context) {
+        void cdp
+          .send('Runtime.runIfWaitingForDebugger', {}, sessionId)
+          .then(() => cdp.send('Target.detachFromTarget', { sessionId }))
+          .catch(() => undefined);
+        return;
+      }
+      if (parent || t.type !== 'page') return void this.guard(sessionId);
       void this.setup(t.targetId, sessionId).then(() => {
         if (t.openerId) this.notes.push(`A new tab opened (tab ${this.indexOf(t.targetId)}); yaho browser tabs lists them.`);
       });
@@ -138,13 +146,13 @@ export class BrowserSession {
     else if (existsSync(this.opts.cookieFile) && !isLink(this.opts.cookieFile)) {
       try {
         assertUnder(this.opts.root, this.opts.cookieFile);
-        await cdp.send('Storage.setCookies', { cookies: JSON.parse(readFileSync(this.opts.cookieFile, 'utf8')) });
+        await cdp.send('Storage.setCookies', { cookies: JSON.parse(readFileSync(this.opts.cookieFile, 'utf8')), ...this.inContext() });
       } catch {
         /* stale or unreadable cookies: start signed out */
       }
     }
-    const { targetInfos } = await cdp.send<{ targetInfos: Array<{ targetId: string; type: string }> }>('Target.getTargets');
-    const pages = targetInfos.filter((t) => t.type === 'page');
+    const { targetInfos } = await cdp.send<{ targetInfos: Array<{ targetId: string; type: string; browserContextId?: string }> }>('Target.getTargets');
+    const pages = targetInfos.filter((t) => t.type === 'page' && (!this.launched.context || t.browserContextId === this.launched.context));
     if (pages.length) for (const p of pages) await this.attach(p.targetId);
     else await this.newTab('about:blank');
     this.current = [...this.tabs.keys()][0] ?? '';
@@ -152,14 +160,30 @@ export class BrowserSession {
 
   private waiting = new Map<string, (t: Tab) => void>();
 
+  private inContext(): { browserContextId?: string } {
+    return this.launched.context ? { browserContextId: this.launched.context } : {};
+  }
+
+  /** Every request, not only pages: the allowed sites hold for frames, scripts, fetches and workers too. */
+  private async filter(sessionId: string): Promise<void> {
+    const { cdp } = this;
+    await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, sessionId).catch(() => undefined);
+    // Frames in another process and workers are targets of their own, held until they are filtered too.
+    await cdp.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId).catch(() => undefined);
+  }
+
+  /** A frame or worker of one of the job's tabs. */
+  private async guard(sessionId: string): Promise<void> {
+    await this.filter(sessionId);
+    await this.cdp.send('Runtime.runIfWaitingForDebugger', {}, sessionId).catch(() => undefined);
+  }
+
   private async setup(targetId: string, sessionId: string): Promise<Tab> {
     const tab: Tab = { targetId, sessionId, refs: new Map(), loading: false, inflight: new Set(), lastNetwork: 0 };
     this.tabs.set(targetId, tab);
     const { cdp } = this;
     await Promise.all([cdp.send('Page.enable', {}, sessionId), cdp.send('Network.enable', {}, sessionId)]).catch(() => undefined);
-    await cdp
-      .send('Fetch.enable', { patterns: [{ urlPattern: '*', resourceType: 'Document', requestStage: 'Request' }] }, sessionId)
-      .catch(() => undefined);
+    await this.filter(sessionId);
     await cdp.send('Runtime.runIfWaitingForDebugger', {}, sessionId).catch(() => undefined);
     this.waiting.get(targetId)?.(tab);
     this.waiting.delete(targetId);
@@ -450,7 +474,7 @@ export class BrowserSession {
 
   async newTab(url: string): Promise<string> {
     if (url !== 'about:blank' && !this.opts.allowed(url)) throw new Error(`${url} is not an allowed site (Settings → Guard Rails)`);
-    const { targetId } = await this.cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' });
+    const { targetId } = await this.cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank', ...this.inContext() });
     await this.arrival(targetId);
     this.current = targetId;
     if (url !== 'about:blank') return this.open(url);
@@ -492,7 +516,7 @@ export class BrowserSession {
     if (this.closed) return;
     this.closed = true;
     if (!this.launched.keepsProfile && !this.cdp.closed) {
-      const r = await this.cdp.send<{ cookies: unknown[] }>('Storage.getCookies', {}, undefined, 5000).catch(() => null);
+      const r = await this.cdp.send<{ cookies: unknown[] }>('Storage.getCookies', this.inContext(), undefined, 5000).catch(() => null);
       if (r) {
         try {
           writeFileUnder(this.opts.root, this.opts.cookieFile, JSON.stringify(r.cookies), { mode: 0o660 });

@@ -18,6 +18,8 @@ export interface Launched {
   liveUrl?: string;
   /** Sign-ins are kept by the profile folder (local) or by saving cookies (cloud). */
   keepsProfile: boolean;
+  /** A browser shared with others (a CDP endpoint): the job's own browser context in it, with its own tabs and cookies. */
+  context?: string;
   close(): Promise<void>;
 }
 
@@ -188,10 +190,19 @@ export async function connectCloud(s: Settings): Promise<Launched> {
     url = String(v.webSocketDebuggerUrl);
   }
   const cdp = await Cdp.overWebSocket(url);
+  let context: string;
+  try {
+    ({ browserContextId: context } = await cdp.send<{ browserContextId: string }>('Target.createBrowserContext', { disposeOnDetach: true }));
+  } catch (e) {
+    cdp.close();
+    throw new Error(`the browser at the CDP endpoint cannot give the job its own context: ${(e as Error).message}`);
+  }
   return {
     cdp,
+    context,
     keepsProfile: false,
     async close() {
+      await stillAlive(cdp.send('Target.disposeBrowserContext', { browserContextId: context }), 3000).catch(() => undefined);
       cdp.close();
     },
   };
