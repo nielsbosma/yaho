@@ -1,3 +1,4 @@
+import { splitText } from '../mirror/util.ts';
 import type { Message } from '../store.ts';
 
 export type Payload = Record<string, unknown>;
@@ -54,19 +55,7 @@ export function toWhatsApp(md: string): string {
 }
 
 /** Cut text into message-sized pieces at paragraph or line breaks. */
-export function chunks(text: string, max = TEXT_MAX): string[] {
-  const out: string[] = [];
-  let rest = text;
-  while (rest.length > max) {
-    let at = rest.lastIndexOf('\n\n', max);
-    if (at < max / 2) at = rest.lastIndexOf('\n', max);
-    if (at < max / 2) at = max;
-    out.push(rest.slice(0, at));
-    rest = rest.slice(at).replace(/^\n+/, '');
-  }
-  if (rest) out.push(rest);
-  return out;
-}
+export const chunks = (text: string, max = TEXT_MAX): string[] => splitText(text, max);
 
 const agentOf = (addr: string) => (addr.startsWith('agent:') ? addr.slice(6) : addr);
 const cut = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1) + '…' : t);

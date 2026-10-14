@@ -5,8 +5,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vite-plus
 import type { Ctx } from '../context.ts';
 import { serve } from '../serve.ts';
 import { getMessage, sendMessage } from '../store.ts';
-import { TelegramBridge, type TelegramApi } from './bridge.ts';
-import { chunks, keyboard, messageParts, parseAction, toTelegram } from './format.ts';
+import { TelegramBridge, TelegramError, type TelegramApi } from './bridge.ts';
+import { chunks, keyboard, messageParts, messageText, parseAction, toTelegram } from './format.ts';
 
 describe('toTelegram', () => {
   it('converts the Markdown agents write to Telegram HTML', () => {
@@ -21,6 +21,24 @@ describe('toTelegram', () => {
     const parts = chunks(`<pre>${'line\n'.repeat(1000)}</pre>`, 1000);
     expect(parts.length).toBeGreaterThan(1);
     for (const p of parts) expect(p.split('<pre>').length).toBe(p.split('</pre>').length);
+  });
+
+  it('never cuts inside a tag or an entity', () => {
+    for (let pad = 80; pad < 100; pad++) {
+      const parts = chunks(`${'x'.repeat(pad)} <a href="https://example.com/a">link</a> &amp; more`, 100);
+      for (const p of parts) {
+        expect(p).not.toMatch(/<[^>]*$/);
+        expect(p).not.toMatch(/&[a-z]*$/);
+        expect(p.split('<a ').length).toBe(p.split('</a>').length);
+      }
+    }
+  });
+
+  it('shows only http(s) step links as links', () => {
+    const base = { id: 'm', from: 'agent:a', to: 'human', type: 'info' as const, title: '', body: '', reply_to: null, hop: 0, job: null, created: '', read: false, expects_response: false };
+    const text = messageText({ ...base, steps: [{ open: 'javascript:alert(1)' }, { open: 'https://ok.io' }] } as never);
+    expect(text).toContain('<code>javascript:alert(1)</code>');
+    expect(text).toContain('<a href="https://ok.io">');
   });
 });
 
@@ -50,14 +68,20 @@ let close: () => Promise<void>;
 /** A fake Bot API: records calls; getUpdates waits a little and returns nothing (the tests deliver updates directly). */
 function fakeTelegram() {
   const calls: Array<{ method: string; params: Record<string, any> }> = [];
+  const polls = { calls: 0, inflight: 0, max: 0, error: undefined as Error | undefined };
   let n = 100;
   const api: TelegramApi = {
     call: async <T>(method: string, params: Record<string, unknown> = {}, signal?: AbortSignal) => {
       if (method === 'getUpdates') {
+        polls.calls++;
+        if (polls.error) throw polls.error;
+        polls.inflight++;
+        polls.max = Math.max(polls.max, polls.inflight);
         await new Promise((r) => {
           const t = setTimeout(r, 30);
           signal?.addEventListener('abort', () => (clearTimeout(t), r(undefined)));
         });
+        polls.inflight--;
         return [] as T;
       }
       calls.push({ method, params: params as Record<string, any> });
@@ -66,7 +90,7 @@ function fakeTelegram() {
       return true as T;
     },
   };
-  return { api, calls };
+  return { api, calls, polls };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 50));
@@ -167,6 +191,32 @@ describe('TelegramBridge', () => {
       message_reaction: { chat: { id: OWNER }, message_id: 100 + sent().length, new_reaction: [{ type: 'emoji', emoji: '👍' }] },
     });
     expect(getMessage(ctx, info.id).read).toBe(true);
+  });
+
+  it('runs one poller when starts overlap, and stops polling on a refused token', async () => {
+    tg.polls.max = 0;
+    await Promise.all([bridge.start(), bridge.start(), bridge.start()]);
+    await tick();
+    await tick();
+    expect(tg.polls.max).toBe(1);
+    tg.polls.error = new TelegramError('Unauthorized', 401);
+    await tick();
+    const after = tg.polls.calls;
+    await tick();
+    expect(tg.polls.calls).toBe(after);
+    expect(bridge.status).toMatchObject({ connected: false, error: expect.stringContaining('refused') });
+  });
+
+  it('catches up from where it left off, past messages it skipped', async () => {
+    bridge.stop();
+    const since = new Date(Date.now() - 1000).toISOString();
+    ctx.settings.telegram = { ...ctx.settings.telegram!, owner: String(OWNER), since, post: 'expects_response' };
+    const info = sendMessage(ctx, { from: 'agent:scout', to: 'human', type: 'info', title: 'Skipped' });
+    const q = sendMessage(ctx, { from: 'agent:scout', to: 'human', type: 'question', title: 'Posted?' });
+    await bridge.start();
+    expect(sent().at(-1)!.params.text).toContain('Posted?');
+    expect(ctx.settings.telegram!.since! >= getMessage(ctx, info.id).created).toBe(true);
+    expect(ctx.settings.telegram!.since).toBe(getMessage(ctx, q.id).created);
   });
 
   it('only lets the owner act, and answers commands', async () => {

@@ -23,6 +23,7 @@ describe('parsing', () => {
     expect(address('Anna Svensson <Anna@Example.com>')).toBe('anna@example.com');
     expect(address('bob@x.io')).toBe('bob@x.io');
     expect(htmlToText('<p>Hi&nbsp;there</p><p>Bring the <b>deck</b></p>')).toBe('Hi there\nBring the deck');
+    expect(htmlToText(`<p>${'x'.repeat(300_000)}</p>`).length).toBe(200_000 - 3);
     expect(stripQuoted('Yes, bring the deck.\n\nOn Mon, 12 Oct 2026 at 09:00, scout <scout@a.io> wrote:\n> Anything to prepare?')).toBe(
       'Yes, bring the deck.',
     );
@@ -110,6 +111,8 @@ describe('EmailBridge', () => {
     const first = rs.sent[0]!;
     expect(first).toMatchObject({ from: 'scout <scout@agents.test>', to: ['anna@example.com'], subject: 'Our meeting Thursday' });
     expect(first.reply_to).toMatch(/^scout\+[0-9a-f]{10}@agents\.test$/);
+    const firstId = first.headers!['Message-ID']!;
+    expect(firstId).toMatch(/^<[0-9a-f]{24}@agents\.test>$/);
 
     await bridge.receive(
       'in_1',
@@ -129,7 +132,7 @@ describe('EmailBridge', () => {
 
     await bridge.send('scout', null, { reply_to: reply.id, body: 'Thanks, will do.' });
     expect(rs.sent[1]).toMatchObject({ to: ['anna@example.com'], subject: 'Re: Our meeting Thursday', reply_to: first.reply_to });
-    expect(rs.sent[1]!.headers).toEqual({ 'In-Reply-To': '<abc@mail.example.com>', References: '<abc@mail.example.com>' });
+    expect(rs.sent[1]!.headers).toMatchObject({ 'In-Reply-To': '<abc@mail.example.com>', References: `${firstId} <abc@mail.example.com>` });
     expect(thread(ctx, out.id).map((m) => m.from)).toEqual(['agent:scout', 'email:anna@example.com', 'agent:scout']);
 
     // A reply that lost the Reply-To still finds its thread through In-Reply-To.
@@ -143,6 +146,29 @@ describe('EmailBridge', () => {
       }),
     );
     expect(thread(ctx, out.id)).toHaveLength(4);
+
+    // So does a reply to our own Message-ID; a bad one is not stored.
+    await bridge.receive(
+      'in_3',
+      mail({ from: 'anna@example.com', to: ['scout@agents.test'], text: 'And another', headers: { 'In-Reply-To': firstId, 'Message-ID': '<a> <b>' } }),
+    );
+    expect(thread(ctx, out.id)).toHaveLength(5);
+    expect(ctx.db.prepare("SELECT message_id FROM emails WHERE resend_id = 'in_3'").get()).toEqual({ message_id: null });
+  });
+
+  it('limits who may write in: allowed senders, thread participants and an hourly rate', async () => {
+    const count = () => (ctx.db.prepare("SELECT COUNT(*) n FROM messages WHERE to_addr = 'agent:scout'").get() as { n: number }).n;
+    await bridge.send('scout', null, { to: 'bo@corp.se', subject: 'Hi', body: 'Hello' });
+    const replyTo = rs.sent.at(-1)!.reply_to;
+    const before = count();
+    ctx.settings.resend = { ...ctx.settings.resend, allow: 'corp.se', participants_only: true } as never;
+    await bridge.receive('l_1', mail({ from: 'eve@evil.io', to: [replyTo], text: 'not allowed' }));
+    await bridge.receive('l_2', mail({ from: 'cy@corp.se', to: [replyTo], text: 'not in the thread' }));
+    expect(count()).toBe(before);
+    expect(bridge.status.last_ignored).toContain('not part of that email thread');
+    for (let i = 0; i < 25; i++) await bridge.receive(`l_r${i}`, mail({ from: 'bo@corp.se', to: [replyTo], text: `reply ${i}` }));
+    expect(count()).toBe(before + 20);
+    expect(bridge.status.last_ignored).toContain('in an hour');
   });
 
   it('drops new emails, automatic replies and agents without email unless allowed', async () => {

@@ -37,7 +37,7 @@ const SUMMARY = {
       ? { state: 'off', line: '' }
       : (notConnected(st) ??
         (!st.owner
-          ? { state: 'warn', line: `Connected to ${st.team ?? 'Slack'}. Open Yaho in Slack once (Apps → Yaho) so it knows it is you.` }
+          ? { state: 'warn', line: `Connected to ${st.team ?? 'Slack'}. Send Yaho your link code (step 4) so it knows it is you.` }
           : { state: 'ok', line: `Connected to ${st.team ?? 'Slack'}. Your inbox is posted to your DMs.` })),
   telegram: (st?: TelegramStatus): Summary =>
     !st
@@ -388,6 +388,16 @@ function Steps({ steps }: { steps: Array<[string, ReactNode]> }) {
   );
 }
 
+/** A button's call to the core: the error, if any, is kept to show instead of lost. */
+function useAction(): [string | undefined, (path: string, then: () => void) => void] {
+  const [error, setError] = useState<string>();
+  const run = (path: string, then: () => void) => {
+    setError(undefined);
+    api(path, { method: 'POST' }).then(then, (e: Error) => setError(e.message));
+  };
+  return [error, run];
+}
+
 function StatusLine({ state, line, action }: { state: State; line: string; action?: ReactNode }) {
   return (
     <div className="flex items-center gap-2 text-sm">
@@ -472,6 +482,7 @@ function TelegramSettings({
     (e) => e.type === 'changed' && (e.entity === 'telegram' || e.entity === 'settings'),
   );
   const st = status.data;
+  const [actionError, post] = useAction();
   const set = (patch: Partial<NonNullable<Settings['telegram']>>) => onChange({ ...value, ...patch });
   const { line, state } = SUMMARY.telegram(st ?? undefined);
   const steps: Array<[string, ReactNode]> = [
@@ -511,12 +522,13 @@ function TelegramSettings({
         line={line}
         action={
           st?.configured && (
-            <Button size="sm" onClick={() => void api('/api/telegram/reconnect', { method: 'POST' }).then(() => status.reload())}>
+            <Button size="sm" onClick={() => post('/api/telegram/reconnect', status.reload)}>
               Reconnect
             </Button>
           )
         }
       />
+      {actionError && <p className="text-xs text-danger">{actionError}</p>}
       <Steps steps={steps} />
       <Field label="Bot Token" hint="From BotFather, like 123456789:AA…">
         <Input
@@ -533,7 +545,7 @@ function TelegramSettings({
           <button
             type="button"
             className="cursor-pointer text-accent hover:underline"
-            onClick={() => void api('/api/telegram/forget-owner', { method: 'POST' }).then(() => status.reload())}
+            onClick={() => post('/api/telegram/forget-owner', status.reload)}
           >
             Forget it
           </button>{' '}
@@ -604,6 +616,7 @@ interface SlackStatus {
   connected: boolean;
   team?: string;
   owner: boolean;
+  link_code?: string;
   error?: string;
   create_url: string;
   manifest: string;
@@ -611,7 +624,7 @@ interface SlackStatus {
 
 /**
  * Your Yaho inbox as Slack DMs. Setup: create the app from Yaho's manifest, install it, paste its two tokens, then
- * open Yaho in Slack once so it knows it is you. Tokens are saved with Save Settings, which reconnects.
+ * send the one-time link code from Slack so Yaho knows it is you. Tokens are saved with Save Settings, which reconnects.
  */
 function SlackSettings({
   value,
@@ -624,6 +637,7 @@ function SlackSettings({
 }) {
   const status = useApi<SlackStatus>('/api/slack', (e) => e.type === 'changed' && (e.entity === 'slack' || e.entity === 'settings'));
   const st = status.data;
+  const [actionError, post] = useAction();
   const set = (patch: Partial<NonNullable<Settings['slack']>>) => onChange({ ...value, ...patch });
   const { line, state: tone } = SUMMARY.slack(st ?? undefined);
   return (
@@ -632,11 +646,12 @@ function SlackSettings({
         <span className={cn('size-2 shrink-0 rounded-full', DOT[tone])} />
         <span className="min-w-0 flex-1">{line}</span>
         {st?.configured && (
-          <Button size="sm" onClick={() => void api('/api/slack/reconnect', { method: 'POST' }).then(() => status.reload())}>
+          <Button size="sm" onClick={() => post('/api/slack/reconnect', status.reload)}>
             Reconnect
           </Button>
         )}
       </div>
+      {actionError && <p className="text-xs text-danger">{actionError}</p>}
       <ol className="space-y-3 text-sm">
         {(
           [
@@ -675,11 +690,21 @@ function SlackSettings({
               </p>,
             ],
             [
-              'Save and say hello',
-              <p className="mt-0.5 text-muted">
-                Click <b className="text-ink">Save Settings</b>. Then in Slack open <b className="text-ink">Apps → Yaho</b> once: the first
-                person to open it becomes its owner, and Yaho DMs you that it is connected.
-              </p>,
+              'Save and link your Slack user',
+              <>
+                <p className="mt-0.5 text-muted">
+                  Click <b className="text-ink">Save Settings</b>. Once connected, send this command in Slack (or the code alone as a DM
+                  to Yaho): only the person who sends it can use Yaho, and Yaho DMs you that it is connected.
+                </p>
+                {st?.link_code && !st.owner && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <code className="rounded bg-hover px-2 py-1 text-xs select-all">/yaho link {st.link_code}</code>
+                    <Button size="sm" onClick={() => void navigator.clipboard.writeText(`/yaho link ${st.link_code}`)}>
+                      Copy Command
+                    </Button>
+                  </div>
+                )}
+              </>,
             ],
           ] as const
         ).map(([title, body], i) => (
@@ -719,11 +744,11 @@ function SlackSettings({
           <button
             type="button"
             className="cursor-pointer text-accent hover:underline"
-            onClick={() => void api('/api/slack/forget-owner', { method: 'POST' }).then(() => status.reload())}
+            onClick={() => post('/api/slack/forget-owner', status.reload)}
           >
             Forget it
           </button>{' '}
-          to let whoever opens the app next become the owner.
+          to link another Slack user with a new code.
         </p>
       )}
     </Card>
@@ -802,6 +827,7 @@ function WhatsAppSettings({
     (e) => e.type === 'changed' && (e.entity === 'whatsapp' || e.entity === 'settings'),
   );
   const st = status.data;
+  const [actionError, post] = useAction();
   const set = (patch: Partial<NonNullable<Settings['whatsapp']>>) => onChange({ ...value, ...patch });
   const webhook = st ? (server ? `${location.origin}${st.webhook_path}` : `https://<your tunnel>${st.webhook_path}`) : '';
   const { line, state: tone } = SUMMARY.whatsapp(st ?? undefined);
@@ -863,11 +889,12 @@ function WhatsAppSettings({
         <span className={cn('size-2 shrink-0 rounded-full', DOT[tone])} />
         <span className="min-w-0 flex-1">{line}</span>
         {st?.configured && (
-          <Button size="sm" onClick={() => void api('/api/whatsapp/reconnect', { method: 'POST' }).then(() => status.reload())}>
+          <Button size="sm" onClick={() => post('/api/whatsapp/reconnect', status.reload)}>
             Reconnect
           </Button>
         )}
       </div>
+      {actionError && <p className="text-xs text-danger">{actionError}</p>}
       <ol className="space-y-3 text-sm">
         {steps.map(([title, body], i) => (
           <li key={title} className="flex gap-3">
@@ -957,14 +984,15 @@ function EmailSettings({
   server,
   onChange,
 }: {
-  value: NonNullable<Settings['resend']>;
+  value: ResendValue;
   stored: Record<string, boolean>;
   server: boolean;
-  onChange: (v: NonNullable<Settings['resend']>) => void;
+  onChange: (v: ResendValue) => void;
 }) {
   const status = useApi<EmailStatus>('/api/resend', (e) => e.type === 'changed' && (e.entity === 'resend' || e.entity === 'settings'));
   const st = status.data;
-  const set = (patch: Partial<NonNullable<Settings['resend']>>) => onChange({ ...value, ...patch });
+  const [actionError, post] = useAction();
+  const set = (patch: Partial<ResendValue>) => onChange({ ...value, ...patch });
   const webhook = st ? (server ? `${location.origin}${st.webhook_path}` : `https://<your tunnel>${st.webhook_path}`) : '';
   const { line, state: tone } = SUMMARY.email(st ?? undefined);
   const steps: Array<[string, ReactNode]> = [
@@ -1020,11 +1048,12 @@ function EmailSettings({
         <span className={cn('size-2 shrink-0 rounded-full', DOT[tone])} />
         <span className="min-w-0 flex-1">{line}</span>
         {st?.configured && (
-          <Button size="sm" onClick={() => void api('/api/resend/reconnect', { method: 'POST' }).then(() => status.reload())}>
+          <Button size="sm" onClick={() => post('/api/resend/reconnect', status.reload)}>
             Reconnect
           </Button>
         )}
       </div>
+      {actionError && <p className="text-xs text-danger">{actionError}</p>}
       <ol className="space-y-3 text-sm">
         {steps.map(([title, body], i) => (
           <li key={title} className="flex gap-3">
@@ -1070,10 +1099,31 @@ function EmailSettings({
             <Switch checked={!!value.accept_new} onChange={(v) => set({ accept_new: v || undefined })} label="Accept New Emails" />
           </div>
         </Field>
+        <Field label="Allowed Senders" hint="Addresses or domains that may write to agents, comma-separated. Empty: anyone.">
+          <Input
+            value={listText(value.allow)}
+            placeholder="anna@example.com, partner.io"
+            onChange={(e) => set({ allow: e.target.value || undefined })}
+          />
+        </Field>
+        <Field label="Only Thread Participants" hint="On: a reply to a thread must come from an address already in it.">
+          <div className="flex h-9 items-center">
+            <Switch
+              checked={!!value.participants_only}
+              onChange={(v) => set({ participants_only: v || undefined })}
+              label="Only Thread Participants"
+            />
+          </div>
+        </Field>
       </div>
     </Card>
   );
 }
+
+/** Email and SMS settings this page edits beyond the shared Settings type. */
+type ResendValue = NonNullable<Settings['resend']> & { allow?: string | string[]; participants_only?: boolean };
+type TwilioValue = NonNullable<Settings['twilio']> & { allow?: string | string[]; public_url?: string };
+const listText = (v?: string | string[]) => (Array.isArray(v) ? v.join(', ') : (v ?? ''));
 
 interface SmsStatus {
   configured: boolean;
@@ -1096,15 +1146,16 @@ function SmsSettings({
   server,
   onChange,
 }: {
-  value: NonNullable<Settings['twilio']>;
+  value: TwilioValue;
   stored: Record<string, boolean>;
   server: boolean;
-  onChange: (v: NonNullable<Settings['twilio']>) => void;
+  onChange: (v: TwilioValue) => void;
 }) {
   const status = useApi<SmsStatus>('/api/twilio', (e) => e.type === 'changed' && (e.entity === 'twilio' || e.entity === 'settings'));
   const agents = useApi<Array<{ name: string; sms?: boolean }>>('/api/agents');
   const st = status.data;
-  const set = (patch: Partial<NonNullable<Settings['twilio']>>) => onChange({ ...value, ...patch });
+  const [actionError, post] = useAction();
+  const set = (patch: Partial<TwilioValue>) => onChange({ ...value, ...patch });
   const webhook = st ? (server ? `${location.origin}${st.webhook_path}` : `https://<your tunnel>${st.webhook_path}`) : '';
   const { line, state: tone } = SUMMARY.sms(st ?? undefined);
   const steps: Array<[string, ReactNode]> = [
@@ -1165,11 +1216,12 @@ function SmsSettings({
         <span className={cn('size-2 shrink-0 rounded-full', DOT[tone])} />
         <span className="min-w-0 flex-1">{line}</span>
         {st?.configured && (
-          <Button size="sm" onClick={() => void api('/api/twilio/reconnect', { method: 'POST' }).then(() => status.reload())}>
+          <Button size="sm" onClick={() => post('/api/twilio/reconnect', status.reload)}>
             Reconnect
           </Button>
         )}
       </div>
+      {actionError && <p className="text-xs text-danger">{actionError}</p>}
       <ol className="space-y-3 text-sm">
         {steps.map(([title, body], i) => (
           <li key={title} className="flex gap-3">
@@ -1217,6 +1269,20 @@ function SmsSettings({
                 </option>
               ))}
           </Select>
+        </Field>
+        <Field label="Allowed Numbers" hint="Phones that may text agents, comma-separated. Empty: any phone.">
+          <Input
+            value={listText(value.allow)}
+            placeholder="+46701234567, +46709876543"
+            onChange={(e) => set({ allow: e.target.value || undefined })}
+          />
+        </Field>
+        <Field label="Public URL" hint="Where Twilio reaches Yaho, checked against its signatures. Empty: the request's own host.">
+          <Input
+            value={value.public_url ?? ''}
+            placeholder="https://yaho.example.com"
+            onChange={(e) => set({ public_url: e.target.value.trim() || undefined })}
+          />
         </Field>
       </div>
     </Card>

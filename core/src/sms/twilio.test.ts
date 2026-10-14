@@ -6,7 +6,7 @@ import type { Ctx } from '../context.ts';
 import { serve } from '../serve.ts';
 import { contextPrompt } from '../jobs/prompt.ts';
 import { getAgent, getMessage, saveAgent, thread } from '../store.ts';
-import { phone, signature, SmsBridge, verifyWebhook, type OutgoingSms, type TwilioApi } from './twilio.ts';
+import { DAILY_LIMIT, phone, signature, SmsBridge, verifyWebhook, type OutgoingSms, type TwilioApi } from './twilio.ts';
 
 describe('parsing', () => {
   it('normalizes phone numbers', () => {
@@ -42,7 +42,7 @@ function fakeTwilio() {
     number: async (p) => (p === '+46700000000' ? { phone: p, sms_url: 'https://yaho.example.com/api/twilio/webhook' } : null),
     send: async (m) => {
       sent.push(m);
-      return `SM${sent.length}`;
+      return `SM${sent.length}_${Math.random().toString(36).slice(2)}`;
     },
   };
   return { api, sent };
@@ -146,5 +146,28 @@ describe('SmsBridge', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(bridge.status.last_webhook).toBeTruthy();
     expect(ctx.db.prepare("SELECT agent FROM sms WHERE sid = 'SMw'").get()).toEqual({ agent: 'sales' });
+
+    // With a public URL set, only a signature over that URL counts, whatever the headers say.
+    ctx.settings.twilio = { ...ctx.settings.twilio, public_url: 'https://sms.example.org/' } as never;
+    expect((await post(tunnel, { 'X-Forwarded-Host': 'yaho.example.com', 'X-Forwarded-Proto': 'https' })).status).toBe(401);
+    expect((await post(signature('tok', 'https://sms.example.org/api/twilio/webhook', params))).status).toBe(200);
+  });
+
+  it('limits who may text in, and how often', async () => {
+    const count = () => (ctx.db.prepare("SELECT COUNT(*) n FROM messages WHERE to_addr = 'agent:sales'").get() as { n: number }).n;
+    ctx.settings.twilio = { ...ctx.settings.twilio, new_agent: 'sales', allow: '+46 70 333 33 33, +46704444444' } as never;
+    const before = count();
+    await bridge.receive(text({ sid: 'a1', from: '+46705555555', body: 'not allowed' }));
+    expect(bridge.status.last_ignored).toContain('not on the allowed numbers');
+    for (let i = 0; i < 25; i++) await bridge.receive(text({ sid: `r${i}`, from: '+46703333333', body: `hi ${i}` }));
+    expect(count()).toBe(before + 20);
+    expect(bridge.status.last_ignored).toContain('in an hour');
+  });
+
+  it('keeps the daily limit when sends run at once', async () => {
+    saveAgent(ctx, { name: 'busy', sms: true, triggers: [] });
+    for (let i = 0; i < DAILY_LIMIT - 1; i++) await bridge.send('busy', null, { to: '+46706666666', body: `n${i}` });
+    const results = await Promise.allSettled([1, 2, 3].map(() => bridge.send('busy', null, { to: '+46706666666', body: 'last' })));
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
   });
 });
