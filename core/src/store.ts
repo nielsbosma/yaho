@@ -103,6 +103,8 @@ export interface Job {
   created: string;
   started: string | null;
   ended: string | null;
+  summary: string | null;
+  recap: string | null;
 }
 
 export const ACTIVE = ['queued', 'running'];

@@ -181,4 +181,10 @@ export const migrations: string[] = [
    CREATE INDEX webhook_deliveries_webhook ON webhook_deliveries(webhook, created);
    CREATE INDEX webhook_deliveries_job ON webhook_deliveries(job);
    CREATE UNIQUE INDEX webhook_deliveries_delivery ON webhook_deliveries(webhook, delivery) WHERE delivery IS NOT NULL;`,
+  // 12: past jobs, searchable (yaho history). summary is the agent's own from yaho finish, recap a short one written
+  // by a model when the job ended; job_search indexes both with what started the job and what the agent said.
+  `ALTER TABLE jobs ADD COLUMN summary TEXT;
+   ALTER TABLE jobs ADD COLUMN recap TEXT;
+   CREATE VIRTUAL TABLE job_search USING fts5(job UNINDEXED, agent UNINDEXED, trigger, messages, summary, recap, tokenize = 'porter unicode61');
+   CREATE TRIGGER jobs_search_delete AFTER DELETE ON jobs BEGIN DELETE FROM job_search WHERE job = old.id; END;`,
 ];
