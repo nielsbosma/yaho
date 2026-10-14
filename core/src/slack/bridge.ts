@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { chat } from '../assistant/index.ts';
 import type { Ctx } from '../context.ts';
 import { InboxMirror, eq, errorText, inboxCommand } from '../mirror/index.ts';
 import type { Message } from '../store.ts';
@@ -51,6 +52,7 @@ const NOT_LINKED = 'Yaho is not connected to anyone yet: send `/yaho link <code>
  * the one-time link code shown in Yaho.
  */
 export class SlackBridge extends InboxMirror<SlackStatus, SlackSettings> {
+  protected readonly chat = chat;
   protected readonly key = 'slack';
   protected readonly table = 'slack_posts';
   api: SlackApi | null = null;

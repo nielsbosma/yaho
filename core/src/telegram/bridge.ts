@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { chat } from '../assistant/index.ts';
 import type { Ctx } from '../context.ts';
 import { InboxMirror, eq, errorText, inboxCommand } from '../mirror/index.ts';
 import type { Message } from '../store.ts';
@@ -52,6 +53,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * Telegram message. Only the chat that opened the bot's one-time link can act.
  */
 export class TelegramBridge extends InboxMirror<TelegramStatus, TelegramSettings> {
+  protected readonly chat = chat;
   protected readonly key = 'telegram';
   protected readonly table = 'telegram_posts';
   api: TelegramApi | null = null;

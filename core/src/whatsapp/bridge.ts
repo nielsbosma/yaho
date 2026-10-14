@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { chat } from '../assistant/index.ts';
 import type { Ctx } from '../context.ts';
 import { InboxMirror, eq, errorText, inboxCommand } from '../mirror/index.ts';
 import type { Message } from '../store.ts';
@@ -61,6 +62,7 @@ type WhatsAppSettings = NonNullable<Ctx['settings']['whatsapp']>;
  * message: outside it Yaho holds messages back (with an optional template nudge) and posts them when the person writes.
  */
 export class WhatsAppBridge extends InboxMirror<WhatsAppStatus, WhatsAppSettings> {
+  protected readonly chat = chat;
   protected readonly key = 'whatsapp';
   protected readonly table = 'whatsapp_posts';
   api: WhatsAppApi | null = null;

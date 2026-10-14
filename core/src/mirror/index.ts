@@ -1,6 +1,6 @@
 import { saveSettings } from '../config.ts';
 import type { BusEvent, Ctx } from '../context.ts';
-import type { ChatMessage } from '../assistant/index.ts';
+import type { ChatMessage, chat } from '../assistant/index.ts';
 import type { Message } from '../store.ts';
 import * as s from '../store.ts';
 import { errorText } from './util.ts';
@@ -91,6 +91,8 @@ export abstract class InboxMirror<St extends MirrorStatus, Se extends MirrorSett
   abstract status: St;
   /** The settings section, the status entity and the log prefix. */
   protected abstract readonly key: 'slack' | 'telegram' | 'whatsapp';
+  /** Chat with Yaho; set by each bridge, as the assistant's modules reach the server, which imports this one. */
+  protected abstract readonly chat: typeof chat;
   /** The table recording what each inbox message was posted as (its message column is message). */
   protected abstract readonly table: 'slack_posts' | 'telegram_posts' | 'whatsapp_posts';
   private generation = 0;
@@ -273,9 +275,7 @@ export abstract class InboxMirror<St extends MirrorStatus, Se extends MirrorSett
 
   /** One turn of Chat with Yaho; the conversation is kept per chat, briefly. Returns the answer (Markdown). */
   protected async converse(chatKey: string, text: string): Promise<string> {
-    // Imported here: the assistant's modules reach the server, which imports the bridges.
-    const { chat } = await import('../assistant/index.ts');
-    const r = await chat(this.ctx, [...(this.chats.get(chatKey) ?? []), { role: 'user', content: text }]);
+    const r = await this.chat(this.ctx, [...(this.chats.get(chatKey) ?? []), { role: 'user', content: text }]);
     this.chats.delete(chatKey);
     this.chats.set(chatKey, trimHistory(r.messages));
     if (this.chats.size > HISTORY_CHATS) this.chats.delete(this.chats.keys().next().value!);
