@@ -437,6 +437,11 @@ export function nextCron(expr: string, after?: Date): string | null {
   return new Cron(expr, { paused: true }).nextRun(after)?.toISOString() ?? null;
 }
 
+/** The latest slot of a cron expression at or before `at`. */
+export function lastCron(expr: string, at = new Date()): string | null {
+  return new Cron(expr, { paused: true }).previousRuns(1, new Date(at.getTime() + 1))[0]?.toISOString() ?? null;
+}
+
 // ---------- agent folders ----------
 // Folders only group agents in the sidebar; they are not part of an agent's definition.
 

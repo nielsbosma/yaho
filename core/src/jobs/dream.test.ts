@@ -138,6 +138,21 @@ describe('dreaming', () => {
     expect((await api<{ dreaming?: boolean }>('/api/agents/optout')).dreaming).toBe(false);
   });
 
+  it('a missed dream gives way to a later missed cron slot', async () => {
+    await agent('late', { triggers: [{ cron: '*/1 * * * *' }] });
+    steps('late', [{ cmd: 'yaho finish' }]);
+    await api('/api/agents/late/run', { method: 'POST' });
+    await settle('late', 1);
+    longAgo('late');
+    ctx.db.prepare("UPDATE triggers SET next_fire = '2000-01-01T00:00:00.000Z' WHERE agent = 'late'").run();
+    ctx.scheduler!.tick();
+    await settle('late', 2);
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await jobs('late')).map((j) => j.trigger_type).sort()).toEqual(['cron', 'manual']);
+    const last = ctx.db.prepare("SELECT last_dream FROM agents WHERE name = 'late'").get() as { last_dream: string };
+    expect(new Date(last.last_dream).getTime()).toBeGreaterThan(Date.now() - 5000);
+  });
+
   it("holds the agent's other jobs until its dream ends", async () => {
     await agent('busy', { max_parallel: 3 });
     steps('busy', [{ cmd: 'yaho finish' }]);

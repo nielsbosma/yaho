@@ -82,6 +82,24 @@ describe('scheduler', () => {
     expect(await jobs('cronny')).toHaveLength(1);
   });
 
+  it('catches up a long absence with only the latest missed slot; slots reached on time all fire', async () => {
+    await agent('absent', { triggers: [{ cron: '0 3 * * *' }, { cron: '*/1 * * * *' }] });
+    script('absent', [{ cmd: 'yaho finish' }]);
+    ctx.db.prepare("UPDATE triggers SET next_fire = '2000-01-01T00:00:00.000Z' WHERE agent = 'absent'").run();
+    ctx.scheduler!.tick();
+    const js = await settle('absent', 1);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await jobs('absent')).toHaveLength(1);
+    expect(js[0]).toMatchObject({ trigger_type: 'cron', trigger_detail: '*/1 * * * *' });
+
+    await agent('punctual', { triggers: [{ cron: '*/1 * * * *' }, { cron: '*/2 * * * *' }] });
+    script('punctual', [{ cmd: 'yaho finish' }]);
+    const at = new Date(Math.floor(Date.now() / 120_000) * 120_000);
+    ctx.db.prepare("UPDATE triggers SET next_fire = ? WHERE agent = 'punctual'").run(at.toISOString());
+    ctx.scheduler!.tick(at);
+    expect(await settle('punctual', 2)).toHaveLength(2);
+  });
+
   it('starts a job when a message arrives for an inbox-triggered agent', async () => {
     await agent('listener', { triggers: [{ inbox: true }] });
     script('listener', [{ cmd: 'yaho inbox list' }, { cmd: 'yaho finish' }]);

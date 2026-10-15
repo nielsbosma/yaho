@@ -1,14 +1,19 @@
 import type { BusEvent, Ctx } from '../context.ts';
 import type { Message } from '../store.ts';
-import { agentExists, getAgent, nextCron, sendMessage } from '../store.ts';
+import { agentExists, getAgent, lastCron, nextCron, sendMessage } from '../store.ts';
 import { answerApproval } from '../guard/commands.ts';
 import { dreamSettings, hasNewWork } from '../jobs/dream.ts';
 
 type Row = Record<string, unknown>;
+type Run = { slot: string; start: () => void };
+
+/** A slot this far behind the tick was missed (Yaho was off or asleep), not merely reached. */
+const MISSED_MS = 5 * 60_000;
 
 /**
  * Turns triggers into jobs. Cron and delay triggers are polled; inbox triggers react to new messages.
- * A cron slot missed while Yaho was off fires once at start, then the schedule continues from now.
+ * After Yaho was off, an agent catches up with one run: the latest of its missed cron slots and dreams. The rest are
+ * skipped and every schedule continues from now.
  */
 export class Scheduler {
   ctx: Ctx;
@@ -34,6 +39,8 @@ export class Scheduler {
   tick(at = new Date()): void {
     const { db } = this.ctx;
     const iso = at.toISOString();
+    const runs = new Map<string, Run[]>();
+    const offer = (agent: string, run: Run) => runs.set(agent, [...(runs.get(agent) ?? []), run]);
     const due = db
       .prepare("SELECT * FROM triggers WHERE type IN ('cron','delay') AND next_fire IS NOT NULL AND next_fire <= ? ORDER BY next_fire")
       .all(iso) as Row[];
@@ -42,22 +49,32 @@ export class Scheduler {
       if (!agentExists(this.ctx, agent)) continue;
       const enabled = getAgent(this.ctx, agent).enabled;
       if (t.type === 'cron') {
-        db.prepare('UPDATE triggers SET next_fire = ? WHERE id = ?').run(nextCron(t.cron as string, at), t.id as string);
-        if (enabled && !this.waitingOnHuman(agent)) this.ctx.runner!.enqueue(agent, 'cron', { detail: t.cron as string });
+        const cron = t.cron as string;
+        db.prepare('UPDATE triggers SET next_fire = ? WHERE id = ?').run(nextCron(cron, at), t.id as string);
+        if (enabled && !this.waitingOnHuman(agent))
+          offer(agent, {
+            slot: latest(t.next_fire as string, lastCron(cron, at)),
+            start: () => this.ctx.runner!.enqueue(agent, 'cron', { detail: cron }),
+          });
       } else if (enabled) {
         // A delay resumes the session the agent went to sleep in. While the agent is disabled it waits.
         db.prepare('DELETE FROM triggers WHERE id = ?').run(t.id as string);
         this.ctx.runner!.enqueue(agent, 'delay', { sessionId: t.session_id as string, detail: `woke from yaho sleep` });
       }
     }
-    this.dreams(at);
+    this.dreams(at, offer);
+    const missed = new Date(at.getTime() - MISSED_MS).toISOString();
+    for (const list of runs.values()) {
+      if (!list.some((r) => r.slot < missed)) list.forEach((r) => r.start());
+      else list.reduce((a, b) => (b.slot > a.slot ? b : a)).start();
+    }
   }
 
   /**
    * Each agent with dreaming on dreams once per slot of the dreaming schedule (03:00 by default), counted from its last
    * dream, so a night missed while Yaho was off dreams once at start. Nothing new since the last dream: skipped.
    */
-  dreams(at = new Date()): void {
+  dreams(at = new Date(), offer: (agent: string, run: Run) => void = (_, r) => r.start()): void {
     const cfg = dreamSettings(this.ctx);
     if (!cfg.enabled) return;
     const { db } = this.ctx;
@@ -75,7 +92,10 @@ export class Scheduler {
       if (!hasNewWork(this.ctx, name, (a.last_dream ?? a.created) as string)) continue;
       if (db.prepare("SELECT 1 FROM jobs WHERE agent = ? AND trigger_type = 'dream' AND status IN ('queued','running')").get(name))
         continue;
-      this.ctx.runner!.enqueue(name, 'dream', { detail: 'nightly' });
+      offer(name, {
+        slot: latest(due, lastCron(cfg.cron, at)),
+        start: () => this.ctx.runner!.enqueue(name, 'dream', { detail: 'nightly' }),
+      });
     }
   }
 
@@ -162,4 +182,8 @@ export class Scheduler {
       ...dream,
     ].sort((x, y) => x.at.localeCompare(y.at));
   }
+}
+
+function latest(a: string, b: string | null): string {
+  return b && b > a ? b : a;
 }
