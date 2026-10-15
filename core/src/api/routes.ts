@@ -24,6 +24,7 @@ import { schedule } from '../schedule.ts';
 import { slackCreateUrl, slackManifest } from '../slack/manifest.ts';
 import { WEBHOOK_PATH as TWILIO_WEBHOOK } from '../sms/twilio.ts';
 import { stats } from '../stats.ts';
+import { restoreAgentDb } from '../jobs/dream.ts';
 import { listWebhooks, rotateUrl, setSecret } from '../webhooks/hooks.ts';
 import { Router, UPLOAD_LIMIT, type Req } from './http.ts';
 import { inFolder, makeTicket, sendFile } from './server.ts';
@@ -147,6 +148,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     const next = await definition<Settings>(req);
     try {
       if (next.command_rules?.rules !== undefined) next.command_rules.rules = validateRules(next.command_rules.rules);
+      if (next.dreaming?.cron) s.nextCron(next.dreaming.cron);
     } catch (e) {
       throw new HttpError(400, (e as Error).message);
     }
@@ -428,6 +430,42 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
       .get(Number(req.params.id), req.params.name!) as { briefing: string } | undefined;
     if (!row) throw new HttpError(404, 'briefing version not found');
     return s.setBriefing(ctx, req.params.name!, row.briefing, 'human (revert)');
+  });
+  // Versions: the git history of a workspace and definition, one version's diff, undo it, restore to it.
+  const versions = () => {
+    if (!ctx.versions?.on)
+      throw new HttpError(409, ctx.versions?.git === false ? 'git is not installed: versions are off' : 'versions are off in Settings');
+    return ctx.versions;
+  };
+  r.on('GET', '/api/agents/:name/versions', async (req) => {
+    s.getAgent(ctx, req.params.name!);
+    return versions().log(req.params.name!, { limit: Number(req.query.get('limit')) || undefined });
+  });
+  r.on('GET', '/api/agents/:name/versions/:sha', async (req) => {
+    s.getAgent(ctx, req.params.name!);
+    return versions().show(req.params.name!, req.params.sha!);
+  });
+  r.on('POST', '/api/agents/:name/versions/:sha/undo', async (req) => {
+    s.getAgent(ctx, req.params.name!);
+    return { version: await versions().undo(req.params.name!, req.params.sha!) };
+  });
+  r.on('POST', '/api/agents/:name/versions/:sha/restore', async (req) => {
+    s.getAgent(ctx, req.params.name!);
+    return { version: await versions().restore(req.params.name!, req.params.sha!) };
+  });
+  // Undo a job: the files and definition it changed (its own versions, newest first), and for a dream its agent.db.
+  r.on('POST', '/api/jobs/:id/undo', async (req) => {
+    const job = s.getJob(ctx, req.params.id!);
+    if (job.status === 'running' || job.status === 'queued') throw new HttpError(409, 'the job has not ended');
+    if (ctx.db.prepare("SELECT 1 FROM jobs WHERE agent = ? AND status = 'running'").get(job.agent))
+      throw new HttpError(409, `${job.agent} has a job running: stop it or wait for it to end first`);
+    const own = ctx.versions?.on ? await versions().log(job.agent, { job: job.id }) : [];
+    let version: string | null = null;
+    for (const v of own) version = (await versions().undo(job.agent, v.sha)) ?? version;
+    const db = job.trigger_type === 'dream' && restoreAgentDb(ctx, job.agent, job.id);
+    if (!own.length && !db) throw new HttpError(409, 'this job changed nothing that can be undone');
+    s.addJobEvent(ctx, job.id, 'system', { text: `Undone by the human${db ? ', agent.db included' : ''}.` });
+    return { version, database: db };
   });
   // A workspace's files, under the agents' folder (the core's), so a workspace swapped for a symlink is refused too.
   const workspaceFile = (req: Req) => inFolder(ctx.paths.agents, named(req), req.query.get('path') ?? '');

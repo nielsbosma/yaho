@@ -15,8 +15,9 @@ import { AgentOverview } from './AgentOverview.tsx';
 import { AgentEditor } from './AgentEditor.tsx';
 import { BriefingHistory } from './BriefingHistory.tsx';
 import { AgentArtifacts } from './AgentArtifacts.tsx';
+import { AgentVersions } from './AgentVersions.tsx';
 
-export function AgentDetail({ name, tab }: { name: string; tab: string }) {
+export function AgentDetail({ name, tab, sub }: { name: string; tab: string; sub?: string }) {
   const agent = useApi<Agent>(`/api/agents/${encodeURIComponent(name)}`, agentChanged(name));
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -78,6 +79,7 @@ export function AgentDetail({ name, tab }: { name: string; tab: string }) {
             { id: 'inbox', label: 'Inbox' },
             { id: 'briefings', label: 'Briefing History' },
             { id: 'workspace', label: 'Workspace' },
+            { id: 'versions', label: 'Versions' },
             { id: 'artifacts', label: 'Artifacts' },
           ]}
         />
@@ -89,6 +91,7 @@ export function AgentDetail({ name, tab }: { name: string; tab: string }) {
         {tab === 'inbox' && <AgentInbox agent={a.name} />}
         {tab === 'briefings' && <BriefingHistory agent={a} />}
         {tab === 'workspace' && <WorkspaceBrowser agent={a.name} />}
+        {tab === 'versions' && <AgentVersions agent={a} open={sub} />}
         {tab === 'artifacts' && <AgentArtifacts agent={a.name} />}
       </div>
       <RunDialog agent={a} open={running} onClose={() => setRunning(false)} />

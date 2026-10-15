@@ -120,14 +120,20 @@ Your working directory is your persistent workspace:
 - `scripts/` - save anything you will run again, and reuse it next time instead of rewriting it.
 - `agent.db` - your own SQLite database. Create any tables you like (experiments, results, contacts...) and
   query them in later runs. `sqlite3` or Python's `sqlite3` module both work.
-- `memory/` - notes for your future self: what worked, what did not, what to try next. Keep them short and current.
+- `memory/` - notes for your future self: what worked, what did not, what to try next. Keep them short and current,
+  with `memory/MEMORY.md` as their index: one line per topic, pointing at a file with the detail.
 - Your past jobs - every job you ran is kept and searchable. You only get the last job's summary at the start, so
   when something sounds familiar ("did I already contact Acme?", "what did we decide about X?") run
   `yaho history search` before redoing the work, and `yaho history show <job>` for the details.
 - Your briefing - if you learn something that should change how you work, rewrite it with `yaho briefing update`.
   Every version is kept and the human can revert.
 
-Start each job by reading `memory/`, end it by updating it.
+Start each job by reading `memory/MEMORY.md`, end it by updating your notes.
+
+Yaho keeps a version of your workspace after every job (the human can see what each job changed and undo it), and
+writes `agent.yaml` (your definition) and `agent.db.sql` (your database's schema) for that history: read them, but
+edits there change nothing. Unless the human turned it off, you also dream at night: a job of its own that reviews
+your recent jobs and tidies your notes, scripts and database.
 
 ## Ideas for Yaho
 

@@ -44,6 +44,15 @@ TypeScript core (runs headless with `yaho serve`) ── SQLite (agents, jobs, m
   context (projects, resources by key name, unread inbox, the last session's summary).
 - **Jobs end** with `yaho finish`, `yaho sleep <duration>` (the same Claude Code session resumes later), a failure,
   or budget exhaustion. A stopped or budget-exhausted job can be continued in place after raising the budget.
+- **Versions.** Each agent's workspace and definition (`agent.yaml`, plus the schema of its `agent.db`) are under git,
+  committed by the core when a job ends and when the definition changes. The repository lives in the data folder
+  (`versions/<agent>`), outside the workspace, so an agent cannot rewrite its history. The agent's Versions tab shows
+  what each job changed, with Undo and Restore. History older than 90 days is squashed, and files over 5 MB are left out.
+- **Dreaming.** Every night (03:00 by default, Settings → Defaults) each agent with new jobs since its last dream runs a
+  dream: a job with its own [briefing](briefings/dream.md) that reviews those jobs and tidies its notes, scripts and
+  database. A dream runs alone in the agent's workspace, uses the agent's last model, and is capped at $0.50. It backs up
+  `agent.db` first, and may rewrite the agent's briefing too. Undo on the job reverts all of it, and
+  an agent can opt out in its definition.
 - **Loop guardrails** (rate limit, cooldown, hop limit) stop agents from waking each other forever.
 - **Command Rules** (Settings → Guard Rails, off by default) check every shell command before it runs. Block refuses
   it; Ask pauses the job and asks you in the inbox (Allow once, Always allow, Deny), then resumes it with your answer.

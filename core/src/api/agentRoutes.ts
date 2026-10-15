@@ -37,6 +37,10 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
   const assigned = (agent: string, project: string) => {
     if (!s.getAgent(ctx, agent).projects.includes(project)) throw new HttpError(403, `project ${project} is not assigned to you`);
   };
+  /** A dream works on its own workspace and briefing only: no outreach. */
+  const notDreaming = (job: string, what: string) => {
+    if (s.getJob(ctx, job).trigger_type === 'dream') throw new HttpError(403, `a dream cannot ${what}`);
+  };
   const allowed = (agent: string, resource: string) => {
     if (!s.getAgent(ctx, agent).resources.includes(resource)) throw new HttpError(403, `resource ${resource} is not granted to you`);
   };
@@ -61,6 +65,7 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     if (String(m.to).startsWith('email:')) throw new HttpError(400, 'send email with yaho email send (or yaho email reply)');
     if (String(m.to).startsWith('sms:')) throw new HttpError(400, 'send texts with yaho sms send (or yaho sms reply)');
     const job = s.getJob(ctx, w.job);
+    if (job.trigger_type === 'dream' && m.to !== 'human') throw new HttpError(403, 'a dream can only message the human');
     if (m.artifacts !== undefined) {
       if (!Array.isArray(m.artifacts)) throw new HttpError(400, 'artifacts must be a list of artifact ids');
       for (const id of m.artifacts) {
@@ -75,12 +80,14 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
 
   // ---- email through Resend ----
   on('POST', '/email', async (req, w) => {
+    notDreaming(w.job, 'send email');
     if (!ctx.email) throw new HttpError(400, 'email is not set up in Yaho');
     return ctx.email.send(w.agent, w.job, await req.body());
   });
 
   // ---- SMS through Twilio ----
   on('POST', '/sms', async (req, w) => {
+    notDreaming(w.job, 'send texts');
     if (!ctx.sms) throw new HttpError(400, 'SMS is not set up in Yaho');
     return ctx.sms.send(w.agent, w.job, await req.body());
   });
@@ -96,6 +103,7 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
   on('GET', '/history/:job', (req, w) => showHistory(ctx, w.agent, req.params.job!));
   // ---- the browser (yaho browser) ----
   on('POST', '/browser', async (req, w) => {
+    notDreaming(w.job, 'browse');
     if (!ctx.browser) throw new HttpError(400, 'the browser is not available in Yaho');
     return ctx.browser.run(w.agent, w.job, await req.body());
   });
@@ -193,7 +201,7 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
       }
     }
     if (!briefing.trim()) throw new HttpError(400, 'refusing to save an empty briefing');
-    s.setBriefing(ctx, w.agent, briefing, `agent (${w.job})`);
+    s.setBriefing(ctx, w.agent, briefing, `agent (${w.job})`, w.job);
     return { saved: true, versions: s.briefingHistory(ctx, w.agent).length };
   });
 

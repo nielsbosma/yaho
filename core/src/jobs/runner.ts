@@ -18,6 +18,7 @@ import { contextPrompt, systemPrompt } from './prompt.ts';
 import type { ModelPrice } from './litellm.ts';
 import { indexJob, writeRecap } from '../history.ts';
 import { harnessFits, jobAccess, priceFor } from '../providerApi.ts';
+import { backupAgentDb, dreamModel, dreamPrompt, dreamSettings, dreamSystemPrompt, tableCounts } from './dream.ts';
 
 type Row = Record<string, unknown>;
 
@@ -40,6 +41,9 @@ interface Running {
   usage: Map<string, number>;
   price?: ModelPrice | null;
   poll?: NodeJS.Timeout;
+  /** A nightly dream: it has the agent's workspace to itself. */
+  dream?: boolean;
+  dreamTimer?: NodeJS.Timeout;
 }
 
 /**
@@ -122,6 +126,11 @@ export class JobRunner {
   }
 
   private requeueInterrupted(id: string, why: string): void {
+    // A dream is not resumed: the next night's starts fresh.
+    if (getJob(this.ctx, id).trigger_type === 'dream') {
+      updateJob(this.ctx, id, { status: 'stopped', reason: `interrupted: ${why}`, ended: now(), pid: null });
+      return;
+    }
     updateJob(this.ctx, id, { status: 'queued', trigger_type: 'continue', trigger_detail: why, reason: null, ended: null, pid: null });
     addJobEvent(this.ctx, id, 'status', { text: `Interrupted: ${why}. It resumes when the core is back.` });
   }
@@ -151,6 +160,9 @@ export class JobRunner {
     try {
       const queued = this.ctx.db.prepare("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created").all() as unknown as Job[];
       this.refreshSpend(queued.length ? 0 : 2000);
+      // Agents with a dream waiting: their later jobs wait behind it, so it is not starved.
+      const dreamWaits = new Set<string>();
+      let dreams = [...this.running.values()].filter((r) => r.dream).length;
       for (const job of queued) {
         if (this.spent() >= this.ctx.settings.global_spend_cap_usd) {
           if (job.reason !== 'global spend cap reached') updateJob(this.ctx, job.id, { reason: 'global spend cap reached' });
@@ -167,6 +179,13 @@ export class JobRunner {
           continue;
         }
         const mine = [...this.running.values()].filter((r) => r.agent === agent.name);
+        const dream = job.trigger_type === 'dream';
+        // A dream runs alone in its agent's workspace, and one at a time across agents.
+        if (dream && (mine.length || dreams >= 1)) {
+          dreamWaits.add(agent.name);
+          continue;
+        }
+        if (!dream && (dreamWaits.has(agent.name) || mine.some((r) => r.dream))) continue;
         if (mine.length >= agent.max_parallel) continue;
         // One harness per session: a job for a session that is still running waits for it (an answer to an approval
         // that arrives before the paused job has ended, a follow-up).
@@ -189,7 +208,9 @@ export class JobRunner {
           baseCost: job.cost_usd,
           cost: job.cost_usd,
           usage: new Map(),
+          dream,
         };
+        if (dream) dreams++;
         this.running.set(job.id, r);
         updateJob(this.ctx, job.id, { status: 'running', started: job.started ?? now(), reason: null });
         this.start(agent, job, r).catch((e) => {
@@ -206,7 +227,7 @@ export class JobRunner {
 
   private session(agent: Agent, job: Job): { id: string; harnessId: string | null; summary: string | null; resumed: boolean } {
     const db = this.ctx.db;
-    if (job.session_id) {
+    if (job.session_id && job.trigger_type !== 'dream') {
       const s = db.prepare('SELECT * FROM sessions WHERE id = ?').get(job.session_id) as Row | undefined;
       if (s)
         return {
@@ -216,8 +237,12 @@ export class JobRunner {
           resumed: !!s.harness_session_id,
         };
     }
+    // Where the agent left off: its last session with a summary, not a dream's.
     const last = db
-      .prepare('SELECT summary FROM sessions WHERE agent = ? AND summary IS NOT NULL ORDER BY updated DESC LIMIT 1')
+      .prepare(
+        `SELECT summary FROM sessions s WHERE agent = ? AND summary IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.session_id = s.id AND j.trigger_type = 'dream') ORDER BY updated DESC LIMIT 1`,
+      )
       .get(agent.name) as Row | undefined;
     const id = newId('ses');
     db.prepare('INSERT INTO sessions (id, agent, created, updated) VALUES (?,?,?,?)').run(id, agent.name, now(), now());
@@ -235,14 +260,28 @@ export class JobRunner {
     const unsandboxable = sandbox ? sandboxProblem(agent.harness) : null;
     if (unsandboxable)
       throw new Error(`Sandbox Mode is on, but ${unsandboxable}. Turn it off in Settings → Guard Rails to run without it.`);
-    const model = agent.models[0] ?? settings.defaults.models[0];
+    const dream = job.trigger_type === 'dream';
+    const model = dream ? dreamModel(ctx, agent) : (agent.models[0] ?? settings.defaults.models[0]);
     if (!model) throw new Error('the agent has no allowed models');
     const ses = this.session(agent, job);
     r.session = ses.id;
     const cwd = ensureAgentWorkspace(ctx, agent.name);
-
-    const remaining = this.available(agent, r);
+    const remaining = dream ? Math.min(this.available(agent, r), dreamSettings(ctx).max_usd) : this.available(agent, r);
     r.cap = remaining;
+    await this.versionStart(agent.name, job.id, r);
+    let tables: ReturnType<typeof tableCounts> = null;
+    let since: string | null = null;
+    if (dream) {
+      // Since the last dream started: what it saw is already tidied.
+      since = (
+        ctx.db
+          .prepare("SELECT MAX(started) t FROM jobs WHERE agent = ? AND trigger_type = 'dream' AND id != ?")
+          .get(agent.name, job.id) as Row
+      ).t as string | null;
+      tables = tableCounts(join(cwd, 'agent.db'));
+      if (backupAgentDb(ctx, agent.name, job.id)) addJobEvent(ctx, job.id, 'system', { text: 'Backed up agent.db before dreaming.' });
+    }
+
     // The provider serving the model, and how Claude Code reaches it (a capped key per job where the provider can).
     const { provider, model: providerModel } = resolveModel(settings, model);
 
@@ -255,7 +294,7 @@ export class JobRunner {
         `${agent.harness} cannot use ${provider.id}: Codex needs a provider with OpenAI's Responses API (OpenAI, LiteLLM, Opper, OpenRouter)`,
       );
     const access = await jobAccess(settings, provider, {
-      models: agent.models.map((m) => resolveModel(settings, m).model),
+      models: [...new Set([...agent.models, model])].map((m) => resolveModel(settings, m).model),
       remaining,
       agent: agent.name,
       job: job.id,
@@ -299,12 +338,13 @@ export class JobRunner {
     });
 
     const fresh = getJob(ctx, job.id);
-    let prompt = contextPrompt(ctx, agent, fresh, ses.summary, ses.resumed);
+    let prompt = dream ? dreamPrompt(ctx, agent, fresh, since, tables) : contextPrompt(ctx, agent, fresh, ses.summary, ses.resumed);
+    const system = dream ? dreamSystemPrompt(agent) : systemPrompt(agent);
     if (ses.resumed && job.trigger_type === 'continue') prompt = `Your budget was raised. Continue exactly where you stopped.\n\n${prompt}`;
     updateJob(ctx, job.id, { model });
     // Without a capped key Yaho counts the cost itself, from the tokens the harness reports.
     if (!r.capped) r.price = await priceFor(settings, provider, providerModel);
-    addJobEvent(ctx, job.id, 'prompt', { system: systemPrompt(agent), user: prompt });
+    addJobEvent(ctx, job.id, 'prompt', { system, user: prompt });
     addJobEvent(ctx, job.id, 'status', { text: `${ses.resumed ? 'Resuming' : 'Starting'} ${agent.harness} with ${model}` });
 
     if (!this.running.has(r.job)) return this.release(r);
@@ -320,7 +360,7 @@ export class JobRunner {
         cwd,
         env,
         model: providerModel,
-        systemPrompt: systemPrompt(agent),
+        systemPrompt: system,
         prompt,
         resumeSessionId: ses.harnessId,
         transcriptPath: transcript,
@@ -340,6 +380,10 @@ export class JobRunner {
       writeFileSync(this.pidFile(r.job), id);
     });
     if (r.capped) r.poll = setInterval(() => void this.pollCost(r), 10_000);
+    if (dream) {
+      const limit = dreamSettings(ctx).max_minutes;
+      r.dreamTimer = setTimeout(() => this.stop(r.job, 'stopped', `dreams stop after ${limit} minutes`), limit * 60_000);
+    }
     const code = await r.proc.done;
     if (r.killTimer) clearTimeout(r.killTimer);
     if (!this.running.has(r.job)) return;
@@ -464,6 +508,7 @@ export class JobRunner {
     r.ending ??= { status: 'stopped', reason: 'agent deleted' };
     if (r.poll) clearInterval(r.poll);
     if (r.killTimer) clearTimeout(r.killTimer);
+    if (r.dreamTimer) clearTimeout(r.dreamTimer);
     this.release(r);
     rmSync(this.pidFile(jobId), { force: true });
     void this.ctx.browser?.close(jobId);
@@ -483,6 +528,7 @@ export class JobRunner {
     this.running.delete(r.job);
     if (r.poll) clearInterval(r.poll);
     if (r.killTimer) clearTimeout(r.killTimer);
+    if (r.dreamTimer) clearTimeout(r.dreamTimer);
     this.release(r);
     rmSync(this.pidFile(r.job), { force: true });
     ctx.db.prepare('DELETE FROM job_tokens WHERE job = ?').run(r.job);
@@ -503,15 +549,56 @@ export class JobRunner {
     addJobEvent(ctx, r.job, 'status', { text: `Job ${end.status}${end.reason ? `: ${end.reason}` : ''}` });
     indexJob(ctx, r.job);
     void writeRecap(ctx, r.job).catch((e) => addJobEvent(ctx, r.job, 'system', { text: `no recap: ${(e as Error).message}` }));
+    void this.versionEnd(r.job).catch((e) => addJobEvent(ctx, r.job, 'system', { text: `not versioned: ${(e as Error).message}` }));
+    const tables = r.dream ? tableCounts(join(ctx.paths.agent(job.agent), 'agent.db')) : null;
+    if (tables) addJobEvent(ctx, r.job, 'dream', { tables });
     if (end.status === 'failed') {
       ctx.bus.emitEvent({ type: 'notify', title: `${job.agent}: job failed`, body: end.reason ?? '' });
     }
     this.pump();
   }
 
+  /**
+   * Before a job: commit what changed in the workspace since the last commit (the human's edits), unless another job of
+   * the agent is running, whose own commit will take it. The job's base is the commit it starts from.
+   */
+  private async versionStart(agent: string, job: string, r: Running): Promise<void> {
+    const v = this.ctx.versions;
+    if (!v?.on) return;
+    try {
+      const busy = [...this.running.values()].some((x) => x !== r && x.agent === agent);
+      if (!busy) await v.snapshot(agent, 'Changes between jobs', { author: 'Yaho' });
+      const base = await v.current(agent);
+      if (base) updateJob(this.ctx, job, { base_sha: base });
+    } catch (e) {
+      addJobEvent(this.ctx, job, 'system', { text: `not versioned: ${(e as Error).message}` });
+    }
+  }
+
+  /** After a job: commit what it changed, and say when another job changed the same files meanwhile. */
+  private async versionEnd(id: string): Promise<void> {
+    const v = this.ctx.versions;
+    if (!v?.on) return;
+    const job = getJob(this.ctx, id);
+    const others = [...this.running.values()].filter((x) => x.agent === job.agent).map((x) => x.job);
+    const first = job.summary?.trim().split('\n')[0];
+    const dream = job.trigger_type === 'dream';
+    const sha = await v.snapshot(job.agent, `${dream ? 'Dream' : 'Job'} ${job.id} ${job.status}${first ? `: ${first}` : ''}`, {
+      job: job.id,
+      author: dream ? `${job.agent} (dream)` : job.agent,
+      body: others.length ? `Other jobs still running: ${others.join(', ')}` : undefined,
+    });
+    if (!sha) return;
+    updateJob(this.ctx, id, { commit_sha: sha });
+    const both = job.base_sha ? await v.overlap(job.agent, job.base_sha, sha) : [];
+    if (both.length)
+      addJobEvent(this.ctx, id, 'system', { text: `Another job also changed these files while this one ran: ${both.join(', ')}` });
+  }
+
   /** Re-run a stopped/failed/budget-exhausted job in place, resuming its session. */
   continueJob(jobId: string): void {
     const job = getJob(this.ctx, jobId);
+    if (job.trigger_type === 'dream') throw new HttpError(409, 'a dream is not continued: the next one starts fresh');
     if (!ENDED.includes(job.status) || job.status === 'finished' || job.status === 'sleeping')
       throw new HttpError(409, `a ${job.status} job cannot be continued`);
     const agent = getAgent(this.ctx, job.agent);

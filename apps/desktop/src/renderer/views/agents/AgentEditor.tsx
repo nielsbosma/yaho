@@ -205,6 +205,14 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
                     <Switch checked={inbox} onChange={(v) => setTriggers(crons, v)} label="Inbox Trigger" />
                   </div>
                 </Field>
+                <Field
+                  label="Dreaming"
+                  hint="Each night it reviews its recent jobs and tidies its notes, scripts and database. You can see and undo each dream under Versions."
+                >
+                  <div className="flex h-9 items-center">
+                    <Switch checked={draft.dreaming !== false} onChange={(v) => set('dreaming', v)} label="Dreaming" />
+                  </div>
+                </Field>
                 <Field label="Wait for Me" hint="Skip scheduled runs while your inbox has unread messages from this agent.">
                   <div className="flex h-9 items-center">
                     <Switch

@@ -47,6 +47,8 @@ export interface Agent {
   sms?: boolean;
   /** A browser of its own in each job (yaho browser). */
   browser?: boolean;
+  /** The nightly dream that tidies its memory, scripts and database. On unless false. */
+  dreaming?: boolean;
 }
 
 export interface Project {
@@ -112,6 +114,9 @@ export interface Job {
   ended: string | null;
   summary: string | null;
   recap: string | null;
+  /** The workspace's version when the job started, and the one it ended with (null when nothing changed). */
+  base_sha: string | null;
+  commit_sha: string | null;
 }
 
 export const ACTIVE = ['queued', 'running'];
@@ -174,6 +179,7 @@ function agentFromRow(ctx: Ctx, r: Row): Agent {
     ...(r.email ? { email: true } : {}),
     ...(r.sms ? { sms: true } : {}),
     ...(r.browser ? { browser: true } : {}),
+    ...(r.dreaming ? {} : { dreaming: false }),
   };
 }
 
@@ -214,7 +220,11 @@ export function agentExists(ctx: Ctx, name: string): boolean {
 }
 
 /** Create or replace an agent from its YAML-shaped definition. `rename` moves an existing agent first. */
-export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, opts: { rename?: string; author?: string } = {}): Agent {
+export function saveAgent(
+  ctx: Ctx,
+  input: Partial<Agent> & { name: string },
+  opts: { rename?: string; author?: string; job?: string } = {},
+): Agent {
   assertName('agent', input.name);
   const d = ctx.settings.defaults;
   const { db } = ctx;
@@ -243,6 +253,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
     email: input.email ?? !!prev?.email,
     sms: input.sms ?? !!prev?.sms,
     browser: input.browser ?? !!prev?.browser,
+    dreaming: input.dreaming ?? (prev ? !!prev.dreaming : true),
   };
   if (!ctx.settings.harnesses[a.harness]) throw new HttpError(400, `unknown harness ${a.harness}`);
   if (a.guardrails.command_rules !== undefined)
@@ -279,11 +290,11 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
         db.prepare(`UPDATE ${table} SET agent = ? WHERE agent = ?`).run(input.name, rename);
     }
     db.prepare(
-      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, sms, browser, created, updated)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, sms, browser, dreaming, created, updated)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(name) DO UPDATE SET enabled=excluded.enabled, briefing=excluded.briefing, harness=excluded.harness,
          models=excluded.models, budget_usd=excluded.budget_usd, max_parallel=excluded.max_parallel,
-         guardrails=excluded.guardrails, email=excluded.email, sms=excluded.sms, browser=excluded.browser, updated=excluded.updated`,
+         guardrails=excluded.guardrails, email=excluded.email, sms=excluded.sms, browser=excluded.browser, dreaming=excluded.dreaming, updated=excluded.updated`,
     ).run(
       a.name,
       a.enabled ? 1 : 0,
@@ -296,6 +307,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
       a.email ? 1 : 0,
       a.sms ? 1 : 0,
       a.browser ? 1 : 0,
+      a.dreaming === false ? 0 : 1,
       ts,
       ts,
     );
@@ -341,9 +353,14 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
     for (const [from, to] of [
       [ctx.paths.agent(rename), ctx.paths.agent(a.name)],
       [join(ctx.paths.root, 'codex', rename), join(ctx.paths.root, 'codex', a.name)],
+      [join(ctx.paths.root, 'versions', rename), join(ctx.paths.root, 'versions', a.name)],
     ])
       if (existsSync(from!)) renameSync(from!, to!);
   ensureAgentWorkspace(ctx, a.name);
+  const what = !prev ? 'Created' : prev.briefing !== a.briefing ? 'Briefing changed' : 'Definition changed';
+  void ctx.versions
+    ?.snapshot(a.name, `${what} by ${opts.author ?? 'human'}`, { paths: ['agent.yaml'], author: opts.author ?? 'human', job: opts.job })
+    .catch((e) => console.error(`[yaho] versioning ${a.name}: ${(e as Error).message}`));
   ctx.bus.emitEvent({ type: 'changed', entity: 'agents', name: a.name });
   return getAgent(ctx, a.name);
 }
@@ -412,8 +429,8 @@ export function briefingHistory(ctx: Ctx, agent: string) {
   return ctx.db.prepare('SELECT id, briefing, author, created FROM briefing_history WHERE agent = ? ORDER BY id DESC').all(agent);
 }
 
-export function setBriefing(ctx: Ctx, agent: string, briefing: string, author: string): Agent {
-  return saveAgent(ctx, { name: agent, briefing }, { author });
+export function setBriefing(ctx: Ctx, agent: string, briefing: string, author: string, job?: string): Agent {
+  return saveAgent(ctx, { name: agent, briefing }, { author, job });
 }
 
 export function nextCron(expr: string, after?: Date): string | null {

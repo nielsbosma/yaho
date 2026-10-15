@@ -50,6 +50,8 @@ export interface Settings {
   sandbox?: boolean;
   command_rules?: { enabled?: boolean; rules?: CommandRule[] };
   history?: { recaps?: boolean };
+  versions?: { enabled?: boolean; keep_days?: number; max_file_mb?: number };
+  dreaming?: { enabled?: boolean; cron?: string; model?: string; max_usd?: number; max_minutes?: number };
   ideas?: { enabled?: boolean; repo?: string };
   defaults: { harness: string; models: string[]; budget_usd: number; max_parallel: number; guardrails: Record<string, number | undefined> };
 }

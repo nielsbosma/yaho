@@ -38,7 +38,7 @@ export function AgentOverview({ agent: a, onError }: { agent: Agent; onError: (e
           <div className="mt-2 text-xs text-muted">max {a.max_parallel} in parallel</div>
           {a.upcoming?.map((u) => (
             <div key={u.at + u.type} className="mt-1 text-xs text-muted" title={new Date(u.at).toLocaleString()}>
-              Next {u.type === 'delay' ? 'wake-up' : 'cron run'} {ago(u.at)}
+              Next {u.type === 'delay' ? 'wake-up' : u.type === 'dream' ? 'dream' : 'cron run'} {ago(u.at)}
             </div>
           ))}
         </Card>

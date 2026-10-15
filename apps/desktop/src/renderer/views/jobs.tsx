@@ -1,6 +1,17 @@
 import { Markdown } from '../components/Markdown.tsx';
 import { Resizer, usePanelWidth } from '../components/Resizer.tsx';
-import { ChevronRight, CircleStop, FileText, MessageSquare, Play, RotateCcw, Terminal, Wrench } from 'lucide-react';
+import {
+  ChevronRight,
+  CircleStop,
+  FileText,
+  GitCommitVertical,
+  MessageSquare,
+  Play,
+  RotateCcw,
+  Terminal,
+  Undo2,
+  Wrench,
+} from 'lucide-react';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
@@ -258,7 +269,31 @@ function JobDetail({ id }: { id: string }) {
                 <MessageSquare /> Continue in Chat
               </Button>
             )}
-            {canContinue && (
+            {!live && (j.commit_sha || j.trigger_type === 'dream') && (
+              <>
+                {j.commit_sha && (
+                  <a href={href('agents', j.agent, 'versions', j.commit_sha)}>
+                    <Button title="What this job changed in the workspace">
+                      <GitCommitVertical /> Changes
+                    </Button>
+                  </a>
+                )}
+                <Button
+                  title="Put back what this job changed"
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `Undo what this ${j.trigger_type === 'dream' ? 'dream' : 'job'} changed in ${j.agent}'s workspace${j.trigger_type === 'dream' ? ' and database' : ''}?`,
+                      )
+                    )
+                      void act(`/api/jobs/${j.id}/undo`);
+                  }}
+                >
+                  <Undo2 /> Undo
+                </Button>
+              </>
+            )}
+            {canContinue && j.trigger_type !== 'dream' && (
               <Button variant="primary" onClick={() => void act(`/api/jobs/${j.id}/continue`)}>
                 <RotateCcw /> Continue
               </Button>

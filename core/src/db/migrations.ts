@@ -207,4 +207,10 @@ export const migrations: string[] = [
   `CREATE INDEX messages_reply_to ON messages(reply_to);
    CREATE INDEX messages_job ON messages(job);
    CREATE INDEX jobs_session ON jobs(session_id, created);`,
+  // 17: versions and dreaming. base_sha is the workspace's commit when a job started, commit_sha the one it ended
+  // with. agents.dreaming opts an agent out of the nightly dream; last_dream is when it last dreamt (or was skipped).
+  `ALTER TABLE jobs ADD COLUMN base_sha TEXT;
+   ALTER TABLE jobs ADD COLUMN commit_sha TEXT;
+   ALTER TABLE agents ADD COLUMN dreaming INTEGER NOT NULL DEFAULT 1;
+   ALTER TABLE agents ADD COLUMN last_dream TEXT;`,
 ];
