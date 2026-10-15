@@ -62,7 +62,7 @@ afterAll(async () => {
 });
 
 describe('dreaming', () => {
-  it('dreams after a day with work: its own prompt, a database backup, no briefing rewrites, and undo', async () => {
+  it('dreams after a day with work: its own prompt, a database backup, a briefing rewrite, and undo', async () => {
     await agent('dreamer');
     steps('dreamer', [
       { cmd: 'mkdir -p memory && echo "Acme pays late" > memory/acme.md && echo "Acme pays late (again)" > memory/acme2.md' },
@@ -81,7 +81,6 @@ describe('dreaming', () => {
       },
       { cmd: 'echo "new" | yaho briefing update', stdin: '' },
       { cmd: 'yaho send --to agent:dreamer --body hi' },
-      { cmd: 'yaho send --to human --type info --title "Dream suggestion: x" --body "y"' },
       { cmd: 'yaho finish --summary "merged acme notes, removed a duplicate lead"' },
     ]);
     longAgo('dreamer');
@@ -96,10 +95,9 @@ describe('dreaming', () => {
     expect(prompt.system).toContain('dreamer briefing');
     expect(prompt.user).toContain('worked');
     expect(prompt.user).toContain('`leads`: 3 rows');
-    expect(JSON.stringify(events)).toMatch(/a dream cannot rewrite the briefing/);
     expect(JSON.stringify(events)).toMatch(/a dream can only message the human/);
     expect(events.find((e) => e.kind === 'dream')!.data).toEqual({ tables: [{ name: 'leads', rows: 2 }] });
-    expect((await api<{ briefing: string }>('/api/agents/dreamer')).briefing).toBe('dreamer briefing');
+    expect((await api<{ briefing: string }>('/api/agents/dreamer')).briefing.trim()).toBe('new');
     expect(existsSync(backupFile(ctx, 'dreamer', dream.id))).toBe(true);
 
     const done = await api<Job>(`/api/jobs/${dream.id}`);
@@ -116,6 +114,7 @@ describe('dreaming', () => {
 
     await api(`/api/jobs/${dream.id}/undo`, { method: 'POST' });
     expect(readFileSync(ws('dreamer', 'memory/acme.md'), 'utf8')).toBe('Acme pays late\n');
+    expect((await api<{ briefing: string }>('/api/agents/dreamer')).briefing).toBe('dreamer briefing');
     expect(existsSync(ws('dreamer', 'memory/acme-all.md'))).toBe(false);
     const db = new DatabaseSync(ws('dreamer', 'agent.db'), { readOnly: true });
     expect((db.prepare('SELECT COUNT(*) n FROM leads').get() as { n: number }).n).toBe(3);

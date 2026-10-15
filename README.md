@@ -51,7 +51,7 @@ TypeScript core (runs headless with `yaho serve`) ── SQLite (agents, jobs, m
 - **Dreaming.** Every night (03:00 by default, Settings → Defaults) each agent with new jobs since its last dream runs a
   dream: a job with its own [briefing](briefings/dream.md) that reviews those jobs and tidies its notes, scripts and
   database. A dream runs alone in the agent's workspace, uses the agent's last model, and is capped at $0.50. It backs up
-  `agent.db` first and suggests briefing changes in the inbox rather than making them. Undo on the job reverts it, and
+  `agent.db` first, and may rewrite the agent's briefing too. Undo on the job reverts all of it, and
   an agent can opt out in its definition.
 - **Loop guardrails** (rate limit, cooldown, hop limit) stop agents from waking each other forever.
 - **Command Rules** (Settings → Guard Rails, off by default) check every shell command before it runs. Block refuses

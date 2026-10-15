@@ -37,7 +37,7 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
   const assigned = (agent: string, project: string) => {
     if (!s.getAgent(ctx, agent).projects.includes(project)) throw new HttpError(403, `project ${project} is not assigned to you`);
   };
-  /** A dream works in its own workspace only: no outreach and no briefing rewrites (it suggests them). */
+  /** A dream works on its own workspace and briefing only: no outreach. */
   const notDreaming = (job: string, what: string) => {
     if (s.getJob(ctx, job).trigger_type === 'dream') throw new HttpError(403, `a dream cannot ${what}`);
   };
@@ -200,9 +200,8 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
         throw new HttpError(400, 'could not parse the briefing as JSON');
       }
     }
-    notDreaming(w.job, 'rewrite the briefing: send the human a suggestion instead');
     if (!briefing.trim()) throw new HttpError(400, 'refusing to save an empty briefing');
-    s.setBriefing(ctx, w.agent, briefing, `agent (${w.job})`);
+    s.setBriefing(ctx, w.agent, briefing, `agent (${w.job})`, w.job);
     return { saved: true, versions: s.briefingHistory(ctx, w.agent).length };
   });
 

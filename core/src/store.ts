@@ -220,7 +220,11 @@ export function agentExists(ctx: Ctx, name: string): boolean {
 }
 
 /** Create or replace an agent from its YAML-shaped definition. `rename` moves an existing agent first. */
-export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, opts: { rename?: string; author?: string } = {}): Agent {
+export function saveAgent(
+  ctx: Ctx,
+  input: Partial<Agent> & { name: string },
+  opts: { rename?: string; author?: string; job?: string } = {},
+): Agent {
   assertName('agent', input.name);
   const d = ctx.settings.defaults;
   const { db } = ctx;
@@ -355,7 +359,7 @@ export function saveAgent(ctx: Ctx, input: Partial<Agent> & { name: string }, op
   ensureAgentWorkspace(ctx, a.name);
   const what = !prev ? 'Created' : prev.briefing !== a.briefing ? 'Briefing changed' : 'Definition changed';
   void ctx.versions
-    ?.snapshot(a.name, `${what} by ${opts.author ?? 'human'}`, { paths: ['agent.yaml'], author: opts.author ?? 'human' })
+    ?.snapshot(a.name, `${what} by ${opts.author ?? 'human'}`, { paths: ['agent.yaml'], author: opts.author ?? 'human', job: opts.job })
     .catch((e) => console.error(`[yaho] versioning ${a.name}: ${(e as Error).message}`));
   ctx.bus.emitEvent({ type: 'changed', entity: 'agents', name: a.name });
   return getAgent(ctx, a.name);
@@ -425,8 +429,8 @@ export function briefingHistory(ctx: Ctx, agent: string) {
   return ctx.db.prepare('SELECT id, briefing, author, created FROM briefing_history WHERE agent = ? ORDER BY id DESC').all(agent);
 }
 
-export function setBriefing(ctx: Ctx, agent: string, briefing: string, author: string): Agent {
-  return saveAgent(ctx, { name: agent, briefing }, { author });
+export function setBriefing(ctx: Ctx, agent: string, briefing: string, author: string, job?: string): Agent {
+  return saveAgent(ctx, { name: agent, briefing }, { author, job });
 }
 
 export function nextCron(expr: string, after?: Date): string | null {

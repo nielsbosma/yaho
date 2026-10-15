@@ -35,7 +35,7 @@ export function hasNewWork(ctx: Ctx, agent: string, since: string): boolean {
 
 export function dreamSystemPrompt(agent: Agent): string {
   const base = readFileSync(join(briefingsDir(), 'dream.md'), 'utf8').replaceAll('{{agent}}', agent.name);
-  return `${base}\n\n---\n\n# Your briefing (for reference: suggest changes, don't make them)\n\n${agent.briefing.trim() || '(empty)'}\n`;
+  return `${base}\n\n---\n\n# Your briefing (as it is now)\n\n${agent.briefing.trim() || '(empty)'}\n`;
 }
 
 const clip = (s: unknown, n: number) => {

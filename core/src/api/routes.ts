@@ -453,15 +453,17 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     s.getAgent(ctx, req.params.name!);
     return { version: await versions().restore(req.params.name!, req.params.sha!) };
   });
-  // Undo a job: the files it changed, and for a dream also its agent.db changes.
+  // Undo a job: the files and definition it changed (its own versions, newest first), and for a dream its agent.db.
   r.on('POST', '/api/jobs/:id/undo', async (req) => {
     const job = s.getJob(ctx, req.params.id!);
     if (job.status === 'running' || job.status === 'queued') throw new HttpError(409, 'the job has not ended');
     if (ctx.db.prepare("SELECT 1 FROM jobs WHERE agent = ? AND status = 'running'").get(job.agent))
       throw new HttpError(409, `${job.agent} has a job running: stop it or wait for it to end first`);
-    const version = job.commit_sha ? await versions().undo(job.agent, job.commit_sha) : null;
+    const own = ctx.versions?.on ? await versions().log(job.agent, { job: job.id }) : [];
+    let version: string | null = null;
+    for (const v of own) version = (await versions().undo(job.agent, v.sha)) ?? version;
     const db = job.trigger_type === 'dream' && restoreAgentDb(ctx, job.agent, job.id);
-    if (!job.commit_sha && !db) throw new HttpError(409, 'this job changed nothing that can be undone');
+    if (!own.length && !db) throw new HttpError(409, 'this job changed nothing that can be undone');
     s.addJobEvent(ctx, job.id, 'system', { text: `Undone by the human${db ? ', agent.db included' : ''}.` });
     return { version, database: db };
   });
