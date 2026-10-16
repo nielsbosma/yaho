@@ -1,6 +1,7 @@
 import { plainText } from '../lib/plainText.ts';
 import { Resizer, usePanelWidth } from '../components/Resizer.tsx';
 import { Inbox, Mail, MailOpen, MoreHorizontal, PenLine, Search, Trash2 } from 'lucide-react';
+import { AgentPicker } from '../components/AgentPicker.tsx';
 import { useContextMenu } from '../components/ContextMenu.tsx';
 import { useEffect, useState } from 'react';
 import { MessageCard, who } from '../components/MessageCard.tsx';
@@ -8,7 +9,7 @@ import { Button } from '../components/ui/button.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { Dialog } from '../components/ui/dialog.tsx';
 import { ago, Empty, ErrorNote } from '../components/ui/display.tsx';
-import { Field, Input, Select, Textarea } from '../components/ui/form.tsx';
+import { Field, Input, Textarea } from '../components/ui/form.tsx';
 import { api, useApi, type Agent, type Message } from '../lib/api.ts';
 import { go, href } from '../lib/router.ts';
 import type { ViewProps } from './index.tsx';
@@ -265,13 +266,8 @@ export function Compose({ open, onClose, defaultTo }: { open: boolean; onClose: 
     >
       <div className="space-y-3">
         <ErrorNote>{error}</ErrorNote>
-        <Field label="To">
-          <Select value={to} onChange={(e) => setTo(e.target.value)}>
-            <option value="">Choose an Agent…</option>
-            {agents.data?.map((a) => (
-              <option key={a.name}>{a.name}</option>
-            ))}
-          </Select>
+        <Field label="To" group>
+          <AgentPicker agents={agents.data} value={to} onChange={setTo} />
         </Field>
         <Field label="Title (Optional)">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
