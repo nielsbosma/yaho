@@ -1,7 +1,8 @@
 import { JobChat } from './JobChat.tsx';
 import { Markdown } from './Markdown.tsx';
+import { uploadAttachment, useAttachments } from './Attachments.tsx';
 import { Resizer, usePanelWidth } from './Resizer.tsx';
-import { ArrowUp, Check, ChevronRight, SquarePen, Sparkles, X, XCircle } from 'lucide-react';
+import { ArrowUp, Check, ChevronRight, Square, SquarePen, Sparkles, X, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.ts';
 import type { ChatFocus } from '../lib/chat.ts';
@@ -86,8 +87,9 @@ export function Assistant({
   const [state, setState] = useState(empty);
   const [width, setWidth] = usePanelWidth('assistant', 400, 320, 760);
   const [text, setText] = useState('');
-  const [images, setImages] = useState<string[]>([]);
+  const files = useAttachments();
   const [busy, setBusy] = useState(false);
+  const running = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -105,24 +107,24 @@ export function Assistant({
     bottom.current?.scrollIntoView({ block: 'end' });
   }, [state.turns.length, busy]);
 
-  /** Screenshots pasted into the box go along with the next message, so the model can see them. */
-  const paste = (e: React.ClipboardEvent) => {
-    const files = [...e.clipboardData.items]
-      .filter((i) => i.type.startsWith('image/'))
-      .map((i) => i.getAsFile())
-      .filter((f): f is File => !!f);
-    if (!files.length) return;
-    e.preventDefault();
-    for (const f of files) void toDataUrl(f).then((url) => setImages((xs) => [...xs, url]));
-  };
-
   const send = async (msg: string) => {
-    const content = msg.trim();
-    if ((!content && !images.length) || busy) return;
+    const typed = msg.trim();
+    if ((!typed && !files.items.length) || busy) return;
     setError(null);
     setText('');
-    const pics = images;
-    setImages([]);
+    const added = files.items;
+    files.clear();
+    // Images go to the model to look at; other files are uploaded, and the chat reads them by path.
+    let pics: string[];
+    let paths: string[];
+    try {
+      pics = await Promise.all(added.filter((x) => x.preview).map((x) => toDataUrl(x.file)));
+      paths = await Promise.all(added.filter((x) => !x.preview).map((x) => uploadAttachment(x.file)));
+    } catch (e) {
+      setError((e as Error).message);
+      return;
+    }
+    const content = [typed, ...paths.map((p) => `Attached file: ${p}`)].filter(Boolean).join('\n');
     const parts = pics.length
       ? [
           ...(content ? [{ type: 'text' as const, text: content }] : []),
@@ -133,9 +135,11 @@ export function Assistant({
     const turns: Turn[] = [...state.turns, { role: 'user', text: content, images: pics }];
     setState({ history, turns });
     setBusy(true);
+    const stop = (running.current = new AbortController());
     try {
       const r = await api<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }>('/api/assistant', {
         body: { messages: history, focus: focus ? { [focus.kind]: focus.name } : undefined },
+        signal: stop.signal,
       });
       const last = r.messages.at(-1)?.content;
       const answer = typeof last === 'string' ? last : '';
@@ -143,8 +147,10 @@ export function Assistant({
       setState(next);
       if (r.navigate?.length) go(...r.navigate);
     } catch (e) {
-      setError((e as Error).message);
+      if (stop.signal.aborted) setState({ history, turns: [...turns, { role: 'assistant', text: '_Stopped._' }] });
+      else setError((e as Error).message);
     } finally {
+      running.current = null;
       setBusy(false);
       input.current?.focus();
     }
@@ -243,26 +249,10 @@ export function Assistant({
 
           <div className="border-t border-line p-3">
             <div className="rounded-xl border border-line bg-panel p-2 focus-within:border-accent/50">
-              {images.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {images.map((src, j) => (
-                    <div key={j} className="group relative">
-                      <img src={src} alt="Pasted screenshot" className="h-14 rounded-md border border-line" />
-                      <button
-                        type="button"
-                        title="Remove"
-                        onClick={() => setImages((xs) => xs.filter((_, k) => k !== j))}
-                        className="absolute -top-1.5 -right-1.5 flex size-4 cursor-pointer items-center justify-center rounded-full bg-ink text-panel opacity-0 group-hover:opacity-100"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {files.list && <div className="mb-2">{files.list}</div>}
               <div className="flex items-end gap-2">
                 <textarea
-                  onPaste={paste}
+                  onPaste={files.paste}
                   ref={input}
                   rows={2}
                   value={text}
@@ -276,19 +266,20 @@ export function Assistant({
                   placeholder={focus ? `Ask about ${focus.name}…` : 'Ask Yaho to do something…'}
                   className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 text-sm outline-none placeholder:text-muted/70"
                 />
-                <Button
-                  size="icon"
-                  variant="primary"
-                  disabled={(!text.trim() && !images.length) || busy}
-                  onClick={() => void send(text)}
-                  title="Send (Enter)"
-                >
-                  <ArrowUp />
-                </Button>
+                {files.button}
+                {busy ? (
+                  <Button size="icon" variant="primary" onClick={() => running.current?.abort()} title="Stop">
+                    <Square className="fill-current" />
+                  </Button>
+                ) : (
+                  <Button size="icon" variant="primary" disabled={!text.trim() && !files.items.length} onClick={() => void send(text)} title="Send (Enter)">
+                    <ArrowUp />
+                  </Button>
+                )}
               </div>
             </div>
             <p className="mt-1.5 px-1 text-[11px] text-muted">
-              Paste screenshots with Ctrl+V. Never paste secret values here; set them on the resource page.
+              Paste screenshots or attach files. Never paste secret values here; set them on the resource page.
             </p>
           </div>
         </>

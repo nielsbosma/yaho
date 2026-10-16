@@ -89,7 +89,9 @@ describe('webhook triggers', () => {
   it('keep their URL and secret across saves, and only the definition is in the agent', () => {
     const before = hook('github');
     expect(before.path).toMatch(/^\/api\/hooks\/[\w-]{32}$/);
+    // A new agent also gets the inbox trigger, since its definition does not switch it off.
     expect(getAgent(ctx, 'triage').triggers).toEqual([
+      { inbox: true },
       { webhook: 'github', verify: 'github', instructions: 'Label the new issue.' },
       { webhook: 'zap', limit: 2 },
     ]);

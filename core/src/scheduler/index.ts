@@ -114,7 +114,7 @@ export class Scheduler {
     const name = m.to.slice(6);
     if (!agentExists(this.ctx, name)) return;
     const agent = getAgent(this.ctx, name);
-    if (!agent.enabled || !agent.triggers.some((t) => 'inbox' in t)) return;
+    if (!agent.enabled || !agent.triggers.some((t) => 'inbox' in t && t.inbox)) return;
     const { db } = this.ctx;
     // One waiting inbox job reads every unread message; no need to queue another.
     if (db.prepare("SELECT 1 FROM jobs WHERE agent = ? AND status = 'queued' AND trigger_type = 'inbox'").get(name)) return;

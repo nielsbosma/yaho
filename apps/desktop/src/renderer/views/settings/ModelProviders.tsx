@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { BrandLogo } from '../../components/BrandLogo.tsx';
+import { useConfirmDelete } from '../../components/ConfirmDelete.tsx';
 import { Button } from '../../components/ui/button.tsx';
 import { Card, Section } from '../../components/ui/display.tsx';
 import { Field, Input, Select } from '../../components/ui/form.tsx';
@@ -38,8 +39,18 @@ export function ModelProviders({
       const p = d.providers.find((x) => x.id === id);
       if (p) fn(p);
     });
+  const del = useConfirmDelete(
+    'Provider',
+    async (id) =>
+      upd((d) => {
+        d.providers = d.providers.filter((x) => x.id !== id);
+        if (d.default_provider === id) d.default_provider = d.providers[0]?.id;
+      }),
+    'Agents on its models stop working, and its keys are removed from the secrets store when you save.',
+  );
   return (
     <Section title="Model Providers">
+      {del.dialog}
       <div className="space-y-3">
         {s.providers.map((p) => {
           const stored = (f: string) => s.secrets_set?.[`providers.${p.id}.${f}`];
@@ -63,12 +74,7 @@ export function ModelProviders({
                     size="sm"
                     variant="ghost"
                     title="Remove"
-                    onClick={() =>
-                      upd((d) => {
-                        d.providers = d.providers.filter((x) => x.id !== p.id);
-                        if (d.default_provider === p.id) d.default_provider = d.providers[0]?.id;
-                      })
-                    }
+                    onClick={() => del.ask(p.id, label(p.kind))}
                   >
                     <Trash2 />
                   </Button>

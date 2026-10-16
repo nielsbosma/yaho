@@ -10,7 +10,7 @@ import { validateRules } from './guard/commandRules.ts';
 
 // ---------- shapes (what the API and YAML speak) ----------
 
-export type TriggerSpec = { cron: string } | { inbox: true } | { delay: string; next_fire: string } | WebhookTrigger;
+export type TriggerSpec = { cron: string } | { inbox: boolean } |{ delay: string; next_fire: string } | WebhookTrigger;
 
 /** How a webhook's deliveries are checked, besides the secret token in its URL. */
 export const WEBHOOK_VERIFY = ['none', 'github', 'stripe', 'svix', 'yaho'] as const;
@@ -247,7 +247,10 @@ export function saveAgent(
     budget_usd: input.budget_usd ?? (prev?.budget_usd as number) ?? d.budget_usd,
     max_parallel: Math.max(1, input.max_parallel ?? (prev?.max_parallel as number) ?? d.max_parallel),
     guardrails: input.guardrails ?? json(prev?.guardrails as string, d.guardrails),
-    triggers: input.triggers ?? (prev ? agentFromRow(ctx, prev).triggers : []),
+    // A new agent starts when a message arrives for it, unless it says otherwise ({ inbox: false }).
+    triggers: prev
+      ? (input.triggers ?? agentFromRow(ctx, prev).triggers)
+      : [...(input.triggers ?? []), ...((input.triggers ?? []).some((t) => 'inbox' in t) ? [] : [{ inbox: true as const }])],
     projects: input.projects ?? (prev ? agentFromRow(ctx, prev).projects : []),
     resources: input.resources ?? (prev ? agentFromRow(ctx, prev).resources : []),
     email: input.email ?? !!prev?.email,
