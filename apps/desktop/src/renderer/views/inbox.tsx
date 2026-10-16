@@ -248,7 +248,7 @@ export function Compose({ open, onClose, defaultTo }: { open: boolean; onClose: 
             onClick={async () => {
               setError(null);
               try {
-                const m = await api<Message>('/api/messages', { body: { to: `agent:${to}`, type: 'info', title, body } });
+                const m = await api<Message>('/api/messages', { body: { to: `agent:${to}`, type: 'info', title: title.trim(), body } });
                 onClose();
                 setTitle('');
                 setBody('');
@@ -273,7 +273,7 @@ export function Compose({ open, onClose, defaultTo }: { open: boolean; onClose: 
             ))}
           </Select>
         </Field>
-        <Field label="Title">
+        <Field label="Title (Optional)">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
         <Field label="Message" hint="Agents with an inbox trigger start a job when this arrives.">
