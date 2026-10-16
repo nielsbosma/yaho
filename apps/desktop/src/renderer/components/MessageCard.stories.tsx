@@ -81,3 +81,42 @@ export const FromHuman: Story = {
 export const Compact: Story = {
   args: { message: { ...base, title: 'Daily note', body: 'A long body that is clipped in compact mode. '.repeat(10) }, compact: true },
 };
+
+export const TableAndChart: Story = {
+  args: {
+    message: {
+      ...base,
+      from: 'agent:google-analytics-daily',
+      title: 'GA: search event still 0 (was 126) and Singapore bot returning (2.5K users)',
+      body: [
+        'GA check for filestar.com, Thu 2026-10-15 vs Thu 2026-10-08.',
+        '',
+        '| Metric | Oct 8 | Oct 15 | Change |',
+        '|---|--:|--:|--:|',
+        '| Active users | 2,052 | 16,292 | +694% |',
+        '| Engagement rate | 21.0% | 3.5% | -17.5 pt |',
+        '| Organic Search sessions | 729 | 925 | +27% |',
+        '| download_finished | 195 | 207 | +6% |',
+        '| search event | 126 | 0 | -100% |',
+        '',
+        '```chart',
+        'type: bar',
+        'title: Sessions per channel',
+        'x: [Organic Search, Direct, Referral]',
+        'series:',
+        '  Oct 8: [729, 1383, 50]',
+        '  Oct 15: [925, 15054, 35]',
+        '```',
+        '',
+        '```chart',
+        'type: line',
+        'title: Singapore users per day',
+        'x: [Oct 9, Oct 10, Oct 11, Oct 12, Oct 13, Oct 14, Oct 15]',
+        'series:',
+        '  Singapore: [80, 95, 120, 310, 575, 120, 2521]',
+        '```',
+      ].join('\n'),
+    },
+    onReply: reply,
+  },
+};

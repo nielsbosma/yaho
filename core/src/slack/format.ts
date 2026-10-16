@@ -1,3 +1,4 @@
+import { plainTables } from '../mirror/tables.ts';
 import { splitText } from '../mirror/util.ts';
 import type { Message } from '../store.ts';
 
@@ -28,7 +29,7 @@ function inline(line: string): string {
  */
 export function toMrkdwn(md: string): string {
   const out: string[] = [];
-  const lines = md.replace(/\r\n/g, '\n').split('\n');
+  const lines = plainTables(md).split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     const fence = /^```\s*(\S*)\s*(.*)$/.exec(line);
