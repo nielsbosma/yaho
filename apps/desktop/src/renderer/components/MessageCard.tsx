@@ -223,10 +223,10 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
                 </div>
                 {(expects || replying) && files.list}
                 {(expects || replying) && (
-                  <div className="flex items-end gap-2">
+                  <div className="relative">
                     <Textarea
                       autoFocus={replying}
-                      className="min-h-24"
+                      className="min-h-24 pb-11"
                       rows={4}
                       onPaste={files.paste}
                       value={text}
@@ -236,10 +236,17 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
                         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void reply(text);
                       }}
                     />
-                    {files.button}
-                    <Button disabled={(!text.trim() && !files.items.length) || !!sending} onClick={() => void reply(text)} title="Send (Ctrl+Enter)">
-                      <Send />
-                    </Button>
+                    <div className="absolute right-4 bottom-2 flex items-center gap-1">
+                      {files.button}
+                      <Button
+                        size="icon"
+                        disabled={(!text.trim() && !files.items.length) || !!sending}
+                        onClick={() => void reply(text)}
+                        title="Send (Ctrl+Enter)"
+                      >
+                        <Send />
+                      </Button>
+                    </div>
                   </div>
                 )}
               </>
