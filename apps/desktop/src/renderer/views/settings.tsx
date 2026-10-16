@@ -81,25 +81,25 @@ export function SettingsView({ route }: { route: string[] }) {
       <PageHeader
         title="Settings"
         actions={
-          <>
+          <div className="relative flex items-center gap-2">
+            {/* Fades in after a save and away again by itself. Positioned outside the flow, so the buttons stay on the right edge. */}
+            <span
+              role="status"
+              aria-live="polite"
+              className={cn(
+                'pointer-events-none absolute top-1/2 right-full mr-3 flex -translate-y-1/2 items-center gap-1 text-sm whitespace-nowrap text-ok transition-all duration-300',
+                ok ? 'translate-x-0 opacity-100' : 'translate-x-1 opacity-0',
+              )}
+            >
+              <CheckIcon className="size-4" /> Saved
+            </span>
             <Button onClick={() => void api('/api/onboarding/reset', { method: 'POST' }).then(() => location.reload())}>
               Run Setup Again
             </Button>
             <Button variant="primary" disabled={!dirty} title={dirty ? undefined : 'Nothing to save'} onClick={() => void save()}>
               Save Settings
             </Button>
-            {/* Fades in after a save and away again by itself. */}
-            <span
-              role="status"
-              aria-live="polite"
-              className={cn(
-                'flex items-center gap-1 text-sm text-ok transition-all duration-300',
-                ok ? 'translate-x-0 opacity-100' : '-translate-x-1 opacity-0',
-              )}
-            >
-              <CheckIcon className="size-4" /> Saved
-            </span>
-          </>
+          </div>
         }
       />
       <SettingsPanes active={route[1]} error={error}>
