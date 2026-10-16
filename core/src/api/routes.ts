@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { lstat, readdir } from 'node:fs/promises';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { saveSettings, type Settings } from '../config.ts';
@@ -351,7 +351,10 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     async (req) => {
       const { messages, focus } = await req.body<{ messages?: ChatMessage[]; focus?: ChatFocus }>();
       if (!Array.isArray(messages) || !messages.length) throw new HttpError(400, 'messages is required');
-      return chat(ctx, messages, focus);
+      // The app stops a chat by dropping the request; stop the model and tool calls with it.
+      const stop = new AbortController();
+      req.res.on('close', () => !req.res.writableFinished && stop.abort());
+      return chat(ctx, messages, focus, stop.signal);
     },
     { maxBody: 64 * 1024 * 1024 },
   );
@@ -590,10 +593,39 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
     }
     return m.job ? s.listArtifacts(ctx, { job: m.job }) : [];
   });
+  // A file added in the app (an inbox reply or the chat): kept under attachments/, and its path comes back.
+  r.on(
+    'POST',
+    '/api/attachments',
+    async (req) => {
+      const root = join(ctx.paths.root, 'attachments');
+      const path = join(root, new Date().toISOString().replace(/[:.]/g, '-'), cleanFileName(req.query.get('name') ?? 'file'));
+      const bytes = await req.bytes();
+      under(() => writeFileUnder(root, path, bytes));
+      return { path };
+    },
+    { maxBody: UPLOAD_LIMIT },
+  );
   r.on('POST', '/api/messages', async (req) => {
-    const m = await req.body<s.SendInput>();
+    const { attachments, ...m } = await req.body<s.SendInput & { attachments?: string[] }>();
     if (String(m.to ?? '').startsWith('email:')) throw new HttpError(400, 'email is sent by agents (yaho email), not from the inbox');
     if (String(m.to ?? '').startsWith('sms:')) throw new HttpError(400, 'texts are sent by agents (yaho sms), not from the inbox');
+    // Files added to a message go into the agent's workspace, and the message says where.
+    if (attachments?.length && m.to && m.to !== 'human') {
+      const agent = s.getAgent(ctx, m.to.replace(/^agent:/, '')).name;
+      const root = join(ctx.paths.root, 'attachments');
+      const ws = s.ensureAgentWorkspace(ctx, agent);
+      const saved: string[] = [];
+      for (const from of attachments) {
+        const rel = relative(root, from);
+        if (!rel || rel.startsWith('..') || isAbsolute(rel) || !existsSync(from)) throw new HttpError(400, `not an attachment: ${from}`);
+        const file = `${basename(dirname(from))}-${basename(from)}`;
+        // Written fresh and never through a link: the agent owns its workspace.
+        under(() => writeFileUnder(ws, join(ws, 'inbox-attachments', file), readFileSync(from)));
+        saved.push(`inbox-attachments/${file}`);
+      }
+      m.body = [m.body?.trim(), `Attached (in your workspace): ${saved.join(', ')}`].filter(Boolean).join('\n\n');
+    }
     const msg = s.sendMessage(ctx, { ...m, from: 'human' });
     if (m.reply_to) s.markRead(ctx, m.reply_to, true);
     return msg;

@@ -102,10 +102,10 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
 
   const set = <K extends keyof Agent>(k: K, v: Agent[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const crons = draft.triggers.filter((t): t is { cron: string } => 'cron' in t).map((t) => t.cron);
-  const inbox = draft.triggers.some((t) => 'inbox' in t);
+  const inbox = draft.triggers.some((t) => 'inbox' in t && t.inbox);
   const hooks = draft.triggers.filter((t): t is WebhookTrigger => 'webhook' in t);
-  const setTriggers = (c: string[], i: boolean, h = hooks) =>
-    set('triggers', [...c.map((cron) => ({ cron })), ...(i ? [{ inbox: true as const }] : []), ...h]);
+  // The inbox trigger is always written, off too: a new agent without one gets it switched on.
+  const setTriggers = (c: string[], i: boolean, h = hooks) => set('triggers', [...c.map((cron) => ({ cron })), { inbox: i }, ...h]);
 
   const body = (
     <div className="max-w-3xl space-y-5">

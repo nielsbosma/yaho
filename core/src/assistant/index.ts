@@ -66,7 +66,7 @@ export function tools(ctx: Ctx): Record<string, Tool> {
     },
     save_agent: {
       description:
-        'Create or update an agent from a YAML definition (fields: name, enabled, briefing, harness, models, budget_usd, max_parallel, triggers [{cron: "..."} | {inbox: true}], projects, resources, email (true: its own email address through Resend), sms (true: text people from the shared Twilio number), browser (true: a real browser in each job, yaho browser), guardrails {rate_per_hour, cooldown_seconds, hop_limit, wait_for_inbox: skip scheduled runs while the human has unread messages from the agent, command_rules: [{pattern, action: block|ask|allow, note}] checked with the global Command Rules when those are on}). Omitted fields keep their current value. To rename, pass rename_from. Raising a budget or loosening guardrails is left to the human, on the agent page.',
+        'Create or update an agent from a YAML definition (fields: name, enabled, briefing, harness, models, budget_usd, max_parallel, triggers [{cron: "..."} | {inbox: true}; a new agent gets {inbox: true} unless you pass {inbox: false}], projects, resources, email (true: its own email address through Resend), sms (true: text people from the shared Twilio number), browser (true: a real browser in each job, yaho browser), guardrails {rate_per_hour, cooldown_seconds, hop_limit, wait_for_inbox: skip scheduled runs while the human has unread messages from the agent, command_rules: [{pattern, action: block|ask|allow, note}] checked with the global Command Rules when those are on}). Omitted fields keep their current value. To rename, pass rename_from. Raising a budget or loosening guardrails is left to the human, on the agent page.',
       parameters: obj({ yaml: str('the agent definition in YAML'), rename_from: str('current name, when renaming') }, ['yaml']),
       run: (a, out) => {
         const def = yamlDef<s.Agent>(a);
@@ -581,6 +581,7 @@ export async function chat(
   ctx: Ctx,
   history: ChatMessage[],
   focus?: ChatFocus,
+  signal?: AbortSignal,
 ): Promise<{ messages: ChatMessage[]; steps: Step[]; navigate?: string[] }> {
   const chosen = ctx.settings.assistant?.model ?? ctx.settings.defaults.models[0];
   if (!chosen) throw new HttpError(503, 'choose a default model in Settings first');
@@ -600,8 +601,10 @@ export async function chat(
   const ROUNDS = 12;
   let answered = false;
   for (let round = 0; round < ROUNDS; round++) {
+    // Stopped by the human: no further model calls or tool calls.
+    if (signal?.aborted) throw new HttpError(499, 'stopped');
     // Room for a whole agent definition in one tool call; a cut-off call arrives with no arguments.
-    const j = await chatRound(provider, { model, messages, tools: toolDefs, max_tokens: 16000 }).then((x) => ({ choices: [x] }));
+    const j = await chatRound(provider, { model, messages, tools: toolDefs, max_tokens: 16000 }, signal).then((x) => ({ choices: [x] }));
     const msg = j.choices[0]!.message;
     /** The reply hit the output limit: its tool calls are incomplete and must not run. */
     const cut = j.choices[0]!.finish_reason === 'length';
@@ -614,6 +617,7 @@ export async function chat(
     }
     const images: Array<{ path: string; url: string }> = [];
     for (const call of msg.tool_calls) {
+      if (signal?.aborted) throw new HttpError(499, 'stopped');
       const tool = t[call.function.name];
       let args: Record<string, unknown> = {};
       let result: unknown;

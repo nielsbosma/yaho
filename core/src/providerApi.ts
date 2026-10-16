@@ -148,14 +148,18 @@ export interface ChatReply {
 
 /** A chat round can be a long answer, but not one that never comes. */
 const CHAT_TIMEOUT = 300_000;
+/** The round's timeout, and the caller's stop when it has one (the human stopping the chat). */
+const withTimeout = (signal?: AbortSignal) =>
+  signal ? AbortSignal.any([signal, AbortSignal.timeout(CHAT_TIMEOUT)]) : AbortSignal.timeout(CHAT_TIMEOUT);
 
 /** One round of the assistant's chat on this provider. */
 export async function chatRound(
   p: ProviderConfig,
   body: { model: string; messages: OAIMessage[]; tools: OAITool[]; max_tokens: number },
+  signal?: AbortSignal,
 ): Promise<ChatReply> {
   const key = needKey(p);
-  if (p.kind === 'anthropic') return anthropicChat(chatBase(p)!, key, body);
+  if (p.kind === 'anthropic') return anthropicChat(chatBase(p)!, key, body, signal);
   const base = chatBase(p);
   if (!base) throw new HttpError(400, `unknown provider kind ${p.kind}`);
   const res = await fetch(`${base}/chat/completions`, {
@@ -167,7 +171,7 @@ export async function chatRound(
       messages: body.messages.map(clean),
       tools: body.tools.length ? body.tools : undefined,
     }),
-    signal: AbortSignal.timeout(CHAT_TIMEOUT),
+    signal: withTimeout(signal),
   });
   if (!res.ok) throw new HttpError(502, `${p.id}: ${res.status} ${(await res.text()).slice(0, 300)}`);
   const j = (await res.json()) as {
@@ -186,6 +190,7 @@ async function anthropicChat(
   base: string,
   key: string,
   body: { model: string; messages: OAIMessage[]; tools: OAITool[]; max_tokens: number },
+  signal?: AbortSignal,
 ): Promise<ChatReply> {
   const system = body.messages
     .filter((m) => m.role === 'system')
@@ -238,7 +243,7 @@ async function anthropicChat(
         input_schema: t.function.parameters ?? { type: 'object' },
       })),
     }),
-    signal: AbortSignal.timeout(CHAT_TIMEOUT),
+    signal: withTimeout(signal),
   });
   if (!res.ok) throw new HttpError(502, `Anthropic: ${res.status} ${(await res.text()).slice(0, 300)}`);
   const j = (await res.json()) as {

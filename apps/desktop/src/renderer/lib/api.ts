@@ -60,7 +60,7 @@ export async function downloadFile(path: string, params: Record<string, string>,
   setTimeout(() => URL.revokeObjectURL(link), 60_000);
 }
 
-export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; raw?: BodyInit } = {}): Promise<T> {
+export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; raw?: BodyInit; signal?: AbortSignal } = {}): Promise<T> {
   const res = await fetch(new URL(path, platform.apiUrl), {
     method: init.method ?? (init.body !== undefined || init.raw !== undefined ? 'POST' : 'GET'),
     headers: {
@@ -68,6 +68,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
       ...(init.raw !== undefined ? { 'Content-Type': 'application/octet-stream' } : { 'Content-Type': 'application/json' }),
     },
     body: init.raw ?? (init.body === undefined ? undefined : JSON.stringify(init.body)),
+    signal: init.signal,
   });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
@@ -159,7 +160,7 @@ export interface WebhookTrigger {
   limit?: number;
   paused?: boolean;
 }
-export type TriggerSpec = { cron: string } | { inbox: true } | WebhookTrigger;
+export type TriggerSpec = { cron: string } | { inbox: boolean } | WebhookTrigger;
 
 /** A webhook as the human sees it: with its URL path and signing secret. */
 export interface Webhook {

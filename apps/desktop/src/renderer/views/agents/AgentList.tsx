@@ -1,7 +1,7 @@
 import { useContextMenu, type MenuItem } from '../../components/ContextMenu.tsx';
 import { useAgentMenu } from '../../components/AgentMenu.tsx';
 import { DataTable, LayoutSwitch, useLayout } from '../../components/ListLayout.tsx';
-import { Bot, BotOff, ExternalLink, Plus } from 'lucide-react';
+import { Bot, BotOff, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/button.tsx';
 import { cn } from '../../components/ui/cn.ts';
 import { Badge, Card, Empty, money, PageHeader, StatusBadge } from '../../components/ui/display.tsx';
@@ -13,10 +13,7 @@ import { triggerLabel } from './shared.ts';
 export function AgentList() {
   const agents = useApi<Agent[]>('/api/agents', agentChanged());
   const menu = useAgentMenu();
-  const rowMenu = (a: Agent): MenuItem[] => [
-    { label: 'Open', icon: <ExternalLink />, onSelect: () => go('agents', a.name) },
-    ...menu.items(a),
-  ];
+  const rowMenu = (a: Agent): MenuItem[] => menu.items(a);
   const cardMenu = useContextMenu();
   const [layout, setLayout] = useLayout('agents');
   return (

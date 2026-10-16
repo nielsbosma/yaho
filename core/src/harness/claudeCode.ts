@@ -156,6 +156,8 @@ export const claudeCode: HarnessAdapter = {
       }
       if (m.type === 'result') {
         gotResult = true;
+        // A failed run can still say subtype "success" (an API error ends the turn normally); name only real error kinds.
+        const kind = String(m.subtype ?? '').startsWith('error') ? (m.subtype as string) : undefined;
         if (m.session_id) onEvent({ kind: 'session', sessionId: m.session_id as string });
         onEvent({
           kind: 'result',
@@ -164,7 +166,7 @@ export const claudeCode: HarnessAdapter = {
           cost_usd: typeof m.total_cost_usd === 'number' ? (m.total_cost_usd as number) : undefined,
           error:
             m.is_error || String(m.subtype ?? '').startsWith('error')
-              ? [m.subtype, m.result].filter(Boolean).join(': ') || 'error'
+              ? [kind, m.result].filter(Boolean).join(': ') || 'error'
               : undefined,
         });
       }

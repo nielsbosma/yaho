@@ -206,10 +206,10 @@ function Thread({ id }: { id: string }) {
           answered={thread.data!.filter((r) => r.reply_to === m.id && r.from === 'human').at(-1)?.body}
           onReply={
             m.to === 'human'
-              ? async (body) => {
+              ? async (body, attachments) => {
                   setError(null);
                   try {
-                    await api('/api/messages', { body: { to: m.from, type: 'reply', body, reply_to: m.id } });
+                    await api('/api/messages', { body: { to: m.from, type: 'reply', body, reply_to: m.id, attachments } });
                   } catch (e) {
                     setError((e as Error).message);
                     throw e;
@@ -219,10 +219,15 @@ function Thread({ id }: { id: string }) {
           }
           onMarkRead={m.to === 'human' ? (read) => void api(`/api/messages/${m.id}/read`, { body: { read } }) : undefined}
           canReply={exists(m.from)}
-          onDiscard={async () => {
-            await api(`/api/messages/${m.id}`, { method: 'DELETE' });
-            if (m.id === id) go('inbox');
-          }}
+          onDiscard={
+            // Your own message can be taken back only until the agent has read it or answered after it.
+            m.from === 'human' && (m.read || thread.data!.some((r) => r.from !== 'human' && r.created > m.created))
+              ? undefined
+              : async () => {
+                  await api(`/api/messages/${m.id}`, { method: 'DELETE' });
+                  if (m.id === id) go('inbox');
+                }
+          }
         />
       ))}
     </div>
