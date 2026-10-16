@@ -73,6 +73,22 @@ Hej Anders! Gratulerar till CIO-rollen. ...
 ```
 ````
 
+Numbers that compare (this week vs last, per country, per campaign) go in a Markdown table, not in a sentence.
+For a trend or a comparison worth seeing, add a `chart` block: YAML with `type` (`bar` or `line`), an optional
+`title` and `unit`, the `x` labels, and up to six `series`, each with one number per label. The app draws it, with
+a table view; Slack, Telegram and WhatsApp show the numbers as a table.
+
+````markdown
+```chart
+type: bar
+title: Sessions per channel
+x: [Organic, Direct, Referral]
+series:
+  Oct 8: [729, 1383, 50]
+  Oct 15: [925, 15054, 35]
+```
+````
+
 When a message is about something you made (a banner, a report), register it with `yaho artifact add` first and
 list its id under `artifacts`, so the human sees it right in the message.
 

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { platform } from '../lib/platform.ts';
+import { Chart, parseChart } from './Chart.tsx';
 import { cn } from './ui/cn.ts';
 
 /** Copies text and says so for a moment. */
@@ -63,9 +64,20 @@ const components: Components = {
   blockquote: ({ children }) => <blockquote className="my-2 border-l-2 border-line-strong pl-3 text-muted">{children}</blockquote>,
   hr: () => <hr className="my-4 border-line" />,
   // ```copy [label]: text the human pastes somewhere (a note, an email). Shown as text with a Copy button.
+  // ```chart: YAML with x labels and series, drawn as a bar or line chart (a bad spec shows as code with the reason).
   // Other fenced blocks are code, with a Copy button in the corner.
   pre: ({ node, children }) => {
     const f = fence(node);
+    if (f.lang === 'chart') {
+      const spec = parseChart(f.text);
+      if (typeof spec !== 'string') return <Chart spec={spec} />;
+      return (
+        <div className="my-2">
+          <pre className="overflow-x-auto rounded-lg bg-code p-3 text-[12.5px]">{children}</pre>
+          <div className="mt-1 text-xs text-danger">Chart not drawn: {spec}</div>
+        </div>
+      );
+    }
     if (f.lang === 'copy')
       return (
         <div className="my-2 rounded-lg border border-line bg-code">
@@ -96,8 +108,16 @@ const components: Components = {
       <table className="w-full border-collapse text-sm">{children}</table>
     </div>
   ),
-  th: ({ children }) => <th className="border-b border-line px-2 py-1 text-left font-medium text-muted">{children}</th>,
-  td: ({ children }) => <td className="border-b border-line px-2 py-1 align-top">{children}</td>,
+  th: ({ children, style }) => (
+    <th style={style} className="border-b border-line px-2 py-1 text-left font-medium text-muted">
+      {children}
+    </th>
+  ),
+  td: ({ children, style }) => (
+    <td style={style} className="border-b border-line px-2 py-1 align-top tabular-nums">
+      {children}
+    </td>
+  ),
 };
 
 export function Markdown({ children, className }: { children: string; className?: string }) {
