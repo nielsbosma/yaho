@@ -196,7 +196,7 @@ function Thread({ id }: { id: string }) {
   if (thread.error) return <Empty title="Message not found">{thread.error}</Empty>;
   if (!thread.data) return null;
   return (
-    <div className="mx-auto max-w-3xl space-y-3 p-8">
+    <div className="mx-auto max-w-3xl space-y-3 px-8 pb-8">
       <ErrorNote>{error}</ErrorNote>
       {thread.data.map((m) => (
         <MessageCard
