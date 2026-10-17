@@ -226,7 +226,7 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
                   <div className="relative">
                     <Textarea
                       autoFocus={replying}
-                      className="min-h-24 pb-11"
+                      className="block min-h-24 resize-none pb-11"
                       rows={4}
                       onPaste={files.paste}
                       value={text}
@@ -236,7 +236,7 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
                         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void reply(text);
                       }}
                     />
-                    <div className="absolute right-4 bottom-2 flex items-center gap-1">
+                    <div className="absolute right-2 bottom-2 flex items-center gap-1">
                       {files.button}
                       <Button
                         size="icon"
