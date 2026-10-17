@@ -14,6 +14,8 @@ import { handleResendWebhook } from '../email/resend.ts';
 import { handleTwilioWebhook, WEBHOOK_PATH as TWILIO_WEBHOOK } from '../sms/twilio.ts';
 import { handleMcpOAuthCallback, MCP_OAUTH_CALLBACK } from './mcpRoutes.ts';
 import { handleWebhook, HOOK_PREFIX, MAX_BODY } from '../webhooks/hooks.ts';
+import { handleMcp } from './mcpServer.ts';
+import { handleOAuth, MCP_PATH } from './oauth.ts';
 
 export const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -179,6 +181,16 @@ export function startServer(
     const url = new URL(raw.url ?? '/', 'http://local');
     const path = url.pathname;
     const wantsYaml = !!raw.headers.accept?.includes('yaml');
+    // Yaho's own MCP server and, on the server version, the sign-in MCP clients use: never open to other sites' pages.
+    try {
+      if (path === MCP_PATH) return await handleMcp(ctx, raw, res);
+      if (serverMode() && (path.startsWith('/.well-known/') || path.startsWith('/oauth/')) && (await handleOAuth(ctx, raw, res, url)))
+        return;
+    } catch (e) {
+      const status = e instanceof HttpError ? e.status : 500;
+      if (status === 500) console.error(e);
+      return send(res, status, { error: status === 500 ? 'internal error' : (e as Error).message }, false);
+    }
     // The desktop's UI runs on another origin in development; a server only answers its own pages.
     if (!serverMode()) {
       res.setHeader('Access-Control-Allow-Origin', '*');

@@ -61,6 +61,10 @@ budget. Agents talk to the human through an inbox (and Slack), and never wait fo
   it. Write the file fresh (`writeFileSync(dst, readFileSync(src))`) or reset the group (`shareWithAgents` in
   `core/src/assistant/files.ts`).
 
+- Yaho's own MCP server is `/mcp` (`core/src/api/mcpServer.ts`), with the chat's tools. Desktop: open to loopback
+  connections with a loopback Host and no foreign Origin. Server: OAuth 2.1 (`core/src/api/oauth.ts`), stateless: clients,
+  codes and tokens are signed with the session key, so Sign Out Everywhere ends them.
+
 ## 5. Hosting
 
 - **Demo**: Sliplane service `service_vnt7pvfo72vx` (yaho-demo.sliplane.app), pulls `ghcr.io/nielsbosma/yaho:next`.

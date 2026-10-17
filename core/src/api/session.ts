@@ -71,6 +71,13 @@ function key(ctx: Ctx): Buffer {
 
 const sign = (ctx: Ctx, payload: string) => createHmac('sha256', key(ctx)).update(payload).digest('base64url');
 
+/**
+ * Sign a value with the sessions' key, so it ends with them (a new password or authenticator, Sign Out Everywhere).
+ * purpose keeps a signature made for one thing from passing as another.
+ */
+export const signFor = (ctx: Ctx, purpose: string, payload: string) => sign(ctx, `${purpose}\n${payload}`);
+export const signedBy = (ctx: Ctx, purpose: string, payload: string, sig: string) => eq(sig, signFor(ctx, purpose, payload));
+
 function cookies(req: IncomingMessage): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of (req.headers.cookie ?? '').split(';')) {
@@ -86,7 +93,7 @@ function cookies(req: IncomingMessage): Record<string, string> {
 }
 
 /** Behind Sliplane or Caddy (YAHO_TRUST_PROXY=1) the request arrives as HTTP; the proxy says it was HTTPS. */
-const isHttps = (req: IncomingMessage) =>
+export const isHttps = (req: IncomingMessage) =>
   !!(req.socket as { encrypted?: boolean }).encrypted ||
   (process.env.YAHO_TRUST_PROXY === '1' &&
     String(req.headers['x-forwarded-proto'] ?? '')
