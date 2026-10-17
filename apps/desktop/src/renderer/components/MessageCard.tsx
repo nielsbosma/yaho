@@ -50,7 +50,7 @@ export interface MessageCardProps {
   /** False when the sender no longer exists: replying is pointless, discarding is not. */
   canReply?: boolean;
   compact?: boolean;
-  /** Your answer, when you already replied (here or in Slack): shown in place of the choices and Done. */
+  /** Your answer, when you already replied (here or in Slack): hides the choices and Done. */
   answered?: string;
 }
 
@@ -153,103 +153,96 @@ export function MessageCard({ message: m, onReply, onMarkRead, onDiscard, canRep
             </Button>
           </div>
         )}
-        {!compact && onReply && canReply && !fromHuman && (
+        {/* Once answered, your reply shows as its own card below, so the choices and box go away. */}
+        {!compact && onReply && canReply && !fromHuman && !(sent ?? answered) && (
           <div className="space-y-2 border-t border-line pt-3">
-            {(sent ?? answered) ? (
-              <div className="flex items-center gap-2 text-sm text-ok">
-                <Check className="size-4" /> Replied: <span className="truncate text-ink">{sent ?? answered}</span>
+            {/* Long choices read better as a list of options that wrap; short ones stay buttons. */}
+            {expects && longChoices && (
+              <div className="space-y-1.5">
+                {m.choices!.map((c, i) => (
+                  <button
+                    key={c}
+                    type="button"
+                    disabled={!!sending}
+                    onClick={() => void reply(c)}
+                    className={cn(
+                      'flex w-full cursor-pointer items-start gap-3 rounded-lg border border-line bg-panel px-3 py-2 text-left text-sm leading-snug transition-colors',
+                      'hover:border-accent/50 hover:bg-accent/5 disabled:cursor-default disabled:opacity-60',
+                      sending === c && 'border-accent bg-accent/10',
+                    )}
+                  >
+                    <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
+                      {String.fromCharCode(65 + i)}
+                    </span>
+                    <span className="min-w-0 flex-1">{c}</span>
+                  </button>
+                ))}
               </div>
-            ) : (
-              <>
-                {/* Long choices read better as a list of options that wrap; short ones stay buttons. */}
-                {expects && longChoices && (
-                  <div className="space-y-1.5">
-                    {m.choices!.map((c, i) => (
-                      <button
-                        key={c}
-                        type="button"
-                        disabled={!!sending}
-                        onClick={() => void reply(c)}
-                        className={cn(
-                          'flex w-full cursor-pointer items-start gap-3 rounded-lg border border-line bg-panel px-3 py-2 text-left text-sm leading-snug transition-colors',
-                          'hover:border-accent/50 hover:bg-accent/5 disabled:cursor-default disabled:opacity-60',
-                          sending === c && 'border-accent bg-accent/10',
-                        )}
-                      >
-                        <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
-                          {String.fromCharCode(65 + i)}
-                        </span>
-                        <span className="min-w-0 flex-1">{c}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  {expects &&
-                    !longChoices &&
-                    m.choices?.map((c) => (
-                      <Button key={c} variant="secondary" disabled={!!sending} onClick={() => void reply(c)}>
-                        {c}
-                      </Button>
-                    ))}
-                  {expects && (m.type !== 'question' || !m.choices?.length) ? (
-                    <Button
-                      variant="primary"
-                      disabled={!!sending}
-                      onClick={() => void reply(text.trim() ? `Done. ${text.trim()}` : 'Done')}
-                    >
-                      <Check /> Done
-                    </Button>
-                  ) : null}
-                  {!expects && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => setReplying(!replying)}
-                      title="Write to the agent; it reads it on its next run"
-                    >
-                      <Reply /> Reply
-                    </Button>
-                  )}
-                  {onMarkRead && (
-                    <Button variant="ghost" onClick={() => onMarkRead(!m.read)} className="ml-auto">
-                      {m.read ? 'Mark Unread' : 'Mark Read'}
-                    </Button>
-                  )}
-                  {onDiscard && (
-                    <Button variant="ghost" onClick={onDiscard} title="Discard this message">
-                      <Trash2 /> Discard
-                    </Button>
-                  )}
+            )}
+            <div className="flex flex-wrap gap-2">
+              {expects &&
+                !longChoices &&
+                m.choices?.map((c) => (
+                  <Button key={c} variant="secondary" disabled={!!sending} onClick={() => void reply(c)}>
+                    {c}
+                  </Button>
+                ))}
+              {expects && (m.type !== 'question' || !m.choices?.length) ? (
+                <Button
+                  variant="primary"
+                  disabled={!!sending}
+                  onClick={() => void reply(text.trim() ? `Done. ${text.trim()}` : 'Done')}
+                >
+                  <Check /> Done
+                </Button>
+              ) : null}
+              {!expects && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setReplying(!replying)}
+                  title="Write to the agent; it reads it on its next run"
+                >
+                  <Reply /> Reply
+                </Button>
+              )}
+              {onMarkRead && (
+                <Button variant="ghost" onClick={() => onMarkRead(!m.read)} className="ml-auto">
+                  {m.read ? 'Mark Unread' : 'Mark Read'}
+                </Button>
+              )}
+              {onDiscard && (
+                <Button variant="ghost" onClick={onDiscard} title="Discard this message">
+                  <Trash2 /> Discard
+                </Button>
+              )}
+            </div>
+            {(expects || replying) && files.list}
+            {(expects || replying) && (
+              <div className="relative">
+                <Textarea
+                  autoFocus={replying}
+                  className="min-h-24 pb-11"
+                  rows={4}
+                  onPaste={files.paste}
+                  value={text}
+                  placeholder={m.type === 'question' ? 'Answer in your own words…' : expects ? 'Optional feedback…' : 'Write a reply… (paste screenshots or attach files)'}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void reply(text);
+                  }}
+                />
+                <div className="absolute right-4 bottom-2 flex items-center gap-1">
+                  {files.button}
+                  <Button
+                    size="icon"
+                    disabled={(!text.trim() && !files.items.length) || !!sending}
+                    onClick={() => void reply(text)}
+                    title="Send (Ctrl+Enter)"
+                  >
+                    <Send />
+                  </Button>
                 </div>
-                {(expects || replying) && files.list}
-                {(expects || replying) && (
-                  <div className="relative">
-                    <Textarea
-                      autoFocus={replying}
-                      className="min-h-24 pb-11"
-                      rows={4}
-                      onPaste={files.paste}
-                      value={text}
-                      placeholder={m.type === 'question' ? 'Answer in your own words…' : expects ? 'Optional feedback…' : 'Write a reply… (paste screenshots or attach files)'}
-                      onChange={(e) => setText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void reply(text);
-                      }}
-                    />
-                    <div className="absolute right-4 bottom-2 flex items-center gap-1">
-                      {files.button}
-                      <Button
-                        size="icon"
-                        disabled={(!text.trim() && !files.items.length) || !!sending}
-                        onClick={() => void reply(text)}
-                        title="Send (Ctrl+Enter)"
-                      >
-                        <Send />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
+              </div>
             )}
           </div>
         )}
