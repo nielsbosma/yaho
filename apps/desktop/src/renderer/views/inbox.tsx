@@ -46,8 +46,10 @@ export function InboxView({ route }: ViewProps) {
       <div className="relative flex shrink-0 flex-col border-r border-line" style={{ width: listWidth }}>
         <Resizer width={listWidth} onChange={setListWidth} side="right" initial={380} />
         <div className="app-drag flex items-center gap-2 border-b border-line px-5 pt-6 pb-4">
-          <h1 className="font-serif text-[26px]">Inbox</h1>
-          <span className="text-sm text-muted">{unread ? `${unread} unread` : ''}</span>
+          <div className="flex items-baseline gap-2">
+            <h1 className="font-serif text-[26px]">Inbox</h1>
+            <span className="text-sm text-muted">{unread ? `${unread} unread` : ''}</span>
+          </div>
           <Button
             size="icon"
             variant="ghost"
