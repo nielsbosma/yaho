@@ -197,6 +197,10 @@ pre {
 :root:not([data-chat-open]) .page-header-actions {
   margin-top: max(0px, calc(env(titlebar-area-height, 0px) - 1.5rem));
 }
+/* The chat header sits below the window buttons, so its own buttons keep the right edge instead of crowding them. */
+.chat-header {
+  padding-top: max(0px, calc(env(titlebar-area-height, 0px) - 0.5rem));
+}
 /* A pane that reaches the top right without a page header (the inbox's message pane) starts below the window buttons. */
 .titlebar-strip {
   height: env(titlebar-area-height, 0px);

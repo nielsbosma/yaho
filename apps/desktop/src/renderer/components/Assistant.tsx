@@ -164,7 +164,7 @@ export function Assistant({
   return (
     <aside className="relative flex shrink-0 flex-col border-l border-line bg-sidebar" style={{ width }}>
       <Resizer width={width} onChange={setWidth} side="left" initial={400} />
-      <div className="app-drag titlebar-clear flex h-14 shrink-0 items-center gap-2 border-b border-line pl-4 [--titlebar-pad:1rem]">
+      <div className="app-drag chat-header flex h-14 shrink-0 box-content items-center gap-2 border-b border-line pr-3 pl-4">
         <Sparkles className="size-4 shrink-0 text-accent" />
         {/* The title drops out, rather than wrapping, when the panel is too narrow for it. */}
         <div className="@container min-w-0 flex-1">
