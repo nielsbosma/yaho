@@ -201,13 +201,16 @@ pre {
 .chat-header {
   padding-top: max(0px, calc(env(titlebar-area-height, 0px) - 0.5rem));
 }
-/* A pane that reaches the top right without a page header (the inbox's message pane) starts below the window buttons. */
+/* The inbox's message pane has no page header: its top gap (below the window buttons when they sit over it) moves the window. */
 .titlebar-strip {
-  height: env(titlebar-area-height, 0px);
+  height: calc(env(titlebar-area-height, 0px) + 2rem);
+}
+.titlebar-below {
+  padding-top: calc(env(titlebar-area-height, 0px) + 2rem);
 }
 :root[data-chat-open] .titlebar-strip {
-  display: none;
+  height: 2rem;
 }
-:root:not([data-chat-open]) .titlebar-below {
-  padding-top: env(titlebar-area-height, 0px);
+:root[data-chat-open] .titlebar-below {
+  padding-top: 2rem;
 }
