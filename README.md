@@ -104,6 +104,18 @@ command or a remote URL, or paste the `mcpServers` JSON from Claude Desktop, Cla
 - **Control and testing.** The resource page shows the connection, the server's log, its tools (each one on or off for
   agents, or only the read-only ones), documents and prompts, and runs any tool with **Try**.
 
+### Yaho as an MCP server
+
+Yaho is an MCP server too, at `/mcp` (Streamable HTTP), so another agent can do what Yaho's chat can, with the same
+limits: read and answer the inbox, run, create and change agents, look at jobs, projects and resources.
+**Settings → MCP Server** shows the URL and the command to add it, e.g.
+`claude mcp add --transport http yaho http://127.0.0.1:4700/mcp`.
+
+- **On this computer** it needs no sign-in, but only answers programs on this computer (not web pages).
+- **On a server** the client opens the server in your browser, where you sign in with the password (and code) and press
+  **Allow** (OAuth 2.1 with PKCE). Its tokens end with Sign Out Everywhere or a new password. Scripts can send the API
+  token instead.
+
 Create an agent from **Agents → New agent**: fill in the form, paste a YAML definition, or install one of the
 [examples](examples/agents) (an ads optimiser, a social scout and a day trader; they install disabled, with the
 projects and resources they need).

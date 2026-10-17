@@ -20,6 +20,7 @@ const PANE_ORDER = [
   'guardrails',
   'defaults',
   'server',
+  'mcp',
   'updates',
   'appearance',
   'advanced',

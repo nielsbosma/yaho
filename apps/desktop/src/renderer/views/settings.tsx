@@ -12,6 +12,7 @@ import { Debug } from './settings/Debug.tsx';
 import { Defaults } from './settings/Defaults.tsx';
 import { GuardRails } from './settings/GuardRails.tsx';
 import { Harnesses } from './settings/Harnesses.tsx';
+import { McpServer } from './settings/McpServer.tsx';
 import { ModelProviders } from './settings/ModelProviders.tsx';
 import { Pane, SettingsPanes } from './settings/Panes.tsx';
 import { ServerAccess } from './settings/ServerAccess.tsx';
@@ -123,6 +124,9 @@ export function SettingsView({ route }: { route: string[] }) {
             <ServerAccess />
           </Pane>
         )}
+        <Pane id="mcp" label="MCP Server">
+          <McpServer server={!!state.data?.server} />
+        </Pane>
         <Pane id="updates" label="Updates">
           <Updates settings={s} upd={upd} />
         </Pane>
