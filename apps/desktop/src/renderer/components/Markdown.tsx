@@ -3,6 +3,7 @@ import { useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { platform } from '../lib/platform.ts';
+import { fixTables } from '../lib/tables.ts';
 import { Chart, parseChart } from './Chart.tsx';
 import { cn } from './ui/cn.ts';
 
@@ -124,7 +125,7 @@ export function Markdown({ children, className }: { children: string; className?
   return (
     <div className={cn('leading-relaxed break-words', className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {children}
+        {fixTables(children)}
       </ReactMarkdown>
     </div>
   );
