@@ -18,6 +18,10 @@ describe('plainTables', () => {
     expect(plainTables(md)).toBe('**Sessions**\n```\n        Engagement\n------  ----------\nOct 8          21%\nOct 15        3.5%\n```');
   });
 
+  it('takes a table written without its rule line', () => {
+    expect(plainTables('| Metric | Oct 17 |\n| Users | 22,561 |')).toBe('```\nMetric  Oct 17\n------  ------\nUsers   22,561\n```');
+  });
+
   it('leaves other fences and a broken chart alone', () => {
     const md = '```ts\nconst a = 1 | 2;\n```\n```chart\nnot: [valid\n```';
     expect(plainTables(md)).toBe(md);

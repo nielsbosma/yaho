@@ -45,6 +45,7 @@ export function chartRows(yaml: string): { title: string; rows: string[][] } | u
  */
 export function plainTables(md: string): string {
   const lines = md.replace(/\r\n/g, '\n').split('\n');
+  const isRow = (l: string | undefined) => /^\s*\|.*\|\s*$/.test(l ?? '');
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
@@ -59,9 +60,11 @@ export function plainTables(md: string): string {
       i = j;
       continue;
     }
-    if (line.includes('|') && i + 1 < lines.length && isRule(lines[i + 1]!)) {
+    const ruled = line.includes('|') && i + 1 < lines.length && isRule(lines[i + 1]!);
+    // A table written without its |---| line still counts when two or more lines start and end with |.
+    if (ruled || (isRow(line) && isRow(lines[i + 1]))) {
       const rows = [cells(line)];
-      let j = i + 2;
+      let j = ruled ? i + 2 : i + 1;
       for (; j < lines.length && lines[j]!.includes('|') && lines[j]!.trim(); j++) rows.push(cells(lines[j]!));
       out.push('```', grid(rows.map((r) => r.map((c) => c.replace(/\*\*|__|`/g, '')))), '```');
       i = j - 1;
