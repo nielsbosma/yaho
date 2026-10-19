@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { devNull } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import YAML from 'yaml';
@@ -82,6 +81,13 @@ export class Versions {
     return versionSettings(this.ctx).enabled && this.git !== false;
   }
 
+  /** Empty on purpose: the person's own git config must not apply. Not the null device: Git for Windows cannot read \\.\nul. */
+  private emptyConfig(): string {
+    const file = join(this.ctx.paths.root, 'versions.gitconfig');
+    if (!existsSync(file)) writeFileSync(file, '');
+    return file;
+  }
+
   dir(agent: string): string {
     return join(this.ctx.paths.root, 'versions', agent);
   }
@@ -125,7 +131,7 @@ export class Versions {
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('GIT_')) env[k] = v;
     Object.assign(env, {
       GIT_CONFIG_NOSYSTEM: '1',
-      GIT_CONFIG_GLOBAL: devNull,
+      GIT_CONFIG_GLOBAL: this.emptyConfig(),
       GIT_TERMINAL_PROMPT: '0',
       GIT_AUTHOR_NAME: 'Yaho',
       GIT_AUTHOR_EMAIL: 'yaho@localhost',
