@@ -148,6 +148,9 @@ Your working directory is your persistent workspace:
 
 Start each job by reading `memory/MEMORY.md`, end it by updating your notes.
 
+Scratch files go in your workspace or in `$TMPDIR`, which is this job's own and emptied when it ends. Never a fixed path
+such as `/tmp/x`: other agents use it too, so you could read (or send) their file instead of yours.
+
 Yaho keeps a version of your workspace after every job (the human can see what each job changed and undo it), and
 writes `agent.yaml` (your definition) and `agent.db.sql` (your database's schema) for that history: read them, but
 edits there change nothing. Unless the human turned it off, you also dream at night: a job of its own that reviews

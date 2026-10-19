@@ -105,6 +105,10 @@ export class JobRunner {
     }
   }
 
+  private tmpDir(agent: string, job: string): string {
+    return join(this.ctx.paths.agent(agent), '.yaho', 'tmp', job);
+  }
+
   private pidFile(job: string): string {
     return join(this.ctx.paths.root, 'run', `${job}.pid`);
   }
@@ -324,10 +328,18 @@ export class JobRunner {
     // Never another Claude session's identity or credentials (the harness talks only to the provider Yaho gives it), and
     // never the core's passwords or keys.
     const env = jobEnv();
+    // A temp folder of the job's own: the system one is shared by every agent, so one agent's leftovers (a /tmp/m.yaml)
+    // could be sent by another.
+    const tmp = this.tmpDir(agent.name, job.id);
+    mkdirSync(tmp, { recursive: true });
+    for (const k of Object.keys(env)) if (/^(TMPDIR|TEMP|TMP)$/i.test(k)) delete env[k];
     const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
     Object.assign(env, secrets.env, {
       [pathKey]: jobPath(ctx.paths.bin, env[pathKey] ?? ''),
       YAHO_API_URL: ctx.apiUrl,
+      TMPDIR: tmp,
+      TEMP: tmp,
+      TMP: tmp,
       YAHO_JOB_TOKEN: token,
       YAHO_AGENT: agent.name,
       YAHO_JOB: job.id,
@@ -543,6 +555,11 @@ export class JobRunner {
     rmSync(this.pidFile(r.job), { force: true });
     ctx.db.prepare('DELETE FROM job_tokens WHERE job = ?').run(r.job);
     rmSync(join(ctx.paths.agent(getJob(ctx, r.job).agent), '.yaho', `mcp-${r.job}.json`), { force: true });
+    try {
+      rmSync(this.tmpDir(getJob(ctx, r.job).agent, r.job), { recursive: true, force: true });
+    } catch {
+      // A file still open (Windows) keeps the folder; it is the job's own, so nothing else reads it.
+    }
     void ctx.browser?.close(r.job);
     if (this.shuttingDown) return this.requeueInterrupted(r.job, 'the Yaho core restarted');
     const job = getJob(ctx, r.job);
