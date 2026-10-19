@@ -114,7 +114,7 @@ export function Assistant({
   }, [focus?.kind, focus?.name]);
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
-  }, [state.turns.length, busy, queue.length]);
+  }, [state.turns.length, busy]);
 
   // Every message goes through the queue, so one typed while Yaho works is sent when the turn ends (unless it failed).
   useEffect(() => {
@@ -270,13 +270,18 @@ export function Assistant({
                 <span className="size-2 animate-pulse rounded-full bg-accent" /> Working…
               </div>
             )}
+            {error && <div className="rounded-lg border border-danger/30 bg-danger/8 px-3 py-2 text-sm text-danger">{error}</div>}
+            <div ref={bottom} />
+          </div>
+
+          <div className="border-t border-line p-3">
             {queue.length > 0 && (
-              <div className="space-y-1.5">
+              <div className="mb-2 max-h-48 space-y-1.5 overflow-y-auto">
                 <div className="text-[11px] text-muted">Queued, sent when Yaho is done</div>
                 {queue.map((q) => (
                   <div
                     key={q.id}
-                    className="ml-8 flex items-start gap-2 rounded-xl border border-dashed border-line px-3 py-2 text-sm text-muted"
+                    className="flex items-start gap-2 rounded-xl border border-dashed border-line px-3 py-2 text-sm text-muted"
                   >
                     <div className="min-w-0 flex-1 space-y-2 break-words whitespace-pre-wrap">
                       {q.images.length ? (
@@ -305,11 +310,6 @@ export function Assistant({
                 ))}
               </div>
             )}
-            {error && <div className="rounded-lg border border-danger/30 bg-danger/8 px-3 py-2 text-sm text-danger">{error}</div>}
-            <div ref={bottom} />
-          </div>
-
-          <div className="border-t border-line p-3">
             <div className="rounded-xl border border-line bg-panel p-2 focus-within:border-accent/50">
               {files.list && <div className="mb-2">{files.list}</div>}
               <div className="flex items-end gap-2">
