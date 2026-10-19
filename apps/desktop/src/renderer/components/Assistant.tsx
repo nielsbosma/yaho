@@ -30,6 +30,13 @@ interface Turn {
   steps?: Step[];
 }
 
+/** A message typed while Yaho is still working, sent when the turn ends. */
+interface Queued {
+  id: string;
+  text: string;
+  images: string[];
+}
+
 /** A chat lasts as long as the panel is open: closing it (or Ctrl+J) discards the conversation. */
 const empty = (): { history: ChatMessage[]; turns: Turn[] } => ({ history: [], turns: [] });
 
@@ -89,6 +96,7 @@ export function Assistant({
   const [text, setText] = useState('');
   const files = useAttachments();
   const [busy, setBusy] = useState(false);
+  const [queue, setQueue] = useState<Queued[]>([]);
   const running = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -100,21 +108,30 @@ export function Assistant({
   // A new subject starts a new conversation.
   useEffect(() => {
     setState(empty());
+    setQueue([]);
     setError(null);
     input.current?.focus();
   }, [focus?.kind, focus?.name]);
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
-  }, [state.turns.length, busy]);
+  }, [state.turns.length, busy, queue.length]);
 
+  // Every message goes through the queue, so one typed while Yaho works is sent when the turn ends (unless it failed).
+  useEffect(() => {
+    if (busy || error || !queue.length) return;
+    const [next, ...rest] = queue;
+    setQueue(rest);
+    void ask(next!);
+  }, [busy, error, queue]);
+
+  /** Typed text and attached files as one message: images go to the model to look at; other files are uploaded, and the chat reads them by path. */
   const send = async (msg: string) => {
     const typed = msg.trim();
-    if ((!typed && !files.items.length) || busy) return;
+    if (!typed && !files.items.length) return;
     setError(null);
     setText('');
     const added = files.items;
     files.clear();
-    // Images go to the model to look at; other files are uploaded, and the chat reads them by path.
     let pics: string[];
     let paths: string[];
     try {
@@ -124,7 +141,16 @@ export function Assistant({
       setError((e as Error).message);
       return;
     }
-    const content = [typed, ...paths.map((p) => `Attached file: ${p}`)].filter(Boolean).join('\n');
+    const item = {
+      id: crypto.randomUUID(),
+      text: [typed, ...paths.map((p) => `Attached file: ${p}`)].filter(Boolean).join('\n'),
+      images: pics,
+    };
+    setQueue((q) => [...q, item]);
+  };
+
+  const ask = async ({ text: content, images: pics }: Queued) => {
+    setError(null);
     const parts = pics.length
       ? [
           ...(content ? [{ type: 'text' as const, text: content }] : []),
@@ -158,6 +184,7 @@ export function Assistant({
 
   const reset = () => {
     setState(empty());
+    setQueue([]);
     setError(null);
   };
 
@@ -243,6 +270,41 @@ export function Assistant({
                 <span className="size-2 animate-pulse rounded-full bg-accent" /> Working…
               </div>
             )}
+            {queue.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-[11px] text-muted">Queued, sent when Yaho is done</div>
+                {queue.map((q) => (
+                  <div
+                    key={q.id}
+                    className="ml-8 flex items-start gap-2 rounded-xl border border-dashed border-line px-3 py-2 text-sm text-muted"
+                  >
+                    <div className="min-w-0 flex-1 space-y-2 break-words whitespace-pre-wrap">
+                      {q.images.length ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {q.images.map((src, j) => (
+                            <img
+                              key={j}
+                              src={src}
+                              alt="Pasted screenshot"
+                              className="max-h-16 max-w-full rounded-md border border-line opacity-70"
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                      {q.text}
+                    </div>
+                    <button
+                      type="button"
+                      title="Remove From Queue"
+                      onClick={() => setQueue((xs) => xs.filter((x) => x.id !== q.id))}
+                      className="shrink-0 cursor-pointer hover:text-ink"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {error && <div className="rounded-lg border border-danger/30 bg-danger/8 px-3 py-2 text-sm text-danger">{error}</div>}
             <div ref={bottom} />
           </div>
@@ -263,16 +325,25 @@ export function Assistant({
                       void send(text);
                     }
                   }}
-                  placeholder={focus ? `Ask about ${focus.name}…` : 'Ask Yaho to do something…'}
+                  placeholder={
+                    busy ? 'Queue a message for when Yaho is done…' : focus ? `Ask about ${focus.name}…` : 'Ask Yaho to do something…'
+                  }
                   className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 text-sm outline-none placeholder:text-muted/70"
                 />
                 {files.button}
-                {busy ? (
+                {busy && (
                   <Button size="icon" variant="primary" onClick={() => running.current?.abort()} title="Stop">
                     <Square className="fill-current" />
                   </Button>
-                ) : (
-                  <Button size="icon" variant="primary" disabled={!text.trim() && !files.items.length} onClick={() => void send(text)} title="Send (Enter)">
+                )}
+                {(!busy || text.trim() || files.items.length > 0) && (
+                  <Button
+                    size="icon"
+                    variant="primary"
+                    disabled={!text.trim() && !files.items.length}
+                    onClick={() => void send(text)}
+                    title={busy ? 'Queue (Enter)' : 'Send (Enter)'}
+                  >
                     <ArrowUp />
                   </Button>
                 )}
