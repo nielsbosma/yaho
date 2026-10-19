@@ -10,7 +10,7 @@ import { validateRules } from './guard/commandRules.ts';
 
 // ---------- shapes (what the API and YAML speak) ----------
 
-export type TriggerSpec = { cron: string } | { inbox: boolean } |{ delay: string; next_fire: string } | WebhookTrigger;
+export type TriggerSpec = { cron: string } | { inbox: boolean } | { delay: string; next_fire: string } | WebhookTrigger;
 
 /** How a webhook's deliveries are checked, besides the secret token in its URL. */
 export const WEBHOOK_VERIFY = ['none', 'github', 'stripe', 'svix', 'yaho'] as const;
@@ -29,6 +29,9 @@ export interface WebhookTrigger {
 
 export const WEBHOOK_LIMIT = 60;
 
+export const BUDGET_RESETS = ['never', 'daily', 'monthly'] as const;
+export type BudgetReset = (typeof BUDGET_RESETS)[number];
+
 export interface Agent {
   name: string;
   enabled: boolean;
@@ -36,6 +39,8 @@ export interface Agent {
   harness: string;
   models: string[];
   budget_usd: number;
+  /** When the budget starts over: each day at local midnight, on the 1st of each month, or never (the default). */
+  budget_reset?: BudgetReset;
   max_parallel: number;
   guardrails: Guardrails;
   triggers: TriggerSpec[];
@@ -167,6 +172,7 @@ function agentFromRow(ctx: Ctx, r: Row): Agent {
     harness: r.harness as string,
     models: json(r.models as string, []),
     budget_usd: r.budget_usd as number,
+    ...(r.budget_reset && r.budget_reset !== 'never' ? { budget_reset: r.budget_reset as BudgetReset } : {}),
     max_parallel: r.max_parallel as number,
     guardrails: json(r.guardrails as string, {}),
     triggers,
@@ -193,16 +199,10 @@ export function listAgents(
 }
 
 export function agentStats(ctx: Ctx, name: string) {
-  const s = ctx.db
-    .prepare(
-      `SELECT COALESCE(SUM(cost_usd),0) spent,
-              SUM(status='running') running, SUM(status='queued') queued
-       FROM jobs WHERE agent = ?`,
-    )
-    .get(name) as Row;
+  const s = ctx.db.prepare(`SELECT SUM(status='running') running, SUM(status='queued') queued FROM jobs WHERE agent = ?`).get(name) as Row;
   const unread = ctx.db.prepare('SELECT COUNT(*) n FROM messages WHERE to_addr = ? AND read = 0').get(`agent:${name}`) as Row;
   return {
-    spent_usd: Number(s.spent ?? 0),
+    spent_usd: agentSpend(ctx, name),
     running: Number(s.running ?? 0),
     queued: Number(s.queued ?? 0),
     unread: Number(unread.n ?? 0),
@@ -245,6 +245,7 @@ export function saveAgent(
     harness: input.harness ?? (prev?.harness as string) ?? d.harness,
     models: input.models ?? json(prev?.models as string, d.models),
     budget_usd: input.budget_usd ?? (prev?.budget_usd as number) ?? d.budget_usd,
+    budget_reset: input.budget_reset ?? (prev?.budget_reset as BudgetReset | undefined) ?? 'never',
     max_parallel: Math.max(1, input.max_parallel ?? (prev?.max_parallel as number) ?? d.max_parallel),
     guardrails: input.guardrails ?? json(prev?.guardrails as string, d.guardrails),
     // A new agent starts when a message arrives for it, unless it says otherwise ({ inbox: false }).
@@ -259,6 +260,7 @@ export function saveAgent(
     dreaming: input.dreaming ?? (prev ? !!prev.dreaming : true),
   };
   if (!ctx.settings.harnesses[a.harness]) throw new HttpError(400, `unknown harness ${a.harness}`);
+  if (!BUDGET_RESETS.includes(a.budget_reset!)) throw new HttpError(400, `budget_reset must be one of ${BUDGET_RESETS.join(', ')}`);
   if (a.guardrails.command_rules !== undefined)
     try {
       a.guardrails = { ...a.guardrails, command_rules: validateRules(a.guardrails.command_rules) };
@@ -293,10 +295,10 @@ export function saveAgent(
         db.prepare(`UPDATE ${table} SET agent = ? WHERE agent = ?`).run(input.name, rename);
     }
     db.prepare(
-      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, max_parallel, guardrails, email, sms, browser, dreaming, created, updated)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO agents (name, enabled, briefing, harness, models, budget_usd, budget_reset, max_parallel, guardrails, email, sms, browser, dreaming, created, updated)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(name) DO UPDATE SET enabled=excluded.enabled, briefing=excluded.briefing, harness=excluded.harness,
-         models=excluded.models, budget_usd=excluded.budget_usd, max_parallel=excluded.max_parallel,
+         models=excluded.models, budget_usd=excluded.budget_usd, budget_reset=excluded.budget_reset, max_parallel=excluded.max_parallel,
          guardrails=excluded.guardrails, email=excluded.email, sms=excluded.sms, browser=excluded.browser, dreaming=excluded.dreaming, updated=excluded.updated`,
     ).run(
       a.name,
@@ -305,6 +307,7 @@ export function saveAgent(
       a.harness,
       JSON.stringify(a.models),
       a.budget_usd,
+      a.budget_reset ?? 'never',
       a.max_parallel,
       JSON.stringify(a.guardrails),
       a.email ? 1 : 0,
@@ -899,8 +902,41 @@ export function totalSpend(ctx: Ctx): number {
   return Number((ctx.db.prepare('SELECT COALESCE(SUM(cost_usd),0) s FROM jobs').get() as Row).s);
 }
 
+/** When the current budget period began (local time), or null for a budget that never resets. */
+export function budgetPeriodStart(reset: BudgetReset | undefined, at = new Date()): Date | null {
+  if (reset === 'daily') return new Date(at.getFullYear(), at.getMonth(), at.getDate());
+  if (reset === 'monthly') return new Date(at.getFullYear(), at.getMonth(), 1);
+  return null;
+}
+
+/** When the budget next starts over, or null. */
+export function budgetPeriodEnd(reset: BudgetReset | undefined, at = new Date()): Date | null {
+  if (reset === 'daily') return new Date(at.getFullYear(), at.getMonth(), at.getDate() + 1);
+  if (reset === 'monthly') return new Date(at.getFullYear(), at.getMonth() + 1, 1);
+  return null;
+}
+
+/**
+ * What an agent spent in its current budget period. A job that ran across the start of the period counts only what
+ * it cost since then, read from its last cost event before the start.
+ */
 export function agentSpend(ctx: Ctx, agent: string): number {
-  return Number((ctx.db.prepare('SELECT COALESCE(SUM(cost_usd),0) s FROM jobs WHERE agent = ?').get(agent) as Row).s);
+  const r = ctx.db.prepare('SELECT budget_reset FROM agents WHERE name = ?').get(agent) as Row | undefined;
+  const start = budgetPeriodStart(r?.budget_reset as BudgetReset | undefined);
+  if (!start) return Number((ctx.db.prepare('SELECT COALESCE(SUM(cost_usd),0) s FROM jobs WHERE agent = ?').get(agent) as Row).s);
+  const since = start.toISOString();
+  return Number(
+    (
+      ctx.db
+        .prepare(
+          `SELECT COALESCE(SUM(MAX(0, cost_usd - COALESCE((
+             SELECT json_extract(e.data, '$.total_usd') FROM job_events e
+             WHERE e.job = jobs.id AND e.kind = 'cost' AND e.created < ? ORDER BY e.id DESC LIMIT 1), 0))), 0) s
+           FROM jobs WHERE agent = ? AND (ended IS NULL OR ended >= ?)`,
+        )
+        .get(since, agent, since) as Row
+    ).s,
+  );
 }
 
 // ---------- artifacts ----------

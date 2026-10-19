@@ -298,6 +298,8 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
     const spent = s.agentSpend(ctx, w.agent);
     return {
       budget_usd: a.budget_usd,
+      budget_reset: a.budget_reset ?? 'never',
+      resets_at: s.budgetPeriodEnd(a.budget_reset)?.toISOString() ?? null,
       spent_usd: Number(spent.toFixed(6)),
       remaining_usd: Number(Math.max(0, a.budget_usd - spent).toFixed(6)),
       this_job_usd: s.getJob(ctx, w.job).cost_usd,

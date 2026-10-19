@@ -66,7 +66,7 @@ export function tools(ctx: Ctx): Record<string, Tool> {
     },
     save_agent: {
       description:
-        'Create or update an agent from a YAML definition (fields: name, enabled, briefing, harness, models, budget_usd, max_parallel, triggers [{cron: "..."} | {inbox: true}; a new agent gets {inbox: true} unless you pass {inbox: false}], projects, resources, email (true: its own email address through Resend), sms (true: text people from the shared Twilio number), browser (true: a real browser in each job, yaho browser), guardrails {rate_per_hour, cooldown_seconds, hop_limit, wait_for_inbox: skip scheduled runs while the human has unread messages from the agent, command_rules: [{pattern, action: block|ask|allow, note}] checked with the global Command Rules when those are on}). Omitted fields keep their current value. To rename, pass rename_from. Raising a budget or loosening guardrails is left to the human, on the agent page.',
+        'Create or update an agent from a YAML definition (fields: name, enabled, briefing, harness, models, budget_usd, budget_reset (never|daily|monthly: when the budget starts over), max_parallel, triggers [{cron: "..."} | {inbox: true}; a new agent gets {inbox: true} unless you pass {inbox: false}], projects, resources, email (true: its own email address through Resend), sms (true: text people from the shared Twilio number), browser (true: a real browser in each job, yaho browser), guardrails {rate_per_hour, cooldown_seconds, hop_limit, wait_for_inbox: skip scheduled runs while the human has unread messages from the agent, command_rules: [{pattern, action: block|ask|allow, note}] checked with the global Command Rules when those are on}). Omitted fields keep their current value. To rename, pass rename_from. Raising a budget or loosening guardrails is left to the human, on the agent page.',
       parameters: obj({ yaml: str('the agent definition in YAML'), rename_from: str('current name, when renaming') }, ['yaml']),
       run: (a, out) => {
         const def = yamlDef<s.Agent>(a);
@@ -76,6 +76,9 @@ export function tools(ctx: Ctx): Record<string, Tool> {
         if (def.budget_usd !== undefined && typeof def.budget_usd !== 'number') throw new HttpError(400, 'budget_usd is a number');
         if (typeof def.budget_usd === 'number' && def.budget_usd > (prev?.budget_usd ?? d.budget_usd))
           throw new HttpError(403, `${INUI} raise a budget: the human does that on the agent's page`);
+        const resets = ['never', 'monthly', 'daily'];
+        if (def.budget_reset !== undefined && resets.indexOf(String(def.budget_reset)) > resets.indexOf(prev?.budget_reset ?? 'never'))
+          throw new HttpError(403, `${INUI} make a budget reset more often: the human does that on the agent's page`);
         // Guardrail fields left out keep their value here too, rather than dropping the limit.
         const base = prev?.guardrails ?? d.guardrails;
         if (def.guardrails) def.guardrails = { ...base, ...def.guardrails };

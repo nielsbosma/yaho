@@ -13,6 +13,7 @@ import { JobList } from '../jobs.tsx';
 export function AgentOverview({ agent: a, onError }: { agent: Agent; onError: (e: string | null) => void }) {
   const [raise, setRaise] = useState(false);
   const [budget, setBudget] = useState(String(a.budget_usd));
+  const period = a.budget_reset === 'daily' ? ' today' : a.budget_reset === 'monthly' ? ' this month' : '';
   const pct = Math.min(100, ((a.spent_usd ?? 0) / Math.max(0.0001, a.budget_usd)) * 100);
   return (
     <>
@@ -20,7 +21,11 @@ export function AgentOverview({ agent: a, onError }: { agent: Agent; onError: (e
         <Card className="p-4">
           <div className="text-xs text-muted">Budget</div>
           <div className="mt-1 font-serif text-2xl">
-            {money(a.spent_usd)} <span className="text-base text-muted">of {money(a.budget_usd)}</span>
+            {money(a.spent_usd)}{' '}
+            <span className="text-base text-muted">
+              of {money(a.budget_usd)}
+              {period}
+            </span>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-hover">
             <div className={cn('h-full', pct >= 100 ? 'bg-danger' : 'bg-accent')} style={{ width: `${pct}%` }} />
@@ -93,7 +98,7 @@ export function AgentOverview({ agent: a, onError }: { agent: Agent; onError: (e
       >
         <Field
           label="Budget in USD"
-          hint={`Spent so far: ${money(a.spent_usd)}. Jobs stopped by the budget can be continued after raising it.`}
+          hint={`Spent${period || ' so far'}: ${money(a.spent_usd)}. Jobs stopped by the budget can be continued after raising it.`}
         >
           <Input type="number" min="0" step="0.5" value={budget} onChange={(e) => setBudget(e.target.value)} autoFocus />
         </Field>

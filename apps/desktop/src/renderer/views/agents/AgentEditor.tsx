@@ -36,6 +36,7 @@ const definitionOf = (a: Agent) => ({
   harness: a.harness,
   models: a.models,
   budget_usd: a.budget_usd,
+  ...(a.budget_reset ? { budget_reset: a.budget_reset } : {}),
   max_parallel: a.max_parallel,
   triggers: a.triggers,
   projects: a.projects,
@@ -177,8 +178,8 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
               <Field label="Allowed Models" hint="From your model providers. Jobs run with the primary." group>
                 <ModelPicker value={draft.models} onChange={(v) => set('models', v)} />
               </Field>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Budget (USD)" hint="What the agent may spend on itself, in total.">
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Budget (USD)" hint="What the agent may spend on itself in each period.">
                   <Input
                     type="number"
                     min="0"
@@ -186,6 +187,18 @@ export function AgentEditor({ existing }: { existing?: Agent }) {
                     value={draft.budget_usd}
                     onChange={(e) => set('budget_usd', Number(e.target.value))}
                   />
+                </Field>
+                <Field label="Budget Resets" hint="Daily at midnight, or on the 1st of each month.">
+                  <Select
+                    value={draft.budget_reset ?? 'never'}
+                    onChange={(e) =>
+                      set('budget_reset', e.target.value === 'never' ? undefined : (e.target.value as Agent['budget_reset']))
+                    }
+                  >
+                    <option value="never">Never</option>
+                    <option value="daily">Daily</option>
+                    <option value="monthly">Monthly</option>
+                  </Select>
                 </Field>
                 <Field label="Max Parallel Jobs" hint="How many of its jobs may run at once.">
                   <Input type="number" min="1" value={draft.max_parallel} onChange={(e) => set('max_parallel', Number(e.target.value))} />

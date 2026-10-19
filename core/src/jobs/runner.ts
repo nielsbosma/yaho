@@ -12,7 +12,17 @@ import type { HarnessEvent, HarnessProcess, HarnessRun } from '../harness/types.
 import { envForAgent } from '../secrets/dopbase.ts';
 import { jobEnv } from '../harness/asAgent.ts';
 import type { Agent, Job } from '../store.ts';
-import { HttpError, addJobEvent, agentSpend, ensureAgentWorkspace, getAgent, getJob, getResource, updateJob } from '../store.ts';
+import {
+  HttpError,
+  addJobEvent,
+  agentSpend,
+  totalSpend,
+  ensureAgentWorkspace,
+  getAgent,
+  getJob,
+  getResource,
+  updateJob,
+} from '../store.ts';
 import { procId, sameProc } from '../harness/proc.ts';
 import { contextPrompt, systemPrompt } from './prompt.ts';
 import type { ModelPrice } from './litellm.ts';
@@ -101,11 +111,11 @@ export class JobRunner {
 
   private refreshSpend(maxAgeMs = 2000): void {
     if (Date.now() - this.spendCache.at < maxAgeMs) return;
-    const rows = this.ctx.db.prepare('SELECT agent, COALESCE(SUM(cost_usd),0) s FROM jobs GROUP BY agent').all() as Row[];
+    const agents = this.ctx.db.prepare('SELECT name FROM agents').all() as Row[];
     this.spendCache = {
       at: Date.now(),
-      total: rows.reduce((a, r) => a + Number(r.s), 0),
-      agents: new Map(rows.map((r) => [r.agent as string, Number(r.s)])),
+      total: totalSpend(this.ctx),
+      agents: new Map(agents.map((r) => [r.name as string, agentSpend(this.ctx, r.name as string)])),
     };
   }
 

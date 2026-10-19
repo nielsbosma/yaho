@@ -114,7 +114,11 @@ export function AgentTree({ agents, active }: { agents: Agent[] | null | undefin
         <BotOff className={cn('size-4 shrink-0', a.running ? 'text-info' : 'text-muted/70')} aria-label="Disabled" />
       )}
       <span className="truncate">{a.name}</span>
-      {a.running ? <span className="ml-auto size-1.5 animate-pulse rounded-full bg-info" /> : null}
+      {a.running ? (
+        <span className="ml-auto size-1.5 animate-pulse rounded-full bg-info" />
+      ) : (a.spent_usd ?? 0) >= a.budget_usd ? (
+        <span className="ml-auto size-1.5 rounded-full bg-danger" title="Budget spent" aria-label="Budget spent" />
+      ) : null}
     </a>
   );
 
