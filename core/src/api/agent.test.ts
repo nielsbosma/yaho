@@ -109,6 +109,20 @@ describe('yaho CLI inside a job', () => {
     expect(session.summary).toBe('all done');
   });
 
+  it('gives each job a temp folder of its own, emptied when it ends', async () => {
+    const tmpOf = async (agent: string) => {
+      script(agent, [{ cmd: 'node -e "console.log(require(\'os\').tmpdir())"' }, { cmd: 'yaho finish' }]);
+      const job = await api<Job>(`/api/agents/${agent}/run`, { method: 'POST' });
+      await waitFor(job.id);
+      return { job: job.id, tmp: (await toolOutputs(job.id))[0]!.trim() };
+    };
+    const a = await tmpOf('alpha');
+    const b = await tmpOf('beta');
+    expect(a.tmp).toBe(join(dir, 'agents', 'alpha', '.yaho', 'tmp', a.job));
+    expect(b.tmp).toBe(join(dir, 'agents', 'beta', '.yaho', 'tmp', b.job));
+    expect(existsSync(a.tmp)).toBe(false);
+  });
+
   it('scopes what an agent can see', async () => {
     const toHuman = (await api<Message[]>('/api/messages?to=human'))[0]!;
     script('beta', [

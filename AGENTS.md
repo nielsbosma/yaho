@@ -61,6 +61,10 @@ budget. Agents talk to the human through an inbox (and Slack), and never wait fo
   it. Write the file fresh (`writeFileSync(dst, readFileSync(src))`) or reset the group (`shareWithAgents` in
   `core/src/assistant/files.ts`).
 
+- Each job gets its own temp folder (`TMPDIR`/`TEMP`/`TMP` = `<workspace>/.yaho/tmp/<job>`, removed when the job ends):
+  the system temp is shared by every agent, and one agent once sent another's leftover `/tmp/m.yaml`. A literal `/tmp`
+  path in Python on Windows (`C:\tmp`) or on the server is still shared.
+
 - Yaho's own MCP server is `/mcp` (`core/src/api/mcpServer.ts`), with the chat's tools. Desktop: open to loopback
   connections with a loopback Host and no foreign Origin. Server: OAuth 2.1 (`core/src/api/oauth.ts`), stateless: clients,
   codes and tokens are signed with the session key, so Sign Out Everywhere ends them.
