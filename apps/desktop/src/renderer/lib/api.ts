@@ -60,7 +60,10 @@ export async function downloadFile(path: string, params: Record<string, string>,
   setTimeout(() => URL.revokeObjectURL(link), 60_000);
 }
 
-export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; raw?: BodyInit; signal?: AbortSignal } = {}): Promise<T> {
+export async function api<T = unknown>(
+  path: string,
+  init: { method?: string; body?: unknown; raw?: BodyInit; signal?: AbortSignal } = {},
+): Promise<T> {
   const res = await fetch(new URL(path, platform.apiUrl), {
     method: init.method ?? (init.body !== undefined || init.raw !== undefined ? 'POST' : 'GET'),
     headers: {
@@ -185,6 +188,8 @@ export interface Agent {
   harness: string;
   models: string[];
   budget_usd: number;
+  /** When the budget starts over; never when absent. */
+  budget_reset?: 'daily' | 'monthly';
   max_parallel: number;
   email?: boolean;
   sms?: boolean;

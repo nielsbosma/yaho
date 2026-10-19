@@ -106,6 +106,43 @@ describe('budgets', () => {
     expect((await until(second.id, ended)).status).toBe('finished');
   });
 
+  it('counts only the current period for a budget that resets', async () => {
+    await api('/api/agents', { body: { name: 'daily', budget_usd: 0.0015, budget_reset: 'daily' } });
+    const first = await api<Job>('/api/agents/daily/run', { method: 'POST' });
+    expect((await until(first.id, ended)).status).toBe('finished');
+    // The second job gets only what is left, and is stopped once it spends that.
+    const blocked = await api<Job>('/api/agents/daily/run', { method: 'POST' });
+    expect((await until(blocked.id, ended)).status).toBe('budget_exhausted');
+    const agents = await api<Array<{ name: string; spent_usd: number; budget_reset?: string }>>('/api/agents');
+    expect(agents.find((a) => a.name === 'daily')).toMatchObject({ spent_usd: 0.002, budget_reset: 'daily' });
+
+    // Yesterday's spend no longer counts.
+    const yesterday = new Date(Date.now() - 36 * 3600_000).toISOString();
+    ctx.db.prepare("UPDATE jobs SET created = ?, ended = ? WHERE agent = 'daily'").run(yesterday, yesterday);
+    ctx.db.prepare("UPDATE job_events SET created = ? WHERE job IN (SELECT id FROM jobs WHERE agent = 'daily')").run(yesterday);
+    expect((await api<Array<{ name: string; spent_usd: number }>>('/api/agents')).find((a) => a.name === 'daily')!.spent_usd).toBe(0);
+    await new Promise((r) => setTimeout(r, 2100));
+    const next = await api<Job>('/api/agents/daily/run', { method: 'POST' });
+    expect((await until(next.id, ended)).status).toBe('finished');
+
+    // A job that ran across midnight counts what it cost since then.
+    ctx.db.prepare('UPDATE jobs SET ended = ? WHERE id = ?').run(new Date().toISOString(), first.id);
+    ctx.db
+      .prepare("INSERT INTO job_events (job, kind, data, created) VALUES (?, 'cost', ?, ?)")
+      .run(first.id, JSON.stringify({ total_usd: 0.0004 }), yesterday);
+    ctx.db
+      .prepare("UPDATE job_events SET created = ? WHERE job = ? AND kind = 'cost' AND data NOT LIKE '%0.0004%'")
+      .run(new Date().toISOString(), first.id);
+    const spent = (await api<Array<{ name: string; spent_usd: number }>>('/api/agents')).find((a) => a.name === 'daily')!.spent_usd;
+    expect(spent).toBeCloseTo(0.001 + 0.0006);
+
+    await api('/api/agents/daily', { method: 'PATCH', body: { budget_reset: 'never' } });
+    expect((await api<Array<{ name: string; spent_usd: number }>>('/api/agents')).find((a) => a.name === 'daily')!.spent_usd).toBeCloseTo(
+      0.002,
+    );
+    await expect(api('/api/agents/daily', { method: 'PATCH', body: { budget_reset: 'weekly' } })).rejects.toThrow(/budget_reset/);
+  });
+
   it('survives deleting an agent while its job runs', async () => {
     await api('/api/agents', { body: { name: 'doomed', budget_usd: 1 } });
     mkdirSync(join(dir, 'agents', 'doomed'), { recursive: true });

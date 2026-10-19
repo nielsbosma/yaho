@@ -129,6 +129,7 @@ briefing: |
 harness: claude-code
 models: [claude-sonnet-5-5, claude-haiku-5-5] # names as defined in LiteLLM
 budget_usd: 30 # what the agent may spend on itself
+budget_reset: monthly # optional: daily or monthly starts the budget over; never by default
 max_parallel: 1
 triggers:
   - cron: '0 7 * * *'

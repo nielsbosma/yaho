@@ -213,4 +213,6 @@ export const migrations: string[] = [
    ALTER TABLE jobs ADD COLUMN commit_sha TEXT;
    ALTER TABLE agents ADD COLUMN dreaming INTEGER NOT NULL DEFAULT 1;
    ALTER TABLE agents ADD COLUMN last_dream TEXT;`,
+  // 18: an agent's budget can reset each day or month (never by default).
+  `ALTER TABLE agents ADD COLUMN budget_reset TEXT NOT NULL DEFAULT 'never';`,
 ];
