@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://sliplane.opendeploy.cloud/schema/v1.json
+version: 1
+
+app:
+  name: Yaho
+  description: Your own AI agents on a server, with Claude Code, Codex, a browser and a secrets store, behind a password.
+  icon: assets/logo/mark-256.png
+  docs: https://github.com/nielsbosma/yaho
+
+server:
+  minimum: base
+  recommended: medium
+
+inputs:
+  password:
+    type: secret
+    label: Password
+    help: Signs you in to Yaho. Use a long one, since the server is on the internet.
+    required: true
+
+volumes:
+  data:
+    description: Everything Yaho keeps, the agents' home and sign-ins included.
+
+services:
+  web:
+    image: ghcr.io/nielsbosma/yaho:${{ release.version }}
+    public: true
+    port: 4700
+    healthcheck: /api/health
+    volumes:
+      - name: data
+        mountPath: /data
+    env:
+      YAHO_PASSWORD: ${{ inputs.password }}
+      YAHO_TRUST_PROXY: "1"
+      YAHO_PUBLIC_URL: ${{ services.web.url }}
+
+done:
+  open: ${{ services.web.url }}
+  message: Sign in with your password, then the first-run setup walks you through models, Claude Code and your budget.
