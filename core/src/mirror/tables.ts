@@ -7,6 +7,13 @@ const cells = (line: string) =>
     .split(/(?<!\\)\|/)
     .map((c) => c.trim().replace(/\\\|/g, '|'));
 const isRule = (line: string) => line.includes('|') && /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line);
+
+/** The number of cells in a line that reads as a table row (two or more, split at |), else 0. */
+function rowCells(line: string | undefined): number {
+  const t = line?.trim() ?? '';
+  if (!t.includes('|') || isRule(t) || /^(```|#|>|[-*+]\s|\d+\.\s)/.test(t)) return 0;
+  return cells(t).length >= 2 ? cells(t).length : 0;
+}
 const isNumber = (c: string) => /^[-+]?[$€£]?[\d,. ]+[%kKMB]?$/.test(c);
 
 /** Rows as aligned monospace text: numbers right-aligned, a rule under the header. */
@@ -45,7 +52,6 @@ export function chartRows(yaml: string): { title: string; rows: string[][] } | u
  */
 export function plainTables(md: string): string {
   const lines = md.replace(/\r\n/g, '\n').split('\n');
-  const isRow = (l: string | undefined) => /^\s*\|.*\|\s*$/.test(l ?? '');
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
@@ -61,11 +67,13 @@ export function plainTables(md: string): string {
       continue;
     }
     const ruled = line.includes('|') && i + 1 < lines.length && isRule(lines[i + 1]!);
-    // A table written without its |---| line still counts when two or more lines start and end with |.
-    if (ruled || (isRow(line) && isRow(lines[i + 1]))) {
+    // A table written without its |---| line still counts: two or more lines in a row with the same number of cells.
+    const n = rowCells(line);
+    if (ruled || (n > 0 && rowCells(lines[i + 1]) === n)) {
       const rows = [cells(line)];
       let j = ruled ? i + 2 : i + 1;
-      for (; j < lines.length && lines[j]!.includes('|') && lines[j]!.trim(); j++) rows.push(cells(lines[j]!));
+      for (; j < lines.length && (ruled ? lines[j]!.includes('|') && lines[j]!.trim() : rowCells(lines[j]) === n); j++)
+        rows.push(cells(lines[j]!));
       out.push('```', grid(rows.map((r) => r.map((c) => c.replace(/\*\*|__|`/g, '')))), '```');
       i = j - 1;
       continue;
