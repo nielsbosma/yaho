@@ -22,6 +22,10 @@ describe('plainTables', () => {
     expect(plainTables('| Metric | Oct 17 |\n| Users | 22,561 |')).toBe('```\nMetric  Oct 17\n------  ------\nUsers   22,561\n```');
   });
 
+  it('takes rows without outer pipes or rule line', () => {
+    expect(plainTables('Metric | Oct 19\nUsers | 4,292\nDone')).toBe('```\nMetric  Oct 19\n------  ------\nUsers    4,292\n```\nDone');
+  });
+
   it('leaves other fences and a broken chart alone', () => {
     const md = '```ts\nconst a = 1 | 2;\n```\n```chart\nnot: [valid\n```';
     expect(plainTables(md)).toBe(md);
