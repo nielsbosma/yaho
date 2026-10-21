@@ -109,6 +109,26 @@ describe('yaho CLI inside a job', () => {
     expect(session.summary).toBe('all done');
   });
 
+  it('refuses empty and malformed messages, and takes plain stdin as the body', async () => {
+    script('alpha', [
+      { cmd: 'yaho send --to human', stdin: '# r/csharp: paging\nStats: none yet\n' },
+      { cmd: 'yaho send --to human', stdin: 'type: info\n' },
+      { cmd: 'yaho send --to human', stdin: 'title: x\nbody:\n  nested: oops\n' },
+      { cmd: 'yaho send --to human --title Plain', stdin: 'Just some *Markdown*, no YAML here.\n' },
+      { cmd: 'yaho finish' },
+    ]);
+    const before = (await api<Message[]>('/api/messages?to=human')).length;
+    const job = await api<Job>('/api/agents/alpha/run', { method: 'POST' });
+    await waitFor(job.id);
+    const outs = await toolOutputs(job.id);
+    expect(outs[0]).toContain('unknown message field Stats');
+    expect(outs[1]).toContain('the message is empty');
+    expect(outs[2]).toContain('body must be text');
+    const human = await api<Message[]>('/api/messages?to=human');
+    expect(human.length).toBe(before + 1);
+    expect(human[0]).toMatchObject({ title: 'Plain', body: 'Just some *Markdown*, no YAML here.' });
+  });
+
   it('gives each job a temp folder of its own, emptied when it ends', async () => {
     const tmpOf = async (agent: string) => {
       script(agent, [{ cmd: 'node -e "console.log(require(\'os\').tmpdir())"' }, { cmd: 'yaho finish' }]);

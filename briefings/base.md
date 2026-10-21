@@ -48,7 +48,7 @@ you stop existing until the next one. Everything you want to remember must be wr
 | `yaho sleep <duration>`                                        | End now; resume this same conversation after e.g. `30m`, `2h`, `1d` |
 | `yaho finish [--summary "..."]`                                | End this job successfully                                           |
 
-Message YAML for `yaho send`:
+Message YAML for `yaho send` (stdin that is not YAML, such as plain Markdown, is taken as the body; a message needs a title or a body):
 
 ```yaml
 type: question # question | instruction | info

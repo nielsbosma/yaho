@@ -139,6 +139,16 @@ function readStdin(): string {
   }
 }
 
+/** Message YAML on stdin; anything that is not a YAML mapping (plain text, Markdown) is taken as the body. */
+function parseMessage(stdin: string): Record<string, unknown> {
+  if (!stdin.trim()) return {};
+  try {
+    const v = YAML.parse(stdin);
+    if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>;
+  } catch {}
+  return { body: stdin.trim() };
+}
+
 const out = (v: unknown): void => void process.stdout.write(typeof v === 'string' ? (v.endsWith('\n') ? v : `${v}\n`) : YAML.stringify(v));
 
 async function browser(argv: string[]): Promise<void> {
@@ -202,7 +212,7 @@ async function main(argv: string[]): Promise<void> {
       break;
     case 'send': {
       const stdin = readStdin();
-      const msg = (stdin.trim() ? YAML.parse(stdin) : {}) as Record<string, unknown>;
+      const msg = parseMessage(stdin);
       if (f.to) msg.to = f.to;
       if (f.type) msg.type = f.type;
       if (f.title) msg.title = f.title;
