@@ -19,6 +19,9 @@ function me(req: Req): { agent: string; job: string } {
   return req.caller;
 }
 
+/** What yaho send may carry, so a misspelled key fails loudly instead of arriving as an empty message. */
+const SEND_FIELDS = ['to', 'type', 'title', 'body', 'choices', 'steps', 'expects_response', 'reply_to', 'artifacts'];
+
 /** What an artifact is, as the agent names it: a short word such as report or image. */
 const KIND_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/i;
 
@@ -62,6 +65,10 @@ export function agentRoutes(ctx: Ctx, r: Router): void {
   on('POST', '/send', async (req, w) => {
     const m = await req.body<s.SendInput>();
     if (!m.to) throw new HttpError(400, 'to is required: human or agent:<name>');
+    const unknown = Object.keys(m).filter((k) => !SEND_FIELDS.includes(k));
+    if (unknown.length) throw new HttpError(400, `unknown message field ${unknown.join(', ')} (use ${SEND_FIELDS.join(', ')})`);
+    for (const k of ['title', 'body'] as const) if (m[k] != null && typeof m[k] !== 'string') throw new HttpError(400, `${k} must be text`);
+    if (!m.title?.trim() && !m.body?.trim()) throw new HttpError(400, 'the message is empty: give it a title or a body');
     if (String(m.to).startsWith('email:')) throw new HttpError(400, 'send email with yaho email send (or yaho email reply)');
     if (String(m.to).startsWith('sms:')) throw new HttpError(400, 'send texts with yaho sms send (or yaho sms reply)');
     const job = s.getJob(ctx, w.job);
