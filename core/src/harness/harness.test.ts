@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vite-plus/test';
 import { agentEnv, jobEnv } from './asAgent.ts';
 import { claudeCode, transcriptWriter } from './claudeCode.ts';
+import { codex, MAX_INLINE_INSTRUCTIONS } from './codex.ts';
 import { commandGuardScript } from './commandGuard.ts';
 import type { HarnessEvent } from './types.ts';
 
@@ -112,6 +113,51 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', result: JSON.st
     expect(seen.inline).toBe(false);
     expect(seen.length).toBeLessThan(2000);
     expect(seen.system).toBe(systemPrompt.length);
+  });
+});
+
+describe('starting Codex', () => {
+  const start = async (systemPrompt: string) => {
+    const ws = join(dir, 'ws-codex');
+    mkdirSync(ws, { recursive: true });
+    const fake = join(dir, 'fake-codex.cjs');
+    const out = join(ws, 'seen.json');
+    writeFileSync(
+      fake,
+      `let stdin = '';
+process.stdin.on('data', (d) => (stdin += d)).on('end', () => {
+  const a = process.argv.slice(2);
+  require('fs').writeFileSync(${JSON.stringify(out)}, JSON.stringify({ args: a.join(' ').length, dev: a.some((x) => x.startsWith('developer_instructions=')), stdin }));
+});`,
+    );
+    const proc = codex.start(
+      {
+        command: process.execPath,
+        args: [fake],
+        cwd: ws,
+        env: { YAHO_CODEX_BASE_URL: 'http://x' },
+        model: 'm',
+        systemPrompt,
+        prompt: 'hi',
+      },
+      () => undefined,
+    );
+    expect(await proc.done).toBe(0);
+    return JSON.parse(readFileSync(out, 'utf8')) as { args: number; dev: boolean; stdin: string };
+  };
+
+  it('gives a short system prompt as developer instructions', async () => {
+    const seen = await start('be brief');
+    expect(seen.dev).toBe(true);
+    expect(seen.stdin).toBe('hi');
+  });
+
+  it('sends a system prompt too long for a Windows command line ahead of the prompt on stdin', async () => {
+    const systemPrompt = 'x'.repeat(MAX_INLINE_INSTRUCTIONS * 3);
+    const seen = await start(systemPrompt);
+    expect(seen.dev).toBe(false);
+    expect(seen.args).toBeLessThan(4000);
+    expect(seen.stdin).toBe(`<instructions>\n${systemPrompt}\n</instructions>\n\nhi`);
   });
 });
 
