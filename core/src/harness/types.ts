@@ -6,6 +6,8 @@ export interface HarnessRun {
   env: Record<string, string>;
   model: string;
   systemPrompt: string;
+  /** Where a harness that reads its system prompt from a file may write it, under cwd. */
+  systemPromptPath?: string;
   prompt: string;
   /** Native session id to resume, when the harness supports it. */
   resumeSessionId?: string | null;
