@@ -383,6 +383,7 @@ export class JobRunner {
         env,
         model: providerModel,
         systemPrompt: system,
+        systemPromptPath: join(cwd, '.yaho', `system-${job.id}.md`),
         prompt,
         resumeSessionId: ses.harnessId,
         transcriptPath: transcript,

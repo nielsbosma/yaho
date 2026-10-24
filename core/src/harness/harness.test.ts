@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vite-plus/test';
 import { agentEnv, jobEnv } from './asAgent.ts';
-import { transcriptWriter } from './claudeCode.ts';
+import { claudeCode, transcriptWriter } from './claudeCode.ts';
 import { commandGuardScript } from './commandGuard.ts';
 import type { HarnessEvent } from './types.ts';
 
@@ -75,6 +75,43 @@ describe.skipIf(process.platform === 'win32')('transcripts', () => {
     evil('{"b":2}');
     expect(readFileSync(db, 'utf8')).toBe('database');
     expect(events.filter((e) => e.kind === 'stderr')).toHaveLength(1);
+  });
+});
+
+describe('starting Claude Code', () => {
+  it('passes a long system prompt in a file, not on the command line', async () => {
+    const ws = join(dir, 'ws-claude');
+    mkdirSync(ws, { recursive: true });
+    const fake = join(dir, 'fake-claude.cjs');
+    writeFileSync(
+      fake,
+      `const a = process.argv.slice(2);
+const f = a[a.indexOf('--append-system-prompt-file') + 1];
+const system = require('fs').readFileSync(f, 'utf8');
+console.log(JSON.stringify({ type: 'result', subtype: 'success', result: JSON.stringify({ inline: a.includes('--append-system-prompt'), length: a.join(' ').length, system: system.length }) }));`,
+    );
+    const systemPrompt = 'x'.repeat(40_000);
+    const events: HarnessEvent[] = [];
+    const proc = claudeCode.start(
+      {
+        command: process.execPath,
+        args: [fake],
+        cwd: ws,
+        env: { ...process.env } as Record<string, string>,
+        model: 'm',
+        systemPrompt,
+        systemPromptPath: join(ws, '.yaho', 'system-j1.md'),
+        prompt: 'hi',
+      },
+      (e) => events.push(e),
+    );
+    expect(await proc.done).toBe(0);
+    const result = events.find((e) => e.kind === 'result');
+    expect(result && result.kind === 'result' && result.ok).toBe(true);
+    const seen = JSON.parse((result as { summary: string }).summary);
+    expect(seen.inline).toBe(false);
+    expect(seen.length).toBeLessThan(2000);
+    expect(seen.system).toBe(systemPrompt.length);
   });
 });
 

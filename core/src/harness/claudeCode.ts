@@ -95,9 +95,12 @@ export const claudeCode: HarnessAdapter = {
       // write, and could turn Yaho's hooks or sandbox off. Only what Yaho passes here applies.
       '--setting-sources=',
       ...(settings ? ['--settings', JSON.stringify(settings)] : []),
-      '--append-system-prompt',
-      run.systemPrompt,
     ];
+    // The system prompt goes in a file when it can: Windows command lines cap at 32k characters.
+    if (run.systemPromptPath) {
+      writeFileUnder(run.cwd, run.systemPromptPath, run.systemPrompt);
+      args.push('--append-system-prompt-file', run.systemPromptPath);
+    } else args.push('--append-system-prompt', run.systemPrompt);
     if (run.mcp) {
       const { command, args: mcpArgs, env, configPath } = run.mcp;
       writeFileSync(configPath, JSON.stringify({ mcpServers: { yaho: { type: 'stdio', command, args: mcpArgs, env } } }));
@@ -165,9 +168,7 @@ export const claudeCode: HarnessAdapter = {
           summary: typeof m.result === 'string' ? (m.result as string) : undefined,
           cost_usd: typeof m.total_cost_usd === 'number' ? (m.total_cost_usd as number) : undefined,
           error:
-            m.is_error || String(m.subtype ?? '').startsWith('error')
-              ? [kind, m.result].filter(Boolean).join(': ') || 'error'
-              : undefined,
+            m.is_error || String(m.subtype ?? '').startsWith('error') ? [kind, m.result].filter(Boolean).join(': ') || 'error' : undefined,
         });
       }
     });
