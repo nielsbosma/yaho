@@ -9,6 +9,8 @@ import type { HarnessAdapter, HarnessEvent, HarnessProcess, HarnessRun } from '.
 
 const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more chars)` : s);
 const toml = (s: string) => JSON.stringify(s); // a TOML basic string has JSON's escapes
+/** Windows command lines cap at 32k characters; the rest of Codex's arguments need a few thousand. */
+export const MAX_INLINE_INSTRUCTIONS = 16_000;
 
 /** The yaho MCP server as Codex settings: its own environment, as Codex passes MCP servers only a few variables. */
 function codexMcp(m: NonNullable<HarnessRun['mcp']>): string[] {
@@ -66,7 +68,8 @@ export function codexOverride(cwd: string): string | null {
 /**
  * OpenAI's Codex CLI (codex exec --json). It reaches the model through OpenAI's Responses API: the runner gives the
  * provider's address and key as YAHO_CODEX_BASE_URL and YAHO_MODEL_KEY, which become a "yaho" model provider here, so
- * the person's own ~/.codex/config.toml is never used. The agent's system prompt goes in as developer instructions.
+ * the person's own ~/.codex/config.toml is never used. The agent's system prompt goes in as developer instructions, or,
+ * when too long for a Windows command line (Codex has no file for them), ahead of the prompt on stdin.
  */
 export const codex: HarnessAdapter = {
   name: 'codex',
@@ -77,6 +80,7 @@ export const codex: HarnessAdapter = {
         `${override} could change Codex's hooks or sandbox, so the job did not start. Remove it from the workspace (it is not needed: Yaho gives Codex its settings).`,
       );
     const base = run.env.YAHO_CODEX_BASE_URL;
+    const inline = toml(run.systemPrompt).length <= MAX_INLINE_INSTRUCTIONS;
     const common = [
       '--json',
       '--skip-git-repo-check',
@@ -102,8 +106,7 @@ export const codex: HarnessAdapter = {
       `model_providers.yaho={name="Yaho",base_url=${toml(base ?? '')},env_key="YAHO_MODEL_KEY",wire_api="responses"}`,
       '-c',
       'model_provider="yaho"',
-      '-c',
-      `developer_instructions=${toml(run.systemPrompt)}`,
+      ...(inline ? ['-c', `developer_instructions=${toml(run.systemPrompt)}`] : []),
       ...(run.mcp ? codexMcp(run.mcp) : []),
     ];
     const args = [
@@ -122,7 +125,7 @@ export const codex: HarnessAdapter = {
       detached: process.platform !== 'win32',
     });
     // The prompt over stdin ("-"): Windows command lines cap at 32k characters.
-    child.stdin.end(run.prompt);
+    child.stdin.end(inline ? run.prompt : `<instructions>\n${run.systemPrompt.trim()}\n</instructions>\n\n${run.prompt}`);
 
     let gotResult = false;
     const transcript = transcriptWriter(run, onEvent);
