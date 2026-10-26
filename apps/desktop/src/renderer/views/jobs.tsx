@@ -14,9 +14,10 @@ import {
 } from 'lucide-react';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/ui/button.tsx';
+import { Select } from '../components/ui/form.tsx';
 import { cn } from '../components/ui/cn.ts';
 import { ago, Badge, Card, duration, Empty, ErrorNote, money, PageHeader, Section, StatusBadge } from '../components/ui/display.tsx';
-import { api, onLive, useApi, type Artifact, type Job, type JobEvent } from '../lib/api.ts';
+import { api, onLive, useApi, type Agent, type Artifact, type Job, type JobEvent } from '../lib/api.ts';
 import { chatAboutJob } from '../lib/chat.ts';
 import { href } from '../lib/router.ts';
 import { ArtifactGrid } from './artifacts.tsx';
@@ -53,28 +54,59 @@ export function JobsView({ route }: ViewProps) {
   return <ActiveJobs />;
 }
 
+const STATUSES: Job['status'][] = ['running', 'queued', 'finished', 'sleeping', 'failed', 'budget_exhausted', 'stopped'];
+
 function ActiveJobs() {
-  const active = useApi<Job[]>('/api/jobs?active=1', jobChanged);
-  const recent = useApi<Job[]>('/api/jobs?limit=30', jobChanged);
+  const [agent, setAgent] = useState('');
+  const [status, setStatus] = useState('');
+  const q = new URLSearchParams({ ...(agent && { agent }), ...(status && { status }) }).toString();
+  const agents = useApi<Agent[]>('/api/agents');
+  const active = useApi<Job[]>(`/api/jobs?active=1&${q}`, jobChanged);
+  const recent = useApi<Job[]>(`/api/jobs?limit=30&${q}`, jobChanged);
+  const showActive = !status || status === 'running' || status === 'queued';
+  const done = recent.data?.filter((j) => j.status !== 'running' && j.status !== 'queued') ?? [];
   return (
     <>
-      <PageHeader title="Running Jobs" sub="Every active job, with its trigger, runtime and cost." />
+      <PageHeader
+        title="Running Jobs"
+        sub="Every active job, with its trigger, runtime and cost."
+        actions={
+          <>
+            <Select className="w-44" value={agent} onChange={(e) => setAgent(e.target.value)} aria-label="Agent">
+              <option value="">All Agents</option>
+              {agents.data?.map((a) => (
+                <option key={a.name}>{a.name}</option>
+              ))}
+            </Select>
+            <Select className="w-40" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
+              <option value="">All Statuses</option>
+              {STATUSES.map((st) => (
+                <option key={st} value={st}>
+                  {st.replace('_', ' ')}
+                </option>
+              ))}
+            </Select>
+          </>
+        }
+      />
       <div className="space-y-8 p-8">
-        {active.data?.length ? (
-          <JobTable jobs={active.data} showAgent />
-        ) : (
-          <Empty icon={<Play />} title="Nothing running">
-            Jobs start from cron schedules, inbox messages, delays, or Run now on an agent.
-          </Empty>
-        )}
-        {(() => {
-          const done = recent.data?.filter((j) => j.status !== 'running' && j.status !== 'queued') ?? [];
-          return done.length ? (
-            <Section title="Recent">
-              <JobTable jobs={done} showAgent />
-            </Section>
-          ) : null;
-        })()}
+        {showActive &&
+          (active.data?.length ? (
+            <JobTable jobs={active.data} showAgent />
+          ) : (
+            <Empty icon={<Play />} title="Nothing running">
+              {agent || status
+                ? 'No active jobs match these filters.'
+                : 'Jobs start from cron schedules, inbox messages, delays, or Run now on an agent.'}
+            </Empty>
+          ))}
+        {done.length ? (
+          <Section title="Recent">
+            <JobTable jobs={done} showAgent />
+          </Section>
+        ) : !showActive && recent.data ? (
+          <Empty title="No jobs">No recent jobs match these filters.</Empty>
+        ) : null}
       </div>
     </>
   );

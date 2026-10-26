@@ -528,6 +528,7 @@ export function humanRoutes(ctx: Ctx, r: Router): void {
   r.on('GET', '/api/jobs', (req) =>
     s.listJobs(ctx, {
       agent: req.query.get('agent') ?? undefined,
+      status: req.query.get('status') ?? undefined,
       active: req.query.get('active') === '1',
       limit: intParam(req.query.get('limit'), 200, 1, 1000),
     }),
