@@ -45,6 +45,11 @@ describe('the store', () => {
     expect(existsSync(ctx.paths.agent('new'))).toBe(true);
   });
 
+  it('filters jobs by status', () => {
+    expect(listJobs(ctx, { status: 'finished' })).toHaveLength(1);
+    expect(listJobs(ctx, { status: 'failed' })).toEqual([]);
+  });
+
   it('takes the default for a limit that is not a number', () => {
     expect(listJobs(ctx, { limit: Number('abc') })).toHaveLength(1);
     expect(listMessages(ctx, { limit: Number('abc') })).toEqual([]);

@@ -847,12 +847,16 @@ const limitOf = (n: unknown, fallback: number): number => {
   return Number.isFinite(v) && v > 0 ? v : fallback;
 };
 
-export function listJobs(ctx: Ctx, opts: { agent?: string; active?: boolean; limit?: number } = {}): Job[] {
+export function listJobs(ctx: Ctx, opts: { agent?: string; status?: string; active?: boolean; limit?: number } = {}): Job[] {
   const where: string[] = [];
   const args: string[] = [];
   if (opts.agent) {
     where.push('agent = ?');
     args.push(opts.agent);
+  }
+  if (opts.status) {
+    where.push('status = ?');
+    args.push(opts.status);
   }
   if (opts.active) where.push("status IN ('running','queued')");
   return (
