@@ -349,9 +349,6 @@ export function Assistant({
                 )}
               </div>
             </div>
-            <p className="mt-1.5 px-1 text-[11px] text-muted">
-              Paste screenshots or attach files. Never paste secret values here; set them on the resource page.
-            </p>
           </div>
         </>
       )}
