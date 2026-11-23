@@ -11,11 +11,11 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "catalog:",
-    "@slack/socket-mode": "^3.1.0",
-    "@slack/web-api": "^8.2.0",
-    "croner": "^10.0.1",
+    "@slack/socket-mode": "^3.2.0",
+    "@slack/web-api": "^8.5.0",
+    "croner": "^11.0.1",
     "fflate": "^0.8.3",
-    "unpdf": "^1.8.1",
+    "unpdf": "^2.2.1",
     "yaml": "^2.9.1"
   }
 }
