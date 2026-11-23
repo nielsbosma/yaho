@@ -26,6 +26,9 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: "docker"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     directories:
       - "/docker"
     schedule:
