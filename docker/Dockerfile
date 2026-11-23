@@ -22,7 +22,7 @@ WORKDIR /src/app
 RUN cargo build --release --locked
 
 # ---- Yaho's bundles: core, CLI and web UI (no Electron) ----
-FROM node:22-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 CI=1
 RUN npm install -g pnpm@10.7.1
 WORKDIR /src
@@ -30,7 +30,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile && node tools/package.mjs --stage
 
 # ---- The image ----
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 ARG CLAUDE_CODE_VERSION=2.1.296
 ARG CODEX_VERSION=0.162.1
 # Tools agents use: git, gh, Python, curl, jq, ripgrep. bubblewrap and socat are Claude Code's sandbox (Sandbox Mode,
